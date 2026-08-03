@@ -9,13 +9,14 @@ const lit = (s, find, repl) => s.split(find).join(repl); // литеральна
 const template = fs.readFileSync(path.join(SRC, 'app.template.html'), 'utf8');
 const seed = fs.readFileSync(path.join(SRC, 'seed.json'), 'utf8').trim();
 const hero = fs.readFileSync(path.join(SRC, 'hero-b64.txt'), 'utf8').trim();
+const logo = fs.readFileSync(path.join(SRC, 'logo-emblem.svg'), 'utf8').trim();
 const online = fs.readFileSync(path.join(SRC, 'online.js'), 'utf8');
 
 JSON.parse(seed); // падаем сразу, если данные битые
 
 // офлайн-версия
-const offline = lit(lit(template, '__SEED__', seed), '__HERO__', hero);
-if (offline.includes('__SEED__') || offline.includes('__HERO__')) throw new Error('плейсхолдер не заменён');
+const offline = lit(lit(lit(template, '__SEED__', seed), '__HERO__', hero), '__LOGO__', logo);
+if (offline.includes('__SEED__') || offline.includes('__HERO__') || offline.includes('__LOGO__')) throw new Error('плейсхолдер не заменён');
 
 // онлайн-версия: модуль синхронизации отдельным скриптом перед закрывающими тегами
 const MARK = '</script>\n</body>\n</html>';

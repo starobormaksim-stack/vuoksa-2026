@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Вуокса · 2026 — сборный лист</title>
+<title>PackFlow · Вуокса-2026</title>
 <style id="app-css-hero">.heroPic{background-image:url(__HERO__)}</style>
 <style id="app-css">
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 :root{
---night:#1B2B2E;--night2:#132022;--pine:#25473A;--amber:#C0762A;--amberLt:#F3E4CD;
+--night:#1B2B2E;--night2:#132022;--pine:#25473A;--amber:#BC6C25;--amberDeep:#A74612;--amberLt:#F3E4CD;
 --water:#3E6B7A;--bark:#7C5433;--moss:#5E7A5A;
 --cream:#FCF9F3;--zebra:#F2EDE3;--line:#D8CFBF;--ink:#1E2723;--muted:#6C7570;
 --bg:var(--cream);--card:#FFFFFF;--head:rgba(251,247,240,.84);
@@ -23,7 +23,7 @@ html,body{margin:0;padding:0}
 /* тёмная тема — глубокая хвоя: фон еловой тени, текст песочный, акценты коры сосны */
 html[data-theme="dark"]{
 --bg:#0E1F1A;--card:#162B24;--zebra:#13251F;--line:#2B4438;--ink:#EFE7D8;--muted:#9AACA1;
---pine:#6FA98D;--water:#6FA0B0;--bark:#C08A57;--moss:#8AA486;--amber:#D8944A;
+--pine:#6FA98D;--water:#6FA0B0;--bark:#C08A57;--moss:#8AA486;--amber:#D8944A;--amberDeep:#C0762A;
 --amberLt:#33291D;--cream:#122420;--head:rgba(14,31,26,.86);
 --shadow:0 1px 2px rgba(0,0,0,.34),0 10px 30px rgba(0,0,0,.36);
 --shadowUp:0 2px 6px rgba(0,0,0,.38),0 18px 44px rgba(0,0,0,.44);
@@ -53,7 +53,7 @@ a:hover{color:var(--ink)}
 .hdr{position:sticky;top:0;z-index:40;background:var(--head);padding-top:env(safe-area-inset-top);
 -webkit-backdrop-filter:blur(22px) saturate(1.5);backdrop-filter:blur(22px) saturate(1.5);
 border-bottom:1px solid color-mix(in oklab,var(--line) 42%,transparent)}
-.hdrIn{display:flex;align-items:center;gap:6px;padding:8px 12px;min-height:58px;max-width:880px;margin:0 auto}
+.hdrIn{display:flex;align-items:center;gap:6px;padding:8px 12px;min-height:58px;max-width:1120px;margin:0 auto}
 .hdrTitle{font-family:var(--serif);font-size:20px;letter-spacing:.2px;flex:1;min-width:0;
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ib{width:44px;height:44px;border:0;background:transparent;border-radius:12px;display:grid;place-items:center;
@@ -92,7 +92,7 @@ box-shadow:0 0 0 1.5px color-mix(in oklab,var(--line) 60%,transparent)}
 .meBtn.none .av{background:transparent;box-shadow:0 0 0 1.5px var(--line)}
 .meBtn.none .av svg{width:18px;height:18px;stroke:var(--muted);stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
 /* полоска контекста: где ты сейчас находишься. Появляется, как только шапка отрывается от начала */
-.ctxBar{display:none;max-width:880px;margin:0 auto;padding:0 12px 8px;align-items:center;gap:8px}
+.ctxBar{display:none;max-width:1120px;margin:0 auto;padding:0 12px 8px;align-items:center;gap:8px}
 .ctxBar.on{display:flex}
 /* это индикатор «где я», а не кнопка: переход по разделам делает нижнее меню */
 .ctxBar>span{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 11px;border-radius:9px;
@@ -102,7 +102,7 @@ font-size:12px;color:var(--muted);max-width:100%;min-width:0}
 .ctxBar i{font-style:normal;color:var(--amber);flex:0 0 auto}
 .ctxBar svg{width:13px;height:13px;stroke:var(--muted);stroke-width:1.8;fill:none;stroke-linecap:round;
 flex:0 0 auto;transform:rotate(180deg)}
-.searchWrap{display:none;padding:0 12px 10px;max-width:880px;margin:0 auto}
+.searchWrap{display:none;padding:0 12px 10px;max-width:1120px;margin:0 auto}
 .searchWrap.on{display:block}
 .searchWrap input{width:100%;height:44px;border-radius:12px;border:1px solid var(--line);
 background:var(--card);padding:0 14px}
@@ -122,10 +122,13 @@ border-bottom:1px solid color-mix(in oklab,var(--line) 30%,transparent);font-fam
 @keyframes hitFlash{0%,55%{box-shadow:inset 0 0 0 2px var(--amber)}100%{box-shadow:inset 0 0 0 2px transparent}}
 .row.hit .rowIn,.tlI.hit,.grp.hit{animation:hitFlash 2.2s var(--ease);border-radius:10px}
 
-main{flex:1;max-width:880px;width:100%;margin:0 auto;
+main{flex:1;max-width:1120px;width:100%;margin:0 auto;
   padding:18px max(16px,env(safe-area-inset-left)) 140px max(16px,env(safe-area-inset-right))}
 .view{animation:slidein .28s var(--ease) both}
 @keyframes slidein{from{opacity:0;transform:translateX(var(--dir,14px))}to{opacity:1;transform:none}}
+/* появление разделов анимируется один раз при загрузке; при обычных перерисовках
+   (любая правка зовёт render) повторный въезд всей страницы только дёргает глаз */
+body.settled .view{animation:none}
 
 /* ── nav ───────────────────────────────── */
 body.inapp .nav{padding-bottom:calc(env(safe-area-inset-bottom) + 52px)}
@@ -138,7 +141,7 @@ padding-bottom:env(safe-area-inset-bottom);
 transition:transform .28s var(--ease);will-change:transform}
 .nav.hid{transform:none}
 @media (min-width:920px){.nav.hid{transform:none}}
-.navIn{position:relative;display:flex;max-width:880px;margin:0 auto}
+.navIn{position:relative;display:flex;max-width:1120px;margin:0 auto}
 .navIn>button{flex:1;min-height:58px;border:0;background:transparent;display:flex;flex-direction:column;
 align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:7px 0 9px;color:var(--muted);
 transition:color .2s var(--ease)}
@@ -149,6 +152,15 @@ transition:transform .25s var(--ease)}
 .navIn>button.on svg{transform:translateY(-1px) scale(1.06)}
 .navBar{position:absolute;top:0;left:0;height:2px;background:var(--amber);border-radius:2px;
 transition:transform .3s var(--ease),width .3s var(--ease)}
+/* бренд PackFlow: на телефоне скрыт, в левом меню занимает верхние 80 px */
+.brand{display:none}
+@media (min-width:920px){
+  .brand{position:absolute;top:0;left:0;right:0;height:80px;display:flex;align-items:center;
+    gap:11px;padding:0 20px}
+  .brand svg{width:37px;height:37px;flex:0 0 auto;border-radius:50%;
+    box-shadow:0 0 0 1px color-mix(in oklab,var(--line) 60%,transparent)}
+  .brand span{font-family:var(--serif);font-size:18px;letter-spacing:.02em;color:var(--ink)}
+}
 
 /* ── общие блоки ───────────────────────── */
 .card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
@@ -413,7 +425,7 @@ html[data-theme="dark"] .subTot.pers b{color:var(--ink)}
 .stick{position:fixed;left:0;right:0;bottom:calc(59px + env(safe-area-inset-bottom));z-index:38;
 background:var(--head);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);
 border-top:1px solid color-mix(in oklab,var(--line) 42%,transparent);padding:10px 16px}
-.stickIn{max-width:880px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.stickIn{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:12px}
 .stickIn .money{font-size:20px;min-width:0}
 .stickIn em{font-style:normal;font-size:11.5px;color:var(--muted);flex:1;line-height:1.35}
 .shopBtn{height:40px;padding:0 14px;border-radius:11px;border:1px solid var(--amber);color:var(--amber);
@@ -659,12 +671,18 @@ flex:0 0 auto}
 display:grid;place-items:center;font-family:var(--serif);font-size:11px;color:#fff;
 border:1.5px solid var(--bg);margin-left:-6px;flex:0 0 auto}
 .whoOn b{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}
+/* бейджи на фотографии: слева — кто это (роль, «это я»), справа под кнопкой — «сейчас здесь».
+   Раньше роль и присутствие стояли в одной точке и налезали друг на друга. */
 .crewPhoto.isOn{outline:2px solid var(--pine);outline-offset:-2px}
-.crewPhoto.isOn::before{content:"сейчас здесь";position:absolute;left:11px;bottom:auto;top:11px;z-index:2;
+.crewPhoto.isOn::before{content:"● сейчас здесь";position:absolute;right:11px;left:auto;top:49px;z-index:2;
 font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#0E1F1A;background:#9CC3AF;
 padding:4px 8px;border-radius:6px}
 .crewChief{position:absolute;top:11px;left:11px;z-index:2;font-size:10px;letter-spacing:.1em;
 text-transform:uppercase;color:#16222A;background:#E8A44A;padding:4px 8px;border-radius:6px}
+.crewMe{position:absolute;top:11px;left:11px;z-index:2;font-size:10px;letter-spacing:.08em;
+text-transform:uppercase;color:#F7F1E6;background:rgba(16,22,26,.55);
+-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:4px 8px;border-radius:6px}
+.crewPhoto.hasRole .crewMe{top:41px}
 .meBar{display:flex;align-items:center;gap:10px;padding:12px 14px}
 .meBar .av{width:30px;height:30px;border-radius:8px;background-size:cover;background-position:50% 50%;
 display:grid;place-items:center;font-family:var(--serif);font-size:13px;color:#fff;flex:0 0 auto}
@@ -688,7 +706,7 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .crew{grid-template-columns:repeat(2,1fr)}
 }
 @media (min-width:760px){
-  .crew{grid-template-columns:repeat(3,1fr)}
+  .crew{grid-template-columns:repeat(2,1fr);gap:14px}
   main{padding:22px 22px 150px}
 }
 @media (min-width:920px){
@@ -701,13 +719,20 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .navBar{width:2px!important;left:0;top:80px;height:52px;transition:transform .3s var(--ease)}
   .stick{left:222px} .toasts{left:222px}
   main{padding-bottom:130px}
-  .crew{grid-template-columns:repeat(4,1fr);gap:12px}
+  /* заказчик просил крупные фотографии: две карточки в ряд, не четыре */
+  .crew{grid-template-columns:repeat(2,1fr);gap:18px}
+  .cpTxt{padding:18px}
+  .cpTxt h4{font-size:26px}
+  .cpTxt .rl{font-size:11.5px}
+  .cpStat{font-size:12px}
+  .cpNo{font-size:76px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="logoTpl" hidden>__LOGO__</div>
 <script id="seed" type="application/json">__SEED__</script>
 <script id="app-code">
 "use strict";
@@ -1205,8 +1230,10 @@ function avaHtml(p,cls){
 }
 
 /* ─────────── каркас ─────────── */
+/* название сервиса — меняется только здесь; логотип лежит в #logoTpl (src/logo-emblem.svg) */
+var APP_NAME='PackFlow';
 var TABS=[
- {id:'home',t:'Поездка',icon:'home',ttl:'Вуокса · 2026'},
+ {id:'home',t:'Поездка',icon:'home',ttl:APP_NAME},
  {id:'crew',t:'Экипаж',icon:'user',ttl:'Экипаж'},
  {id:'gear',t:'Сборы',icon:'pack',ttl:'Сборы'},
  {id:'buy',t:'Закупка',icon:'cart',ttl:'Закупка'},
@@ -1222,6 +1249,7 @@ app.innerHTML='<div class="shell">'
 +'<header class="hdr"><div id="warn"></div><div class="hdrIn">'
 +'<div class="hdrTitle" id="hTtl"></div>'
 +'<button class="meBtn" id="bMe" aria-label="Кто заполняет"><span class="av"></span></button>'
++'<button class="ib" id="bTheme" aria-label="Сменить тему">'+svg('theme')+'</button>'
 +'<button class="ib" id="bSearch" aria-label="Поиск">'+svg('search')+'</button>'
 +'<button class="saveBtn" id="bSave">'+svg('dl')+'<span>Сохранить файл</span></button>'
 +'<button class="ib" id="bMenu" aria-label="Ещё">'+svg('dots')+'</button>'
@@ -1236,6 +1264,15 @@ app.innerHTML='<div class="shell">'
 +'<input type="file" id="heroIn" accept="image/*" style="position:absolute;left:-9999px">';
 
 var navIn=$('#navIn');
+/* логотип и имя сервиса — в левом меню (видно от 920 px, на телефоне место дорого).
+   Эмблему клонируем из #logoTpl, а не переносим: при пересохранении файла #app
+   заменяется заглушкой, и перенесённый узел потерялся бы. */
+(function(){
+  var brand=el('div','brand'), lt=document.getElementById('logoTpl');
+  if(lt&&lt.firstElementChild)brand.appendChild(lt.firstElementChild.cloneNode(true));
+  brand.appendChild(el('span',null,esc(APP_NAME)));
+  navIn.appendChild(brand);
+})();
 TABS.forEach(function(t){
   var b=el('button',null,svg(t.icon)+'<span>'+t.t+'</span>');
   b.onclick=function(){go(t.id);}; b.dataset.tab=t.id; navIn.appendChild(b);
@@ -1287,10 +1324,14 @@ function paintCtx(){
   bar.appendChild(el('span',null,svg('chev')+'<b>'+esc(txt)+'</b>'));
   bar.classList.add('on');
 }
+/* пока идёт плавная прокрутка к выбранному разделу, подсветку меню не пересчитываем:
+   иначе индикатор дёргается по каждому промежуточному разделу, мимо которого проезжаем */
+var goLock=0;
 function go(tab){
   S.ui.tab=tab; persist(); syncNav();
   var n=document.getElementById('s-'+tab); if(!n)return;
   var top=n.getBoundingClientRect().top+window.scrollY-70;
+  goLock=Date.now()+900;
   try{window.scrollTo({top:Math.max(0,top),behavior:'smooth'});}catch(e){window.scrollTo(0,Math.max(0,top));}
 }
 var navT=null, lastY=0;
@@ -1300,6 +1341,7 @@ window.addEventListener('scroll',function(){
   if(navT)return;
   navT=setTimeout(function(){
     navT=null;
+    if(Date.now()<goLock){paintCtx();return;}
     var best=TABS[0].id, y=window.scrollY+96;
     TABS.forEach(function(tb){var n=document.getElementById('s-'+tb.id);
       if(n&&n.getBoundingClientRect().top+window.scrollY<=y)best=tb.id;});
@@ -1737,7 +1779,8 @@ function crewCard(p){
   c.setAttribute('data-pid',p.id);
   if(p.photo)c.style.backgroundImage='url('+p.photo+')';
   else{c.style.backgroundColor=p.color;c.appendChild(el('div','cpNo',esc(p.ini)));}
-  if(p.perm!=='member')c.appendChild(el('div','crewChief',permName(p)));
+  if(p.perm!=='member'){c.appendChild(el('div','crewChief',permName(p)));c.classList.add('hasRole');}
+  if(p.id===S.ui.me)c.appendChild(el('div','crewMe','это я'));
   var eb=el('button','cpEdit',svg('pen'));eb.title='Редактировать';
   eb.onclick=function(ev){ev.stopPropagation();editPerson(p);};
   c.appendChild(eb);
@@ -2899,6 +2942,14 @@ function applyTheme(){
   var t=S.theme;
   if(!t)t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
   document.documentElement.setAttribute('data-theme',t);
+  paintThemeBtn();
+}
+/* иконка на кнопке темы показывает, куда переключишься: луна в светлой, солнце в тёмной */
+function paintThemeBtn(){
+  var b=document.getElementById('bTheme'); if(!b)return;
+  var t=document.documentElement.getAttribute('data-theme');
+  setHtml(b,svg(t==='dark'?'sun':'theme'));
+  b.title=t==='dark'?'Включить светлую тему':'Включить тёмную тему';
 }
 function themeName(){
   var cur=THEMES.filter(function(x){return x[0]===(S.theme||null);})[0];
@@ -2921,6 +2972,14 @@ function themeSheet(){
     });
   });
 }
+/* тема переключается прямо из шапки в один тап; тонкая настройка «как в системе» осталась в «⋯» */
+$('#bTheme').onclick=function(){
+  var cur=S.theme;
+  if(!cur)cur=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
+  S.theme=(cur==='dark')?'light':'dark';
+  touch();applyTheme();
+  toast('Тема: '+(S.theme==='dark'?'тёмная':'светлая')+'.');
+};
 $('#bMenu').onclick=function(){
   sheet(function(c,close){
     c.appendChild(el('h3',null,'Ещё'));
@@ -3076,6 +3135,8 @@ function boot(){
   paintSave();
   if(!lsOk)renderWarn();
   if(S.seedAdded){toast('В файле появились новые позиции: '+S.seedAdded+'. Твои отметки на месте.');S.seedAdded=0;persist();}
+  /* после первого показа гасим анимацию въезда разделов — см. body.settled в стилях */
+  setTimeout(function(){document.body.classList.add('settled');},600);
 }
 try{boot();}catch(err){
   var box=document.getElementById('app');
