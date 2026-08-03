@@ -710,10 +710,13 @@ function normalize(st){
   var slugs={};
   st.people.forEach(function(p){
     if(p.photo==null)p.photo='';if(!p.perm)p.perm='member';p.ua=p.ua||0;
-    var sl=p.slug||slugOf(p.name);
+    /* ссылка и ключ прав должны совпадать во всех копиях документа, поэтому у знакомых
+       участников берём их из сида, а случайный ключ выдаём только незнакомым */
+    var sd=null;SEED.people.forEach(function(x){if(x.id===p.id)sd=x;});
+    var sl=p.slug||(sd&&sd.slug)||slugOf(p.name);
     if(slugs[sl])sl=sl+'-'+p.id;
     slugs[sl]=1;p.slug=sl;
-    if(!p.key)p.key=newKey();
+    if(!p.key)p.key=(sd&&sd.key)||newKey();
   });
   st.trip.hero=st.trip.hero||'';
   st.tileLabels=st.tileLabels||['Транспорт, лодка, парковка','Продукты и расходники','Общий бюджет','С каждого'];
