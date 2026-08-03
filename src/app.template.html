@@ -20,13 +20,18 @@ html,body{margin:0;padding:0}
 --ease:cubic-bezier(.2,.8,.2,1);
 --r:16px;
 }
+/* тёмная тема — глубокая хвоя: фон еловой тени, текст песочный, акценты коры сосны */
 html[data-theme="dark"]{
---bg:#121C1D;--card:#1B2729;--zebra:#182324;--line:#314244;--ink:#EAE5D9;--muted:#96A2A0;
---water:#6FA0B0;--bark:#B08557;--moss:#8AA486;
---amberLt:#3A2E20;--cream:#141D23;--head:rgba(20,29,35,.84);
---shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.32);
---shadowUp:0 2px 6px rgba(0,0,0,.34),0 18px 44px rgba(0,0,0,.4);
+--bg:#0E1F1A;--card:#162B24;--zebra:#13251F;--line:#2B4438;--ink:#EFE7D8;--muted:#9AACA1;
+--pine:#6FA98D;--water:#6FA0B0;--bark:#C08A57;--moss:#8AA486;--amber:#D8944A;
+--amberLt:#33291D;--cream:#122420;--head:rgba(14,31,26,.86);
+--shadow:0 1px 2px rgba(0,0,0,.34),0 10px 30px rgba(0,0,0,.36);
+--shadowUp:0 2px 6px rgba(0,0,0,.38),0 18px 44px rgba(0,0,0,.44);
 }
+/* на посветлевшей хвое галочки должны быть тёмными, иначе сливаются */
+html[data-theme="dark"] .chk[data-s="3"] svg,
+html[data-theme="dark"] .lgD.s2 svg{stroke:#0E1F1A}
+html[data-theme="dark"] .tlD.on svg{stroke:#0E1F1A}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.45;
 letter-spacing:.002em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
 -webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
@@ -46,7 +51,7 @@ a:hover{color:var(--ink)}
 ::selection{background:var(--amberLt)}
 
 /* ── shell ─────────────────────────────── */
-.shell{min-height:100vh;display:flex;flex-direction:column}
+.shell{min-height:100vh;min-height:100svh;display:flex;flex-direction:column}
 .hdr{position:sticky;top:0;z-index:40;background:var(--head);
 -webkit-backdrop-filter:blur(22px) saturate(1.5);backdrop-filter:blur(22px) saturate(1.5);
 border-bottom:1px solid color-mix(in oklab,var(--line) 42%,transparent)}
@@ -444,7 +449,7 @@ html[data-theme="dark"] .toast button{color:#9A5A11}
 -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
 .sheetC{position:relative;background:var(--card);width:100%;max-width:540px;border-radius:18px 18px 0 0;
 padding:8px 0 max(12px,env(safe-area-inset-bottom));animation:up .3s var(--ease) both;
-box-shadow:0 -10px 40px rgba(0,0,0,.2);max-height:92vh;overflow-y:auto}
+box-shadow:0 -10px 40px rgba(0,0,0,.2);max-height:92vh;max-height:92svh;overflow-y:auto}
 @keyframes up{from{transform:translateY(30px);opacity:.5}}
 .sheetC h3{padding:14px 22px 6px;font-size:19px}
 .sheetC p{margin:0;padding:0 22px 13px;font-size:13.5px;color:var(--muted);text-wrap:pretty}
@@ -565,6 +570,15 @@ background:rgba(16,22,26,.5);-webkit-backdrop-filter:blur(6px);backdrop-filter:b
 display:grid;place-items:center;cursor:pointer;opacity:.85;transition:opacity .2s,transform .2s}
 .cpEdit:hover{opacity:1;transform:scale(1.06)}
 .cpEdit svg{width:16px;height:16px;stroke:#F7F1E6;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.cpLink{margin-top:9px;width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:7px;
+border:1px solid rgba(247,241,230,.34);background:rgba(16,22,26,.42);-webkit-backdrop-filter:blur(6px);
+backdrop-filter:blur(6px);color:#F7F1E6;border-radius:10px;font:inherit;font-size:12px;cursor:pointer;padding:0 10px;
+transition:background .18s var(--ease)}
+.cpLink:hover{background:rgba(16,22,26,.66)}
+.cpLink svg{width:15px;height:15px;stroke:#E8A44A;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round;
+flex:0 0 auto}
+.crewPhoto.hasLink{min-height:292px}
+.crewPhoto.hasLink::after{height:68%}
 .crewChief{position:absolute;top:11px;left:11px;z-index:2;font-size:10px;letter-spacing:.1em;
 text-transform:uppercase;color:#16222A;background:#E8A44A;padding:4px 8px;border-radius:6px}
 .meBar{display:flex;align-items:center;gap:10px;padding:12px 14px}
@@ -635,6 +649,7 @@ circle:'<circle cx="12" cy="12" r="5.5"/>',
 close:'<path d="M6 6l12 12M18 6 6 18"/>',
 file:'<path d="M13 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10z"/><path d="M13 4v6h6"/>',
 txt:'<path d="M5 6h14M5 11h14M5 16h9"/>',
+link:'<path d="M10.5 13.5a3.6 3.6 0 0 0 5.1 0l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.3 1.3"/><path d="M13.5 10.5a3.6 3.6 0 0 0-5.1 0l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.3-1.3"/>',
 theme:'<circle cx="12" cy="12" r="7"/><path d="M12 5a7 7 0 0 1 0 14" fill="currentColor" stroke="none"/>',
 trash:'<path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13"/>',
 warn:'<path d="M12 4 3 20h18z"/><path d="M12 10v5M12 17.6v.4"/>',
@@ -663,14 +678,43 @@ function lsDel(){try{localStorage.removeItem(LSKEY);}catch(e){}}
 function cl(o){return JSON.parse(JSON.stringify(o));}
 var PALETTE=['#C87A22','#2E5241','#3D6C8A','#8A4B3A','#6B5E8A','#4A6B57','#A8652E','#5C6B75'];
 
+/* ─── имена участников латиницей для ссылок и ключ прав ─── */
+var TRL={'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k',
+ 'л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch',
+ 'ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'};
+function slugOf(name){
+  var s=String(name||'').trim().toLowerCase(), out='', i, c;
+  for(i=0;i<s.length;i++){
+    c=s.charAt(i);
+    if(TRL[c]!=null)out+=TRL[c];
+    else if(c>='a'&&c<='z')out+=c;
+    else if(c>='0'&&c<='9')out+=c;
+    else if(c===' '||c==='-')out+='-';
+  }
+  out=out.replace(/-+/g,'-').replace(/^-+|-+$/g,'');
+  return out?out.charAt(0).toUpperCase()+out.slice(1):'Uchastnik';
+}
+function newKey(){
+  var a='abcdefghijkmnpqrstuvwxyz23456789', s='', i;
+  for(i=0;i<8;i++)s+=a.charAt(Math.floor(Math.random()*a.length));
+  return s;
+}
 function normalize(st){
   st.ui=st.ui||{}; if(!st.ui.tab)st.ui.tab='home'; st.ui.open=st.ui.open||{};
+  st.del=st.del||{};
   st.gear.forEach(function(g){g.s=g.s||{};g.o=g.o||{};g.ua=g.ua||0;});
   st.buy.forEach(function(p){p.b=!!p.b;p.ua=p.ua||0;if(p.who==null)p.who='';});
   st.route.forEach(function(r){r.ua=r.ua||0;});
   st.ideas.forEach(function(q){q.ua=q.ua||0;});
   st.buySections.forEach(function(s){s.personal=!!s.personal;});
-  st.people.forEach(function(p){if(p.photo==null)p.photo='';if(!p.perm)p.perm='member';});
+  var slugs={};
+  st.people.forEach(function(p){
+    if(p.photo==null)p.photo='';if(!p.perm)p.perm='member';p.ua=p.ua||0;
+    var sl=p.slug||slugOf(p.name);
+    if(slugs[sl])sl=sl+'-'+p.id;
+    slugs[sl]=1;p.slug=sl;
+    if(!p.key)p.key=newKey();
+  });
   st.trip.hero=st.trip.hero||'';
   st.tileLabels=st.tileLabels||['Транспорт, лодка, парковка','Продукты и расходники','Общий бюджет','С каждого'];
   st.secTitles=st.secTitles||{};
@@ -682,29 +726,80 @@ function mergeSeed(old,seed){
     var have={};out[k].forEach(function(x){have[x.i]=1;});
     seed[k].forEach(function(x){if(!have[x.i]){var c=cl(x);c.nw=1;out[k].push(c);added++;}});
   });
-  var hp={};out.people.forEach(function(p){hp[p.id]=1;});
-  seed.people.forEach(function(p){if(!hp[p.id])out.people.push(cl(p));});
-  out.gearSections=seed.gearSections;
-  var hb={};out.buySections.forEach(function(s){hb[s.id]=1;});
-  seed.buySections.forEach(function(s){if(!hb[s.id])out.buySections.push(cl(s));});
-  out.logNotes=seed.logNotes;out.trip=seed.trip;out.weather=out.weather||seed.weather;
+  var hp={};out.people.forEach(function(p){hp[p.id]=p;});
+  seed.people.forEach(function(p){
+    var m=hp[p.id];
+    if(!m){out.people.push(cl(p));return;}
+    /* ссылки и ключи прав держим одинаковыми у всех копий документа */
+    if(!m.slug&&p.slug)m.slug=p.slug;
+    if(!m.key&&p.key)m.key=p.key;
+  });
+  /* из сида добираем только то, чего нет: правки названий, обложки и подписей не трогаем */
+  function fill(list,key){
+    var out2=out[list]&&out[list].length?out[list]:[];
+    var have={};out2.forEach(function(x){have[x[key]]=1;});
+    (seed[list]||[]).forEach(function(x){if(!have[x[key]])out2.push(cl(x));});
+    out[list]=out2;
+  }
+  fill('gearSections','id');fill('buySections','id');fill('logNotes','k');
+  fill('calcRows','k');fill('canRows','k');
+  out.trip=out.trip||{};
+  Object.keys(seed.trip).forEach(function(k){if(out.trip[k]===undefined)out.trip[k]=cl(seed.trip[k]);});
+  out.weather=out.weather||seed.weather;
   out.menu=out.menu||seed.menu;out.seedAdded=added;
   return out;
 }
-function mergeFile(inc){
-  var marks=0,news=0,edits=0;
+/* ─── удалённые позиции: помним, что убрали и когда, иначе слияние их воскресит ─── */
+function forget(kind,item){S.del=S.del||{};S.del[kind+':'+item.i]=Date.now();}
+function revive(kind,item){if(S.del)delete S.del[kind+':'+item.i];}
+
+/* ─── слияние другого экземпляра документа в текущий ───
+   Сопоставление по i, побеждает более свежая метка ua. Статусы сборов при равных метках
+   берутся более продвинутые. Работает и для офлайн-файла, и для состояния с сервера;
+   тосты рисует вызывающий. */
+function mergeInto(inc){
+  var marks=0,news=0,edits=0,gone=0;
+  inc=inc||{};
+  S.del=S.del||{};
+  var idel=inc.del||{};
+  Object.keys(idel).forEach(function(k){if((idel[k]||0)>(S.del[k]||0))S.del[k]=idel[k];});
+
+  var PF=['name','ini','car','role','desc','color','perm','key','slug','photo'];
   (inc.people||[]).forEach(function(ip){
-    var mine=S.people.filter(function(p){return p.id===ip.id;})[0];
-    if(!mine){S.people.push(cl(ip));news++;return;}
-    if(!mine.photo&&ip.photo){mine.photo=ip.photo;edits++;}
+    var mine=null;S.people.forEach(function(p){if(p.id===ip.id)mine=p;});
+    if(!mine){
+      if((S.del['people:'+ip.id]||0)>=(ip.ua||0))return;
+      S.people.push(cl(ip));news++;return;
+    }
+    if((ip.ua||0)>(mine.ua||0)){
+      PF.forEach(function(f){if(ip[f]!=null&&ip[f]!==mine[f]){mine[f]=ip[f];edits++;}});
+      mine.ua=ip.ua;
+    } else if(!mine.photo&&ip.photo){mine.photo=ip.photo;edits++;}
   });
+  for(var pj=S.people.length-1;pj>=0;pj--){
+    var pt=S.del['people:'+S.people[pj].id]||0;
+    if(pt&&pt>(S.people[pj].ua||0)&&S.people.length>1){S.people.splice(pj,1);gone++;}
+  }
+
   function pick(k,cmp){
     var byId={};S[k].forEach(function(x){byId[x.i]=x;});
     (inc[k]||[]).forEach(function(x){
       var mine=byId[x.i];
-      if(!mine){var c=cl(x);c.nw=1;S[k].push(c);news++;return;}
+      if(!mine){
+        if((S.del[k+':'+x.i]||0)>=(x.ua||0))return;
+        var c=cl(x);c.nw=1;S[k].push(c);news++;return;
+      }
       var r=cmp(mine,x);marks+=r.marks;edits+=r.edits;
     });
+    for(var j=S[k].length-1;j>=0;j--){
+      var it=S[k][j], t=S.del[k+':'+it.i]||0;
+      if(t&&t>(it.ua||0)){S[k].splice(j,1);gone++;}
+    }
+  }
+  function fields(a,b,list){
+    var e=0;
+    list.forEach(function(f){if(b[f]!==undefined&&b[f]!==a[f]){a[f]=cl(b[f]);e++;}});
+    return e;
   }
   pick('gear',function(a,b){
     var m=0,e=0;
@@ -714,8 +809,9 @@ function mergeFile(inc){
       if(take!==av){a.s[p]=take;m++;}
     });
     if((b.ua||0)>(a.ua||0)){
-      if(b.n!==a.n){a.n=b.n;e++;}
+      e+=fields(a,b,['n','c','sec','by']);
       if(JSON.stringify(b.o)!==JSON.stringify(a.o)){a.o=cl(b.o);e++;}
+      if(JSON.stringify(b.q||{})!==JSON.stringify(a.q||{})){a.q=cl(b.q||{});e++;}
       a.ua=b.ua;
     }
     return {marks:m,edits:e};
@@ -724,7 +820,7 @@ function mergeFile(inc){
     var m=0,e=0;
     if(!!b.b!==!!a.b){if((b.ua||0)>=(a.ua||0)||b.b){a.b=!!b.b;m++;}}
     if((b.ua||0)>(a.ua||0)){
-      ['n','q','pr','st','u','who'].forEach(function(f){if(b[f]!==a[f]){a[f]=b[f];e++;}});
+      e+=fields(a,b,['n','q','pr','prf','st','u','who','sec','c','by']);
       a.ua=b.ua;
     }
     return {marks:m,edits:e};
@@ -732,21 +828,31 @@ function mergeFile(inc){
   pick('route',function(a,b){
     var m=0,e=0;
     if(!!b.done!==!!a.done){if((b.ua||0)>=(a.ua||0)||b.done){a.done=!!b.done;m++;}}
-    if((b.ua||0)>(a.ua||0)){if(b.time!==a.time){a.time=b.time;e++;}a.ua=b.ua;}
+    if((b.ua||0)>(a.ua||0)){e+=fields(a,b,['n','time','c']);a.ua=b.ua;}
     return {marks:m,edits:e};
   });
   pick('ideas',function(a,b){
-    var m=0;
+    var m=0,e=0;
     if(!!b.done!==!!a.done){if((b.ua||0)>=(a.ua||0)||b.done){a.done=!!b.done;m++;}}
-    return {marks:m,edits:0};
+    if((b.ua||0)>(a.ua||0)){e+=fields(a,b,['n','why','who']);a.ua=b.ua;}
+    return {marks:m,edits:e};
   });
+  /* общие блоки без отдельных меток времени — по свежести всего документа */
   if((inc.updatedAt||'')>(S.updatedAt||'')){
-    S.log=inc.log||S.log; S.menu=inc.menu||S.menu; S.weather=inc.weather||S.weather;
+    ['log','menu','weather','boat','tileLabels','secTitles','logNotes','calcRows','canRows','buySections']
+     .forEach(function(f){if(inc[f]){S[f]=cl(inc[f]);}});
+    if(inc.trip)S.trip=cl(inc.trip);
+    if(inc.theme!==undefined)S.theme=inc.theme;
   }
+  return {marks:marks,edits:edits,news:news,gone:gone,total:marks+edits+news+gone};
+}
+function mergeFile(inc){
+  var r=mergeInto(inc);
   var who=(inc.author||'').trim(), parts=[];
-  if(marks)parts.push(marks+' '+plural(marks,'отметка','отметки','отметок'));
-  if(edits)parts.push(edits+' '+plural(edits,'правка','правки','правок'));
-  if(news)parts.push(news+' '+plural(news,'новая позиция','новые позиции','новых позиций'));
+  if(r.marks)parts.push(r.marks+' '+plural(r.marks,'отметка','отметки','отметок'));
+  if(r.edits)parts.push(r.edits+' '+plural(r.edits,'правка','правки','правок'));
+  if(r.news)parts.push(r.news+' '+plural(r.news,'новая позиция','новые позиции','новых позиций'));
+  if(r.gone)parts.push(r.gone+' '+plural(r.gone,'позиция убрана','позиции убраны','позиций убрано'));
   touch();render();
   toast(parts.length?('Из файла'+(who?' '+rodit(who):'')+' добавлено: '+parts.join(', ')+'.')
     :'В этом файле нет ничего нового — всё уже отмечено.');
@@ -834,7 +940,13 @@ function edText(get,set,cls,ph){
   return e;
 }
 function meP(){return S.ui.me?person(S.ui.me):null;}
-function isEditor(){var p=meP();return !p||p.perm==='chief'||p.perm==='editor';}
+/* права участника. В онлайне модуль синхронизации подменяет permOf: там они берутся из личной ссылки */
+var permOf=function(p){return p.perm;};
+function myPerm(){var p=meP();return p?permOf(p):'chief';}
+function isEditor(){var m=myPerm();return m==='chief'||m==='editor';}
+function isChief(){return myPerm()==='chief';}
+/* в офлайновом файле сохранять может каждый — он у него уже на руках */
+var canSaveFile=function(){return true;};
 function permName(p){return p.perm==='chief'?'владелец':p.perm==='editor'?'редактор':'участник';}
 function needEditor(){toast('Это может изменить только редактор. Выбери себя в «Экипаже», если ты редактор.');return false;}
 function canDel(item){return isEditor()||(item.by&&item.by===S.ui.me);}
@@ -879,6 +991,7 @@ function syncNav(){
   else{bar.style.width=(100/TABS.length)+'%';bar.style.transform='translateX('+(i*100)+'%)';}
   $('#hTtl').textContent=TABS[i].ttl;
   $('#bSearch').style.display='';
+  $('#bSave').style.display=canSaveFile()?'':'none';
 }
 function go(tab){
   S.ui.tab=tab; persist(); syncNav();
@@ -1111,7 +1224,14 @@ function editPerson(p){
       var sw=el('div','swatches');sw.style.padding='0 22px 6px';
       [['chief','владелец'],['editor','редактор'],['member','участник']].forEach(function(o){
         var b=el('button','pchip'+(p.perm===o[0]?' sel':''),'<b>'+o[1]+'</b>');
-        b.onclick=function(){p.perm=o[0];touch();$$('.pchip',sw).forEach(function(x){x.classList.remove('sel');});b.classList.add('sel');};
+        b.onclick=function(){
+          if(p.perm!==o[0]){
+            p.perm=o[0];p.key=newKey();p.ua=Date.now();touch();
+            /* права поменялись — старая ссылка больше не действует */
+            if(window.linkChanged)linkChanged(p);
+          }
+          $$('.pchip',sw).forEach(function(x){x.classList.remove('sel');});b.classList.add('sel');
+        };
         sw.appendChild(b);
       });
       c.appendChild(sw);
@@ -1148,6 +1268,8 @@ function crewCard(p){
    +'<div class="cpBar"><i style="width:'+(pc*100)+'%"></i></div>'
    +'<div class="cpStat">собрано '+pr.done+' из '+pr.all+'</div>';
   c.appendChild(tx);
+  /* в онлайне под фотографией появляется личная ссылка участника — её копирует владелец */
+  if(window.crewLink)crewLink(c,p);
   c.onclick=function(){editPerson(p);};
   return c;
 }
@@ -1242,9 +1364,10 @@ function delPerson(p){
       S.gear.forEach(function(g){delete g.o[p.id];delete g.s[p.id];});
       S.buy.forEach(function(x){if(x.who===p.id)x.who='';if(x.st==='has_'+p.id)x.st='buy';});
       if(S.ui.me===p.id)S.ui.me=null;
+      forget('people',{i:p.id});
       touch();close();render();
       toast(p.name+' убран из экипажа.','Отменить',function(){
-        S.people=backup;S.gear=bg;S.buy=bb;touch();render();},6000);
+        S.people=backup;S.gear=bg;S.buy=bb;revive('people',{i:p.id});touch();render();},6000);
     };
   });
 }
@@ -1546,8 +1669,8 @@ function askSheet(g,who,after){
 function delGear(g,row,grp,sec,me){
   if(!canDel(g))return needEditor();
   var ix=S.gear.indexOf(g); if(ix<0)return;
-  S.gear.splice(ix,1);touch();row.remove();updSecHead(grp,sec,me);
-  toast('«'+g.n+'» удалено.','Отменить',function(){S.gear.splice(ix,0,g);touch();render();},6000);
+  S.gear.splice(ix,1);forget('gear',g);touch();row.remove();updSecHead(grp,sec,me);
+  toast('«'+g.n+'» удалено.','Отменить',function(){S.gear.splice(ix,0,g);revive('gear',g);touch();render();},6000);
 }
 function movePerson(g,from){
   sheet(function(c,close){
@@ -1809,8 +1932,8 @@ function buyRow(p,grp){
 }
 function delBuy(p,row,grp){
   var ix=S.buy.indexOf(p);if(ix<0)return;
-  S.buy.splice(ix,1);touch();row.remove();updBuyHead(grp);updTotals(p.sec);
-  toast('«'+p.n+'» удалено.','Отменить',function(){S.buy.splice(ix,0,p);touch();render();},6000);
+  S.buy.splice(ix,1);forget('buy',p);touch();row.remove();updBuyHead(grp);updTotals(p.sec);
+  toast('«'+p.n+'» удалено.','Отменить',function(){S.buy.splice(ix,0,p);revive('buy',p);touch();render();},6000);
 }
 function buyAdd(grp,sec,body){
   var btn=el('button','addRow',svg('plus')+'<span>Добавить позицию</span>');
@@ -1955,8 +2078,8 @@ function viewLog(v){
     del.onclick=function(){
       if(!isEditor())return needEditor();
       var ix=S.route.indexOf(r);if(ix<0)return;
-      S.route.splice(ix,1);touch();i.remove();
-      toast('Этап убран.','Отменить',function(){S.route.splice(ix,0,r);touch();render();},6000);
+      S.route.splice(ix,1);forget('route',r);touch();i.remove();
+      toast('Этап убран.','Отменить',function(){S.route.splice(ix,0,r);revive('route',r);touch();render();},6000);
     };
     head.appendChild(del);
     b.appendChild(head);
@@ -2000,8 +2123,8 @@ function viewLog(v){
     del.onclick=function(){
       if(!canDel(q))return needEditor();
       var ix=S.ideas.indexOf(q);if(ix<0)return;
-      S.ideas.splice(ix,1);touch();row.remove();
-      toast('Вопрос убран.','Отменить',function(){S.ideas.splice(ix,0,q);touch();render();},6000);
+      S.ideas.splice(ix,1);forget('ideas',q);touch();row.remove();
+      toast('Вопрос убран.','Отменить',function(){S.ideas.splice(ix,0,q);revive('ideas',q);touch();render();},6000);
     };
     top.appendChild(del);
     inn.appendChild(top);

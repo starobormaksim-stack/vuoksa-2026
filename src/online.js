@@ -2,9 +2,87 @@
 "use strict";
 var SB={url:'https://oagonfdnlgqkoosvgaly.supabase.co',
  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZ29uZmRubGdxa29vc3ZnYWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NTc4NTMsImV4cCI6MjEwMTMzMzg1M30.hpQyHLXKsmGVSTS-pFG66rtM_uF-8kXmj8ituNCvbww'};
-var TRIP_ID='vuoksa2026';
+/* обычно все работают с одним документом; ?sandbox=1 открывает отдельную копию для проверок */
+var TRIP_ID=/[?&]sandbox=1/.test(location.search||'')?'vuoksa2026-test':'vuoksa2026';
 ONLINE=true; SAVE_STRIP=['#sync-code','#syncBar'];
 var netState='idle', netMsg='', lastPull=0, pushT=null, pulling=false;
+
+/* ═════ права по личной ссылке ═════
+   Ссылка вида ?u=Kostya&k=<ключ>. Ключ живёт в S.people[].key и меняется при смене прав —
+   старая ссылка сразу перестаёт давать полномочия. Подтверждённый ключ запоминается в браузере,
+   чтобы человек мог заходить и по короткому адресу. Разграничение остаётся «джентльменским»:
+   anon-ключ Supabase лежит в файле, настоящее — только через Supabase Auth и RLS. */
+var AUTHK='vuoksa2026.auth', authState=null, urlAuth=null, staleWarned=false;
+function authGet(){try{return JSON.parse(localStorage.getItem(AUTHK)||'null');}catch(e){return null;}}
+function authSet(o){try{if(o)localStorage.setItem(AUTHK,JSON.stringify(o));else localStorage.removeItem(AUTHK);}catch(e){}}
+permOf=function(p){
+  if(!p)return 'member';
+  return (authState&&authState.id===p.id&&authState.key===p.key)?p.perm:'member';
+};
+canSaveFile=function(){return isChief();};
+function applyAuth(){
+  var a=urlAuth||authGet();
+  if(!a){authState=null;return;}
+  var p=null;
+  S.people.forEach(function(x){if(x.id===a.id)p=x;});
+  if(p&&p.key===a.key){authState=a;authSet(a);staleWarned=false;return;}
+  authState=null;
+  if(p&&!staleWarned){
+    staleWarned=true;
+    toast('Ссылка больше не действует: права изменились. Попроси у владельца новую.',null,null,9000);
+  }
+}
+function linkFor(p){
+  var base=location.href.split('?')[0].split('#')[0];
+  return base+'?u='+encodeURIComponent(p.slug||p.id)+'&k='+encodeURIComponent(p.key||'');
+}
+function copyLink(p){
+  var url=linkFor(p), done=function(){toast('Ссылка для '+rodit(p.name)+' скопирована.');};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done,function(){if(!copyOld(url))showLink(p);else done();});
+    return;
+  }
+  if(copyOld(url))done(); else showLink(p);
+}
+/* запасной путь для старых браузеров и встроенного браузера Телеграма на iOS:
+   там нужно именно выделение через Range, обычный select() на input не срабатывает */
+function copyOld(url){
+  var box=document.createElement('div');
+  box.textContent=url;
+  box.setAttribute('contenteditable','true');
+  box.style.cssText='position:fixed;left:0;top:0;opacity:0;white-space:pre;font-size:16px';
+  document.body.appendChild(box);
+  var ok=false;
+  try{
+    var rng=document.createRange();rng.selectNodeContents(box);
+    var sel=window.getSelection();sel.removeAllRanges();sel.addRange(rng);
+    ok=document.execCommand('copy');
+    sel.removeAllRanges();
+  }catch(e){}
+  box.remove();
+  return ok;
+}
+function showLink(p){
+  sheet(function(c){
+    c.appendChild(el('h3',null,'Ссылка для '+rodit(p.name)));
+    c.appendChild(el('p',null,'Скопировать не вышло — выдели адрес и скопируй вручную.'));
+    var f=el('div','fld');var inp=el('input');inp.value=linkFor(p);f.appendChild(inp);c.appendChild(f);
+    setTimeout(function(){inp.focus();inp.select();},80);
+  });
+}
+/* кнопка под фотографией в «Экипаже» — видит только владелец */
+function crewLink(card,p){
+  if(!isChief())return;
+  card.classList.add('hasLink');
+  var b=el('button','cpLink',svg('link')+'<span>'+(p.id===S.ui.me?'Моя ссылка':'Ссылка для '+esc(rodit(p.name)))+'</span>');
+  b.onclick=function(ev){ev.stopPropagation();copyLink(p);};
+  var tx=card.querySelector('.cpTxt');
+  (tx||card).appendChild(b);
+}
+/* права поменяли — старая ссылка погасла, надо отдать новую */
+function linkChanged(p){
+  toast('Ссылка для '+rodit(p.name)+' обновилась — отправь ему новую.','Скопировать',function(){copyLink(p);},9000);
+}
 
 function sbFetch(path,opts){
   opts=opts||{};
@@ -38,7 +116,34 @@ function mountSyncBar(){
   hdr.insertBefore(w,hdr.querySelector('#bSearch'));
 }
 
-/* ── чтение и запись ── */
+/* ── чтение и запись ──
+   Документ на сервере один, но правки вливаются по позициям: перед записью подтягиваем чужое,
+   сливаем и пишем с условием «метка на сервере не изменилась». Если кто-то успел раньше —
+   PostgREST вернёт пустой ответ, и мы повторяем цикл. Так одновременная работа не затирается. */
+function editing(){
+  var a=document.activeElement;
+  return !!(a&&(a.isContentEditable||a.tagName==='INPUT'||a.tagName==='TEXTAREA'));
+}
+var pendingRender=false;
+function renderSoon(){
+  if(editing()){pendingRender=true;return;}   /* не выдёргиваем текст из-под руки */
+  pendingRender=false;render();
+}
+document.addEventListener('focusout',function(){
+  setTimeout(function(){if(pendingRender&&!editing())renderSoon();},250);
+});
+/* вливаем состояние с сервера в своё */
+function applyRemote(data){
+  if(!data)return 0;
+  var inc;
+  try{inc=normalize(mergeSeed(normalize(cl(data)),SEED));}catch(e){return 0;}
+  var keepUi=S.ui, r=mergeInto(inc);
+  S.ui=keepUi;
+  if((inc.updatedAt||'')>(S.updatedAt||''))S.updatedAt=inc.updatedAt;
+  applyAuth();
+  if(r.total){persist();renderSoon();}
+  return r.total;
+}
 function pull(force){
   if(pulling)return Promise.resolve();
   pulling=true;
@@ -49,31 +154,63 @@ function pull(force){
      if(!rows.length){ return push(true).then(function(){setNet('ok','создан на сервере');}); }
      var row=rows[0];
      if(!force && row.updated_at===lastPull){setNet('ok');return;}
-     var mine=S.updatedAt||'';
-     var theirs=(row.data&&row.data.updatedAt)||'';
      lastPull=row.updated_at;
-     if(force||theirs>mine){
-       var keepMe=S.ui&&S.ui.me, keepTab=S.ui&&S.ui.tab;
-       S=normalize(mergeSeed(normalize(row.data),SEED));
-       if(keepMe)S.ui.me=keepMe; if(keepTab)S.ui.tab=keepTab;
-       render(); setNet('ok','обновлено с сервера');
+     var n=applyRemote(row.data);
+     if(n){
+       setNet('ok','обновлено с сервера');
        setTimeout(function(){setNet('ok');},2000);
      } else setNet('ok');
    })
    .catch(function(e){pulling=false;setNet('err','нет связи с сервером');});
 }
-function push(create){
-  setNet('work');
-  S.author=(S.ui&&S.ui.me)?person(S.ui.me).name:'';
-  var body={id:TRIP_ID,data:S,updated_at:new Date().toISOString(),author:S.author};
-  return sbFetch('trips',{method:'POST',body:[body],
+var pushing=false, pushAgain=false;
+function push(){
+  if(pushing){pushAgain=true;return Promise.resolve();}
+  pushing=true;setNet('work');
+  return pushTry(0).then(done,done);
+  function done(e){
+    pushing=false;
+    if(e instanceof Error)setNet('err','правки не ушли на сервер');
+    if(pushAgain){pushAgain=false;schedulePush();}
+  }
+}
+/* маленький сигнал «документ изменился» — по нему остальные забирают свежую версию */
+function ping(){
+  var stamp=new Date().toISOString();
+  return sbFetch('trip_pings',{method:'POST',
+    body:[{trip_id:TRIP_ID,updated_at:stamp,author:(S.ui&&S.ui.me)?person(S.ui.me).name:''}],
     headers:{'Prefer':'resolution=merge-duplicates,return=representation'}})
-   .then(function(r){
-     if(!r.ok)throw new Error('HTTP '+r.status);
-     return r.json();
-   })
-   .then(function(rows){ if(rows&&rows[0])lastPull=rows[0].updated_at; setNet('ok'); })
-   .catch(function(e){setNet('err','правки не ушли на сервер');});
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(out){if(out&&out[0])myPing=out[0].updated_at;},function(){});
+}
+function pushTry(attempt){
+  S.author=(S.ui&&S.ui.me)?person(S.ui.me).name:'';
+  return sbFetch('trips?id=eq.'+TRIP_ID+'&select=data,updated_at')
+   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+   .then(function(rows){
+     if(!rows.length){
+       var stamp0=new Date().toISOString();S.updatedAt=stamp0;
+       return sbFetch('trips',{method:'POST',body:[{id:TRIP_ID,data:S,updated_at:stamp0,author:S.author}],
+         headers:{'Prefer':'resolution=merge-duplicates,return=representation'}})
+        .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+        .then(function(out){if(out&&out[0])lastPull=out[0].updated_at;setNet('ok');return ping();});
+     }
+     var row=rows[0];
+     if(row.updated_at!==lastPull)applyRemote(row.data);   /* вобрали чужие правки */
+     var stamp=new Date().toISOString();
+     S.updatedAt=stamp;persist();
+     return sbFetch('trips?id=eq.'+TRIP_ID+'&updated_at=eq.'+encodeURIComponent(row.updated_at),
+       {method:'PATCH',rep:true,body:{data:S,updated_at:stamp,author:S.author}})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(out){
+        if(!out.length){                                   /* кто-то записал раньше нас */
+          if(attempt<4)return pushTry(attempt+1);
+          throw new Error('запись не прошла');
+        }
+        lastPull=out[0].updated_at;setNet('ok');
+        return ping();
+      });
+   });
 }
 function schedulePush(){
   if(pushT)clearTimeout(pushT);
@@ -229,16 +366,20 @@ function downloadOffline(){
 }
 function uploadOffline(){ document.getElementById('fileIn').click(); }
 
-/* ── роль из ссылки ── */
+/* ── кто пришёл по ссылке ── */
 function applyUrlUser(){
-  var m=(location.search||'').match(/[?&]u=([^&]+)/);
+  var m=(location.search||'').match(/[?&]u=([^&]*)/);
   if(!m)return;
-  var id=decodeURIComponent(m[1]).toLowerCase();
+  var id=decodeURIComponent(m[1]).replace(/\+/g,' ').trim().toLowerCase();
+  var mk=(location.search||'').match(/[?&]k=([^&]*)/);
+  var key=mk?decodeURIComponent(mk[1]).trim():'';
   var found=null;
   S.people.forEach(function(p){
-    if(p.id===id||(p.name||'').toLowerCase()===id)found=p;
+    if(p.id===id||(p.slug||'').toLowerCase()===id||(p.name||'').toLowerCase()===id)found=p;
   });
-  if(found){S.ui.me=found.id;}
+  if(!found)return;
+  S.ui.me=found.id;
+  if(key)urlAuth={id:found.id,key:key};
 }
 
 /* ── меню «⋯»: онлайн-пункты ── */
@@ -249,26 +390,36 @@ function mountMenu(){
     sheet(function(c,close){
       c.appendChild(el('h3',null,'Ещё'));
       var me=meP();
-      c.appendChild(el('p',null,me?('Ты — '+me.name+' · '+permName(me)):'Ты не выбран — открой «Экипаж» и выбери себя.'));
-      var i0=el('button','mItem',svg('dl')+'<span>Скачать офлайн-копию</span><u>с сегодняшней погодой</u>');
-      i0.onclick=function(){close();downloadOffline();};
-      var i1=el('button','mItem',svg('file')+'<span>Загрузить офлайн-файл в онлайн</span>');
-      i1.onclick=function(){close();uploadOffline();};
+      c.appendChild(el('p',null,me?('Ты — '+me.name+' · '+permNameOf(me)):'Ты не выбран — открой «Экипаж» и выбери себя.'));
+      var items=[];
+      /* офлайн-копию снимает и возвращает обратно только владелец: файл — это слепок всей поездки */
+      if(isChief()){
+        var i0=el('button','mItem',svg('dl')+'<span>Скачать офлайн-копию</span><u>с сегодняшней погодой</u>');
+        i0.onclick=function(){close();downloadOffline();};
+        var i1=el('button','mItem',svg('file')+'<span>Загрузить офлайн-файл обратно</span><u>правки из скачанного файла вернутся в онлайн</u>');
+        i1.onclick=function(){close();uploadOffline();};
+        items.push(i0,i1);
+      }
       var i2=el('button','mItem',svg('clock')+'<span>Версии на сервере</span>');
       i2.onclick=function(){close();versionsSheet();};
       var i3=el('button','mItem',svg('cloud')+'<span>Обновить прогноз погоды</span>');
       i3.onclick=function(){close();refreshWeather();};
       var i4=el('button','mItem',svg('txt')+'<span>Экспорт в текст для Телеграма</span>');
       i4.onclick=function(){close();exportText();};
+      items.push(i2,i3,i4);
       var cur=THEMES.filter(function(x){return x[0]===(S.theme||null);})[0];
       var i5=el('button','mItem',svg('theme')+'<span>Тема</span><u>'+cur[1]+'</u>');
       i5.onclick=function(){
         var ix=THEMES.map(function(x){return x[0];}).indexOf(S.theme||null);
         S.theme=THEMES[(ix+1)%3][0];touch();applyTheme();close();
       };
-      var i6=el('button','mItem',svg('user')+'<span>Ссылки для экипажа</span>');
-      i6.onclick=function(){close();linksSheet();};
-      [i0,i1,i2,i3,i4,i5,i6].forEach(function(x){c.appendChild(x);});
+      items.push(i5);
+      if(isChief()){
+        var i6=el('button','mItem',svg('link')+'<span>Ссылки для экипажа</span><u>каждому своя</u>');
+        i6.onclick=function(){close();linksSheet();};
+        items.push(i6);
+      }
+      items.forEach(function(x){c.appendChild(x);});
       if(isEditor()){
         var i7=el('button','mItem dang',svg('trash')+'<span>Сбросить все отметки</span>');
         i7.onclick=function(){close();confirmReset();};
@@ -277,38 +428,97 @@ function mountMenu(){
     });
   };
 }
+function permNameOf(p){
+  var e=permOf(p);
+  return e==='chief'?'владелец':e==='editor'?'редактор':'участник';
+}
 function linksSheet(){
-  sheet(function(c,close){
+  sheet(function(c){
     c.appendChild(el('h3',null,'Ссылки для экипажа'));
-    c.appendChild(el('p',null,'У каждого своя ссылка — она сразу выбирает его в списке и даёт его права. Скинь каждому свою.'));
-    var base=location.href.split('?')[0];
+    c.appendChild(el('p',null,'У каждого своя ссылка: она выбирает его в списке и даёт его права. '
+      +'Тап по строке — ссылка в буфере. Поменяешь человеку права — ссылка сменится, старая перестанет работать.'));
     S.people.forEach(function(p){
-      var url=base+'?u='+encodeURIComponent(p.id);
-      var it=el('button','mItem','<span>'+esc(p.name)+' · '+permName(p)+'<br><u style="margin:0;font-size:11.5px">'+esc(url)+'</u></span>');
+      var url=linkFor(p);
+      var it=el('button','mItem','<span>'+esc(p.name)+' · '+permName(p)+'<br><u style="margin:0;font-size:11.5px;word-break:break-all">'+esc(url)+'</u></span>');
       it.insertBefore(document.createRange().createContextualFragment(avaHtml(p)),it.firstChild);
       var av=it.querySelector('.av'); if(av)av.style.cssText+=';width:26px;height:26px;font-size:12px';
-      it.onclick=function(){
-        var ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);
-        ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){}
-        ta.remove();
-        if(!ok&&navigator.clipboard)navigator.clipboard.writeText(url);
-        toast('Ссылка для '+p.name+' скопирована.');
-      };
+      it.onclick=function(){copyLink(p);};
       c.appendChild(it);
     });
   });
 }
 
+/* ── Realtime: сервер сам сообщает об изменениях ──
+   Разговариваем с Supabase Realtime напрямую по WebSocket (протокол Phoenix): SDK с CDN не берём,
+   иначе файл перестанет быть самодостаточным, а офлайн-сборка — собираться из того же исходника.
+   Подписываемся не на сам документ (он весит под мегабайт — гонять его в каждом событии накладно
+   и упирается в лимит payload), а на маленькую таблицу-сигнал trip_pings: пришло событие —
+   забираем документ обычным запросом. Пока событий не было, работает частый опрос; после — редкий.
+   На сервере нужно один раз выполнить SQL из README (таблица trip_pings + публикация). */
+var rtSock=null, rtJoined=false, rtLive=false, rtRef=0, rtBeat=null, rtRetry=0, rtWait=null, myPing='';
+function rtSend(m){try{rtSock.send(JSON.stringify(m));}catch(e){}}
+function rtStop(){
+  if(rtBeat){clearInterval(rtBeat);rtBeat=null;}
+  if(rtSock){try{rtSock.onclose=null;rtSock.close();}catch(e){}rtSock=null;}
+  rtJoined=false;
+}
+function rtConnect(){
+  if(!window.WebSocket)return;
+  if(rtSock&&(rtSock.readyState===0||rtSock.readyState===1))return;
+  if(rtWait){clearTimeout(rtWait);rtWait=null;}
+  var url=SB.url.replace(/^http/,'ws')+'/realtime/v1/websocket?apikey='+encodeURIComponent(SB.key)+'&vsn=1.0.0';
+  try{rtSock=new WebSocket(url);}catch(e){return;}
+  rtSock.onopen=function(){
+    rtRef=0;
+    rtSend({topic:'realtime:pings',event:'phx_join',ref:String(++rtRef),payload:{config:{
+      broadcast:{self:false},presence:{key:''},
+      postgres_changes:[{event:'*',schema:'public',table:'trip_pings',filter:'trip_id=eq.'+TRIP_ID}]},
+      access_token:SB.key}});
+    rtBeat=setInterval(function(){
+      if(!rtSock||rtSock.readyState!==1)return;
+      rtSend({topic:'phoenix',event:'heartbeat',payload:{},ref:String(++rtRef)});
+    },25000);
+  };
+  rtSock.onmessage=function(ev){
+    var m;try{m=JSON.parse(ev.data);}catch(e){return;}
+    if(m.event==='phx_reply'&&m.payload&&m.payload.status==='ok'){rtJoined=true;rtRetry=0;}
+    if(m.event!=='postgres_changes')return;
+    rtLive=true;
+    var d=m.payload&&m.payload.data, rec=d&&(d.record||d['new']);
+    if(rec&&rec.updated_at&&rec.updated_at===myPing)return;   /* эхо собственной записи */
+    pull(false);
+  };
+  rtSock.onerror=function(){try{rtSock.close();}catch(e){}};
+  rtSock.onclose=function(){
+    rtJoined=false;
+    if(rtBeat){clearInterval(rtBeat);rtBeat=null;}
+    var wait=Math.min(30000,2000*Math.pow(2,rtRetry++));
+    rtWait=setTimeout(rtConnect,wait);
+  };
+}
+
 /* ── старт онлайна ── */
 (function startOnline(){
-  mountSyncBar(); mountMenu(); applyUrlUser();
+  mountSyncBar(); mountMenu(); applyUrlUser(); applyAuth(); render();
   setNet('work','подключаюсь…');
   pull(false).then(function(){
     var stamp=(S.weather&&S.weather.updated)||'';
     if(!S.trip.lat||!/\d{2}:\d{2}/.test(stamp))refreshWeather(true);
   });
-  setInterval(function(){ if(!document.hidden)pull(false); },4000);
-  window.addEventListener('online',function(){setNet('work');pull(false);});
+  rtConnect();
+  var tick=0;
+  setInterval(function(){
+    if(document.hidden)return;
+    tick++;
+    /* сокет живой — опрашиваем раз в минуту, иначе каждые 8 секунд */
+    if(rtLive&&rtJoined){ if(tick%8===0)pull(false); }
+    else if(tick%2===0)pull(false);
+  },4000);
+  window.addEventListener('online',function(){setNet('work');rtConnect();pull(false);});
   window.addEventListener('offline',function(){setNet('off','нет сети — правки в браузере');});
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)pull(false);});
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden)return;
+    if(!rtSock||rtSock.readyState>1)rtConnect();
+    pull(false);
+  });
 })();
