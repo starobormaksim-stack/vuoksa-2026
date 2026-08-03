@@ -15,8 +15,8 @@ html,body{margin:0;padding:0}
 :root{
 --night:#222B15;--night2:#161C10;--pine:#3D5226;--amber:#BC6C25;--amberDeep:#A74612;--amberLt:#EBD9AE;
 --water:#3E6B7A;--bark:#7C5433;--moss:#5E7A5A;
---cream:#EDE0BB;--zebra:#E5D5A8;--line:#CBB88A;--ink:#20261A;--muted:#6E6F58;
---bg:var(--cream);--card:#F8F1DC;--head:rgba(237,224,187,.85);
+--cream:#F5EFD3;--zebra:#EBE2BF;--line:#D3C79B;--ink:#20261A;--muted:#6E6F58;
+--bg:var(--cream);--card:#FBF7E7;--head:rgba(245,239,211,.86);
 --shadow:0 1px 2px rgba(43,57,27,.06),0 10px 30px rgba(43,57,27,.09);
 --shadowUp:0 2px 4px rgba(43,57,27,.08),0 18px 44px rgba(43,57,27,.13);
 --serif:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
@@ -26,9 +26,9 @@ html,body{margin:0;padding:0}
 }
 /* тёмная тема — хвоя логотипа: фон #161C10, поверхности к #2B391B, текст пергаментный */
 html[data-theme="dark"]{
---bg:#161C10;--card:#232D15;--zebra:#1C2411;--line:#3B4826;--ink:#EDE4C6;--muted:#A9A98C;
---pine:#9DBB80;--water:#6FA0B0;--bark:#C89A5E;--moss:#8AA486;--amber:#D8944A;--amberDeep:#C0762A;
---amberLt:#38301A;--cream:#1B2311;--head:rgba(22,28,16,.87);
+--bg:#243016;--card:#2C3A1B;--zebra:#1F2A12;--line:#48592C;--ink:#F0E8CB;--muted:#B3B394;
+--pine:#A6C287;--water:#6FA0B0;--bark:#C89A5E;--moss:#8AA486;--amber:#DD9A4E;--amberDeep:#C0762A;
+--amberLt:#3C3418;--cream:#293617;--head:rgba(36,48,22,.87);
 --shadow:0 1px 2px rgba(0,0,0,.34),0 10px 30px rgba(0,0,0,.36);
 --shadowUp:0 2px 6px rgba(0,0,0,.38),0 18px 44px rgba(0,0,0,.44);
 }
@@ -157,16 +157,26 @@ transition:transform .25s var(--ease)}
 .navIn>button.on svg{transform:translateY(-1px) scale(1.06)}
 .navBar{position:absolute;top:0;left:0;height:2px;background:var(--amber);border-radius:2px;
 transition:transform .3s var(--ease),width .3s var(--ease)}
-/* логотип FLOPS (эмблема + фирменное начертание — единый блок из брендбука):
-   на телефоне скрыт, в левом меню занимает верхние 80 px; вариант зависит от темы */
+/* логотип FLOPS (эмблема + фирменное начертание — единый блок из брендбука).
+   Вариант выбирает тема: хвойный рисунок на песке, пергаментный на хвое.
+   Песочные элементы внутри эмблемы красятся цветом фона страницы — по макету заказчика
+   они «прозрачные», логотип сливается с задником в обеих темах. */
+.lgD{display:none}
+html[data-theme="dark"] .lgL{display:none}
+html[data-theme="dark"] .lgD{display:block}
+.lgL [fill="#E4D0A5"]{fill:var(--bg)}
+.lgD [fill="#2B391B"]{fill:var(--bg)}
+/* в левом меню — от 920 px */
 .brand{display:none}
-.brand .lgD{display:none}
-html[data-theme="dark"] .brand .lgL{display:none}
-html[data-theme="dark"] .brand .lgD{display:block}
 @media (min-width:920px){
-  .brand{position:absolute;top:0;left:0;right:0;height:80px;display:flex;align-items:center;padding:0 16px}
-  .brand svg{height:52px;width:auto;max-width:100%}
+  .brand{position:absolute;top:0;left:0;right:0;height:80px;display:flex;align-items:center;padding:0 14px}
+  .brand svg{height:60px;width:auto;max-width:100%}
 }
+/* в шапке на «Поездке» вместо текста — логотип; на десктопе он уже есть в левом меню.
+   Выравнивание — по левому краю контента */
+.hdrTitle.isLogo{display:flex;align-items:center}
+.hdrTitle.isLogo svg{height:44px;width:auto;display:block;margin-left:4px}
+@media (min-width:920px){.hdrTitle.isLogo svg{display:none!important}}
 
 /* ── общие блоки ───────────────────────── */
 .card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
@@ -3975,7 +3985,19 @@ function syncNav(){
   $$('#navIn>button').forEach(function(b,ix){b.classList.toggle('on',ix===i);});
   if(window.matchMedia('(min-width:920px)').matches){bar.style.width='2px';bar.style.transform='translateY('+(i*52)+'px)';}
   else{bar.style.width=(100/TABS.length)+'%';bar.style.transform='translateX('+(i*100)+'%)';}
-  $('#hTtl').textContent=TABS[i].ttl;
+  /* на «Поездке» в шапке не текст, а логотип FLOPS — начертание из брендбука, не шрифт */
+  var ht=$('#hTtl');
+  if(TABS[i].id==='home'){
+    if(!ht._logo){
+      ht.textContent='';
+      var lt=document.getElementById('logoTpl'),j;
+      if(lt)for(j=0;j<lt.children.length;j++)ht.appendChild(lt.children[j].cloneNode(true));
+      ht.classList.add('isLogo');ht._logo=true;
+    }
+  }else{
+    if(ht._logo){ht.classList.remove('isLogo');ht._logo=false;}
+    ht.textContent=TABS[i].ttl;
+  }
   $('#bSearch').style.display='';
   $('#bSave').style.display=canSaveFile()?'':'none';
   paintMeBtn();
