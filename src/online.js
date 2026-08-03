@@ -4,7 +4,9 @@ var SB={url:'https://oagonfdnlgqkoosvgaly.supabase.co',
  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZ29uZmRubGdxa29vc3ZnYWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NTc4NTMsImV4cCI6MjEwMTMzMzg1M30.hpQyHLXKsmGVSTS-pFG66rtM_uF-8kXmj8ituNCvbww'};
 /* обычно все работают с одним документом; ?sandbox=1 открывает отдельную копию для проверок */
 var TRIP_ID=/[?&]sandbox=1/.test(location.search||'')?'vuoksa2026-test':'vuoksa2026';
-ONLINE=true; SAVE_STRIP=['#sync-code','#syncBar','#pwaLinks','link[rel="manifest"]','link[rel="apple-touch-icon"]'];
+ONLINE=true;
+SAVE_STRIP=['#sync-code','#syncBar','#pwaLinks','link[rel="manifest"]','link[rel="apple-touch-icon"]',
+ 'meta[name^="apple-mobile-web-app"]','meta[name="mobile-web-app-capable"]','#whoOn'];
 
 /* ═════ приложение на экране «Домой» ═════
    На айфоне скачанный HTML открывается системным просмотрщиком, где скрипты выключены, —
@@ -492,12 +494,8 @@ function mountMenu(){
         +(standalone()?'приложение уже на телефоне':'поставить на экран «Домой»')+'</u>');
       i8.onclick=function(){close();offlineSheet();};
       items.push(i2,i3,i4,i8);
-      var cur=THEMES.filter(function(x){return x[0]===(S.theme||null);})[0];
-      var i5=el('button','mItem',svg('theme')+'<span>Тема</span><u>'+cur[1]+'</u>');
-      i5.onclick=function(){
-        var ix=THEMES.map(function(x){return x[0];}).indexOf(S.theme||null);
-        S.theme=THEMES[(ix+1)%3][0];touch();applyTheme();close();
-      };
+      var i5=el('button','mItem',svg('theme')+'<span>Тема</span><u>'+themeName()+'</u>');
+      i5.onclick=function(){close();themeSheet();};
       items.push(i5);
       if(isChief()){
         var i6=el('button','mItem',svg('link')+'<span>Ссылки для экипажа</span><u>каждому своя</u>');
@@ -542,6 +540,91 @@ function linksSheet(){
    На сервере нужно один раз выполнить SQL из README (таблица trip_pings + публикация). */
 var rtSock=null, rtJoined=false, rtLive=false, rtRef=0, rtBeat=null, rtRetry=0, rtWait=null, myPing='';
 function rtSend(m){try{rtSock.send(JSON.stringify(m));}catch(e){}}
+
+/* ── кто сейчас в документе ──
+   Присутствие того же канала: каждый сообщает, кто он, и все видят список. Фотографии не шлём —
+   они у всех и так есть, по сети идёт только идентификатор. */
+var whoNow={};
+function rtTrack(){
+  var me=meP();
+  if(me){whoNow[me.id]=me.name;paintWho();}   /* себя показываем сразу, не дожидаясь эха */
+  if(!rtSock||rtSock.readyState!==1)return;
+  rtSend({topic:'realtime:pings',event:'presence',ref:String(++rtRef),payload:{
+    type:'presence',event:'track',
+    payload:{id:me?me.id:'guest',name:me?me.name:'гость'}}});
+}
+function presenceFrom(state){
+  var out={},k,metas,i;
+  for(k in state){
+    if(!Object.prototype.hasOwnProperty.call(state,k))continue;
+    metas=(state[k]&&state[k].metas)||[];
+    for(i=0;i<metas.length;i++){
+      if(metas[i]&&metas[i].id)out[metas[i].id]=metas[i].name||'';
+    }
+  }
+  return out;
+}
+function mountWho(){
+  var hdr=document.querySelector('.hdrIn');
+  if(!hdr||document.getElementById('whoOn'))return;
+  var w=document.createElement('div');
+  w.id='whoOn';w.className='whoOn';
+  hdr.insertBefore(w,hdr.querySelector('#bSearch'));
+  w.onclick=whoSheet;
+}
+function whoIds(){
+  var ids=[],k;
+  for(k in whoNow)if(Object.prototype.hasOwnProperty.call(whoNow,k)&&k!=='guest')ids.push(k);
+  return ids;
+}
+function paintWho(){
+  var box=document.getElementById('whoOn');
+  if(!box)return;
+  var meNow=meP();
+  if(meNow)whoNow[meNow.id]=meNow.name;   /* сам всегда в списке, что бы ни прислал сервер */
+  var ids=whoIds();
+  while(box.firstChild)box.removeChild(box.firstChild);
+  box.style.display=ids.length?'':'none';
+  ids.slice(0,3).forEach(function(id){
+    var p=person(id), av=document.createElement('span');
+    av.className='whoAv';
+    av.title=p.name+' сейчас здесь';
+    av.style.backgroundColor=p.color;
+    if(p.photo)av.style.backgroundImage='url('+p.photo+')';
+    else av.textContent=p.ini;
+    box.appendChild(av);
+  });
+  if(ids.length>3){
+    var more=document.createElement('b');
+    more.textContent='+'+(ids.length-3);
+    box.appendChild(more);
+  }
+  Array.prototype.slice.call(document.querySelectorAll('.crewPhoto')).forEach(function(c){
+    var id=c.getAttribute('data-pid');
+    c.classList.toggle('isOn',!!(id&&whoNow[id]));
+  });
+}
+function whoSheet(){
+  sheet(function(c){
+    c.appendChild(el('h3',null,'Кто сейчас здесь'));
+    c.appendChild(el('p',null,'Список обновляется сам: человек появляется, когда открывает сборный лист по своей ссылке.'));
+    var any=false;
+    S.people.forEach(function(p){
+      var on=!!whoNow[p.id];
+      if(on)any=true;
+      var it=el('div','mItem'+(on?' on':''));
+      it.appendChild(document.createRange().createContextualFragment(avaHtml(p)));
+      var av=it.querySelector('.av');if(av)av.style.cssText+=';width:26px;height:26px;font-size:12px';
+      var nm=document.createElement('span');
+      nm.textContent=p.name+' · '+permName(p);
+      var st=document.createElement('u');
+      st.textContent=on?'здесь':'нет';
+      it.appendChild(nm);it.appendChild(st);
+      c.appendChild(it);
+    });
+    if(!any)c.appendChild(el('p',null,'Кроме тебя сейчас никого.'));
+  });
+}
 function rtStop(){
   if(rtBeat){clearInterval(rtBeat);rtBeat=null;}
   if(rtSock){try{rtSock.onclose=null;rtSock.close();}catch(e){}rtSock=null;}
@@ -555,8 +638,11 @@ function rtConnect(){
   try{rtSock=new WebSocket(url);}catch(e){return;}
   rtSock.onopen=function(){
     rtRef=0;
+    var meNow=meP();
     rtSend({topic:'realtime:pings',event:'phx_join',ref:String(++rtRef),payload:{config:{
-      broadcast:{self:false},presence:{key:''},
+      /* без enabled сервер не присылает presence_state — видно было бы только себя */
+      broadcast:{self:false},
+      presence:{key:(meNow?meNow.id:'guest')+'_'+Math.floor(Math.random()*1e6),enabled:true},
       postgres_changes:[{event:'*',schema:'public',table:'trip_pings',filter:'trip_id=eq.'+TRIP_ID}]},
       access_token:SB.key}});
     rtBeat=setInterval(function(){
@@ -566,7 +652,21 @@ function rtConnect(){
   };
   rtSock.onmessage=function(ev){
     var m;try{m=JSON.parse(ev.data);}catch(e){return;}
-    if(m.event==='phx_reply'&&m.payload&&m.payload.status==='ok'){rtJoined=true;rtRetry=0;}
+    if(m.event==='phx_reply'&&m.payload&&m.payload.status==='ok'&&!rtJoined){
+      rtJoined=true;rtRetry=0;rtTrack();
+    }
+    if(m.event==='presence_state'){
+      whoNow=presenceFrom(m.payload||{});
+      var meS=meP();if(meS)whoNow[meS.id]=meS.name;
+      paintWho();return;
+    }
+    if(m.event==='presence_diff'){
+      var d2=m.payload||{}, k2;
+      var leaves=presenceFrom(d2.leaves||{}), joins=presenceFrom(d2.joins||{});
+      for(k2 in leaves)if(Object.prototype.hasOwnProperty.call(leaves,k2))delete whoNow[k2];
+      for(k2 in joins)if(Object.prototype.hasOwnProperty.call(joins,k2))whoNow[k2]=joins[k2];
+      paintWho();return;
+    }
     if(m.event!=='postgres_changes')return;
     rtLive=true;
     var d=m.payload&&m.payload.data, rec=d&&(d.record||d['new']);
@@ -584,7 +684,7 @@ function rtConnect(){
 
 /* ── старт онлайна ── */
 (function startOnline(){
-  mountSyncBar(); mountMenu(); mountPwa(); applyUrlUser(); applyAuth(); render();
+  mountSyncBar(); mountWho(); mountMenu(); mountPwa(); applyUrlUser(); applyAuth(); render(); paintWho();
   setNet('work','подключаюсь…');
   pull(false).then(function(){
     var stamp=(S.weather&&S.weather.updated)||'';

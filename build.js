@@ -21,7 +21,7 @@ if (offline.includes('__SEED__') || offline.includes('__HERO__')) throw new Erro
 const MARK = '</script>\n</body>\n</html>';
 if (!offline.includes(MARK)) throw new Error('не найдено место для вставки модуля');
 let onlineHtml = lit(offline, MARK, '</script>\n<script id="sync-code">\n' + online + '\n' + MARK);
-onlineHtml = lit(onlineHtml, '<title>ВУОКСА · 2026</title>', '<title>Вуокса-2026 · сборный лист</title>');
+// заголовок вкладки одинаковый в обеих сборках — менять больше нечего
 
 fs.writeFileSync(path.join(__dirname, 'Вуокса-2026.html'), offline);
 fs.writeFileSync(path.join(__dirname, 'index.html'), onlineHtml);
