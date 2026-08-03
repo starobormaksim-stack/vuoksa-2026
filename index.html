@@ -67,13 +67,15 @@ cursor:pointer;flex:0 0 auto;transition:background .15s var(--ease)}
 .ib:active{background:color-mix(in oklab,var(--line) 46%,transparent)}
 .ib svg{width:21px;height:21px;stroke:var(--ink);stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .saveBtn{display:flex;align-items:center;gap:7px;height:40px;padding:0 15px;border:0;border-radius:11px;
-background:var(--amber);color:#fff;font-size:14.5px;font-weight:500;cursor:pointer;flex:0 0 auto;
+background:var(--amberDeep);color:#fff;font-size:14.5px;font-weight:500;cursor:pointer;flex:0 0 auto;
 white-space:nowrap;box-shadow:0 1px 2px rgba(30,42,50,.16),0 6px 16px rgba(200,122,34,.24);
 transition:transform .14s var(--ease),box-shadow .2s var(--ease),opacity .15s}
 .saveBtn:hover{box-shadow:0 1px 2px rgba(30,42,50,.16),0 10px 22px rgba(200,122,34,.32)}
 .saveBtn:active{transform:scale(.96)}
 .saveBtn svg{width:17px;height:17px;stroke:#fff;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .saveBtn.busy{opacity:.5}
+html[data-theme="dark"] .saveBtn{background:var(--amber);color:#161C10}
+html[data-theme="dark"] .saveBtn svg{stroke:#161C10}
 .saveBtn.dirty::after{content:"";position:absolute;top:-3px;right:-3px;width:11px;height:11px;
 border-radius:50%;background:#A74612;border:2px solid var(--bg);animation:pulseDot 1.8s var(--ease) infinite}
 .saveBtn{position:relative}
@@ -417,8 +419,9 @@ font-size:15.5px;padding:0 2px}
 .addForm input.nm:focus{outline:none}
 .addForm .lbl{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:13px 0 7px}
 .addForm .rowA{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
-.addForm .go{height:40px;padding:0 16px;border-radius:10px;border:0;background:var(--amber);color:#fff;
+.addForm .go{height:40px;padding:0 16px;border-radius:10px;border:0;background:var(--amberDeep);color:#fff;
 font-size:14.5px;cursor:pointer;margin-left:auto}
+html[data-theme="dark"] .addForm .go{background:var(--amber);color:#161C10}
 .addForm .cn{height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:transparent;
 font-size:14px;cursor:pointer;color:var(--muted)}
 
@@ -593,8 +596,51 @@ background:var(--bg);padding:0 13px}
 .btnRow{display:flex;gap:10px;padding:15px 22px 8px}
 .btnRow button{flex:1;min-height:48px;border-radius:12px;border:1px solid var(--line);background:transparent;
 font-size:15px;cursor:pointer}
-.btnRow button.pri{background:var(--amber);color:#fff;border-color:var(--amber)}
+.btnRow button.pri{background:var(--amberDeep);color:#fff;border-color:var(--amberDeep)}
+html[data-theme="dark"] .btnRow button.pri{background:var(--amber);color:#161C10;border-color:var(--amber)}
 .btnRow button.dang{background:#A74612;color:#fff;border-color:#A74612}
+
+/* календарь дат поездки */
+.cal{padding:2px 22px 6px}
+.calHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.calHead b{font-size:15.5px;font-family:var(--serif)}
+.calNav{width:44px;height:44px;border:0;background:transparent;border-radius:10px;cursor:pointer;
+display:grid;place-items:center;color:var(--ink);transition:background .15s}
+.calNav:hover{background:color-mix(in oklab,var(--zebra) 60%,transparent)}
+.calNav svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.calDow{display:grid;grid-template-columns:repeat(7,1fr);font-size:10.5px;color:var(--muted);
+text-transform:uppercase;letter-spacing:.05em;text-align:center;margin-bottom:3px}
+.calGrid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:2px}
+.calDay{min-height:44px;border:0;background:transparent;border-radius:10px;font-size:14px;cursor:pointer;
+color:var(--ink);position:relative;font-family:inherit;transition:background .15s}
+.calDay:hover{background:color-mix(in oklab,var(--zebra) 70%,transparent)}
+.calDay:disabled{cursor:default}
+.calDay:disabled:hover{background:transparent}
+.calDay.in{background:color-mix(in oklab,var(--amber) 16%,transparent);border-radius:0}
+.calDay.in:disabled:hover{background:color-mix(in oklab,var(--amber) 16%,transparent)}
+.calDay.a,.calDay.b{background:var(--amberDeep);color:#fff;border-radius:10px;font-weight:600}
+.calDay.a:disabled:hover,.calDay.b:disabled:hover{background:var(--amberDeep)}
+html[data-theme="dark"] .calDay.a,html[data-theme="dark"] .calDay.b{background:var(--amber);color:#161C10}
+html[data-theme="dark"] .calDay.a.today::after,html[data-theme="dark"] .calDay.b.today::after{background:#161C10}
+.calDay.a:not(.b){border-radius:10px 0 0 10px}
+.calDay.b:not(.a){border-radius:0 10px 10px 0}
+.calDay.today::after{content:"";position:absolute;left:50%;bottom:5px;width:4px;height:4px;
+border-radius:50%;background:var(--amberDeep);transform:translateX(-50%)}
+.calDay.a.today::after,.calDay.b.today::after{background:#fff}
+
+/* карта места назначения */
+.mapWrap{margin:2px 22px 8px;border-radius:12px;overflow:hidden;border:1px solid var(--line);
+aspect-ratio:4/3;background:var(--zebra)}
+.mapWrap iframe{width:100%;height:100%;border:0;display:block}
+.mapOff{display:grid;place-items:center;height:100%;color:var(--muted);font-size:13px;
+padding:18px;text-align:center;text-wrap:pretty}
+.geoList .mItem{min-height:48px;padding:11px 22px}
+.geoList p{padding:4px 22px 8px}
+
+/* даты и место на обложке открываются тапом */
+.heroTap{cursor:pointer}
+.hdIc{width:13px;height:13px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;
+stroke-linejoin:round;vertical-align:-2px;margin-right:4px;opacity:.9}
 
 /* фоторедактор */
 .cropWrap{display:flex;flex-direction:column;align-items:center;padding:4px 22px 6px}
@@ -887,8 +933,11 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   "dates": "10–14 августа 2026",
   "route": "Санкт-Петербург (Дворцовая) → Приозерск → острова озера Вуокса · 5 дней / 4 ночи",
   "start": "2026-08-10T07:30:00",
+  "end": "2026-08-14",
   "note": "Алкоголь и сигареты считаем отдельно — каждый закупает сам, в общий делёж не входит.",
-  "place": "Приозерск · озеро Вуокса"
+  "place": "Приозерск · озеро Вуокса",
+  "lat": 61.0392,
+  "lon": 30.1394
  },
  "people": [
   {
@@ -3475,7 +3524,9 @@ clock:'<circle cx="12" cy="12" r="8"/><path d="M12 7.6V12l3 1.8"/>',
 packed:'<rect x="4.5" y="8.5" width="15" height="10.5" rx="2"/><path d="M8.4 8.5V7a3.6 3.6 0 0 1 7.2 0v1.5"/><polyline points="8.9,13.8 11.2,16 15.4,11.6"/>',
 incar:'<path d="M3.4 14.2h17.2l-1.5-5A2 2 0 0 0 17.2 8H6.8a2 2 0 0 0-1.9 1.3z"/><path d="M3.4 14.2V17h2.6M20.6 14.2V17H18"/><circle cx="7.6" cy="17.2" r="1.5"/><circle cx="16.4" cy="17.2" r="1.5"/>',
 ask:'<circle cx="12" cy="12" r="8.4"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.2 2.4c-.5.2-.8.7-.8 1.2v.3"/><path d="M12 16.6v.3"/>',
-pen:'<path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/>'
+pen:'<path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/>',
+pin:'<path d="M12 21s-6.5-5.2-6.5-10.2a6.5 6.5 0 0 1 13 0C18.5 15.8 12 21 12 21z"/><circle cx="12" cy="10.6" r="2.4"/>',
+cal:'<rect x="4" y="6" width="16" height="14" rx="2.5"/><path d="M4 10.5h16M8.5 3.5V8M15.5 3.5V8"/>'
 };
 function svg(n,cls){return '<svg viewBox="0 0 24 24"'+(cls?' class="'+cls+'"':'')+'>'+I[n]+'</svg>';}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -3553,6 +3604,7 @@ function normalize(st){
     if(!p.key)p.key=(sd&&sd.key)||newKey();
   });
   st.trip.hero=st.trip.hero||'';
+  st.trip.end=st.trip.end||'';
   st.tileLabels=st.tileLabels||['Транспорт, лодка, парковка','Продукты и расходники','Общий бюджет','С каждого'];
   st.secTitles=st.secTitles||{};
   return st;
@@ -4246,6 +4298,178 @@ function sheet(build){
   build(c,close); $('#modals').appendChild(wrap); return close;
 }
 
+/* ── даты поездки: календарь, место: карта ── */
+var MON_R=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+var MON_I=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+function isoDay(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function tripStartDate(){var d=new Date(S.trip.start);return isNaN(d)?new Date():d;}
+function tripEndDate(){
+  if(S.trip.end){var d=new Date(S.trip.end);if(!isNaN(d))return d;}
+  /* вывести из строки «10–14 августа 2026»: последний день из диапазона */
+  var st=tripStartDate();
+  var m=(S.trip.dates||'').match(/[–—-]\s*(\d{1,2})/);
+  if(m){var e=new Date(st.getFullYear(),st.getMonth(),+m[1]);if(e<st)e.setMonth(e.getMonth()+1);return e;}
+  return st;
+}
+function fmtRange(a,b){
+  if(a.getFullYear()!==b.getFullYear())
+    return a.getDate()+' '+MON_R[a.getMonth()]+' '+a.getFullYear()+' – '+b.getDate()+' '+MON_R[b.getMonth()]+' '+b.getFullYear();
+  if(a.getMonth()!==b.getMonth())
+    return a.getDate()+' '+MON_R[a.getMonth()]+' – '+b.getDate()+' '+MON_R[b.getMonth()]+' '+b.getFullYear();
+  if(a.getDate()===b.getDate())return a.getDate()+' '+MON_R[a.getMonth()]+' '+a.getFullYear();
+  return a.getDate()+'–'+b.getDate()+' '+MON_R[a.getMonth()]+' '+a.getFullYear();
+}
+function tripDatesSheet(){
+  var can=isEditor();
+  var selA=tripStartDate(), selB=tripEndDate();
+  if(selB<selA)selB=new Date(selA);
+  var view=new Date(selA.getFullYear(),selA.getMonth(),1), picking=0;
+  sheet(function(c,close){
+    c.appendChild(el('h3',null,'Даты поездки'));
+    var p=el('p'); c.appendChild(p);
+    var cal=el('div','cal'); c.appendChild(cal);
+    function paintP(){
+      p.textContent=can
+        ?(picking===0?'Тапни день выезда — потом день возвращения.':'Теперь тапни день возвращения.')
+        :fmtRange(selA,selB)+' · менять даты могут владелец и редактор.';
+    }
+    function build(){
+      cal.innerHTML='';
+      var hd=el('div','calHead');
+      var pr=el('button','calNav','<svg viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/></svg>');
+      var nx=el('button','calNav','<svg viewBox="0 0 24 24"><path d="M10 6l6 6-6 6"/></svg>');
+      pr.setAttribute('aria-label','Предыдущий месяц');nx.setAttribute('aria-label','Следующий месяц');
+      pr.onclick=function(){view.setMonth(view.getMonth()-1);build();};
+      nx.onclick=function(){view.setMonth(view.getMonth()+1);build();};
+      hd.appendChild(pr);hd.appendChild(el('b',null,MON_I[view.getMonth()]+' '+view.getFullYear()));hd.appendChild(nx);
+      cal.appendChild(hd);
+      cal.appendChild(el('div','calDow','<span>пн</span><span>вт</span><span>ср</span><span>чт</span><span>пт</span><span>сб</span><span>вс</span>'));
+      var g=el('div','calGrid');
+      var first=new Date(view.getFullYear(),view.getMonth(),1);
+      var shift=(first.getDay()+6)%7;
+      var days=new Date(view.getFullYear(),view.getMonth()+1,0).getDate();
+      var today=isoDay(new Date());
+      for(var i=0;i<shift;i++)g.appendChild(el('span'));
+      for(var d=1;d<=days;d++)(function(d){
+        var dt=new Date(view.getFullYear(),view.getMonth(),d);
+        var k=isoDay(dt);
+        var cls='calDay'+(k===isoDay(selA)?' a':'')+(k===isoDay(selB)?' b':'')
+          +((dt>selA&&dt<selB)?' in':'')+(k===today?' today':'');
+        var bd=el('button',cls);bd.textContent=String(d);
+        if(!can)bd.disabled=true;
+        bd.onclick=function(){
+          if(picking===0){selA=dt;selB=new Date(dt);picking=1;}
+          else{if(dt<selA){selA=dt;selB=new Date(dt);}else{selB=dt;picking=0;}}
+          build();
+        };
+        g.appendChild(bd);
+      })(d);
+      cal.appendChild(g);
+      paintP();
+    }
+    build();
+    if(can){
+      var row=el('div','btnRow');
+      var cn=el('button',null,'Отмена');cn.onclick=function(){close();};
+      var ok=el('button','pri','Готово');
+      ok.onclick=function(){
+        var t=(S.trip.start||'').split('T')[1]||'09:00:00';
+        S.trip.start=isoDay(selA)+'T'+t;
+        S.trip.end=isoDay(selB);
+        S.trip.dates=fmtRange(selA,selB);
+        touch();close();renderSec('home');toast('Даты обновлены: '+S.trip.dates);
+      };
+      row.appendChild(cn);row.appendChild(ok);c.appendChild(row);
+    }
+  });
+}
+function tripPlaceSheet(){
+  var can=isEditor();
+  /* выбранная в поиске точка применяется только по «Готово» */
+  var selLat=+S.trip.lat||0, selLon=+S.trip.lon||0;
+  sheet(function(c,close){
+    c.appendChild(el('h3',null,'Куда едем'));
+    var p=el('p');
+    p.textContent=(S.trip.place||'Место пока не указано')+(can?'':' · менять место могут владелец и редактор');
+    c.appendChild(p);
+    var wrap=el('div','mapWrap'); c.appendChild(wrap);
+    function paintMap(){
+      wrap.textContent='';
+      var lat=selLat, lon=selLon;
+      if(!ONLINE||!navigator.onLine){
+        var off=el('div','mapOff');
+        off.textContent='Карта показывается в онлайне.'+(lat?' Точка: '+lat.toFixed(4)+', '+lon.toFixed(4):'');
+        wrap.appendChild(off);return;
+      }
+      if(!lat&&!lon){
+        var off2=el('div','mapOff');
+        off2.textContent='Точка ещё не указана.'+(can?' Найди её поиском ниже.':'');
+        wrap.appendChild(off2);return;
+      }
+      var f=document.createElement('iframe');
+      var dy=0.045, dx=0.09; /* примерно 10 × 10 км */
+      f.title='Карта места';f.setAttribute('loading','lazy');
+      f.src='https://www.openstreetmap.org/export/embed.html?bbox='
+        +(lon-dx)+'%2C'+(lat-dy)+'%2C'+(lon+dx)+'%2C'+(lat+dy)
+        +'&layer=mapnik&marker='+lat+'%2C'+lon;
+      wrap.appendChild(f);
+    }
+    paintMap();
+    if(can){
+      var f1=el('div','fld');
+      var inName=document.createElement('input');
+      inName.placeholder='Как называется место';
+      inName.value=S.trip.place||'';
+      inName.setAttribute('aria-label','Название места');
+      f1.appendChild(inName);c.appendChild(f1);
+      if(ONLINE&&navigator.onLine){
+        var f2=el('div','fld');
+        var inQ=document.createElement('input');
+        inQ.placeholder='Найти точку на карте: город или озеро';
+        inQ.setAttribute('aria-label','Поиск места на карте');
+        f2.appendChild(inQ);c.appendChild(f2);
+        var list=el('div','geoList');c.appendChild(list);
+        var tmr=null;
+        inQ.oninput=function(){
+          clearTimeout(tmr);
+          tmr=setTimeout(function(){
+            var q=inQ.value.trim();
+            if(q.length<2){list.textContent='';return;}
+            fetch('https://geocoding-api.open-meteo.com/v1/search?count=5&language=ru&format=json&name='+encodeURIComponent(q))
+             .then(function(r){return r.json();})
+             .then(function(j){
+               list.textContent='';
+               var rs=(j&&j.results)||[];
+               rs.forEach(function(rr){
+                 var lbl=rr.name+(rr.admin1?' · '+rr.admin1:'');
+                 var it=el('button','mItem',svg('pin'));
+                 var sp=document.createElement('span');sp.textContent=lbl;it.appendChild(sp);
+                 it.onclick=function(){
+                   selLat=rr.latitude;selLon=rr.longitude;
+                   if(!inName.value.trim())inName.value=rr.name;
+                   list.textContent='';inQ.value=lbl;paintMap();
+                 };
+                 list.appendChild(it);
+               });
+               if(!rs.length){var no=el('p');no.textContent='Ничего не нашлось — попробуй написать иначе.';list.appendChild(no);}
+             },function(){list.textContent='';var er=el('p');er.textContent='Поиск сейчас недоступен.';list.appendChild(er);});
+          },350);
+        };
+      }
+      var row=el('div','btnRow');
+      var cn=el('button',null,'Отмена');cn.onclick=function(){close();};
+      var ok=el('button','pri','Готово');
+      ok.onclick=function(){
+        var nm=inName.value.trim();
+        if(nm)S.trip.place=nm;
+        if(selLat||selLon){S.trip.lat=selLat;S.trip.lon=selLon;}
+        touch();close();renderSec('home');toast('Место сохранено.');
+      };
+      row.appendChild(cn);row.appendChild(ok);c.appendChild(row);
+    }
+  });
+}
+
 /* ══════════ ГЛАВНАЯ ══════════ */
 function viewHome(v){
   if(restoreCand)v.appendChild(plashRestore());
@@ -4277,11 +4501,20 @@ function viewHome(v){
   var hs=el('div','heroSub heroEd');hs.textContent=S.trip.sub;
   edIn(hs,function(x){S.trip.sub=x;},'подзаголовок');
   var hd=el('div','heroDates');
-  var dt=el('span','heroEd');dt.textContent=S.trip.dates;
-  edIn(dt,function(x){if(x)S.trip.dates=x;});
+  /* даты и место — по тапу всплывают календарь и карта (менять могут владелец и редактор) */
+  var dt=el('span','heroEd heroTap',svg('cal','hdIc'));
+  var dtx=document.createElement('span');dtx.textContent=S.trip.dates;dt.appendChild(dtx);
+  dt.title='Даты поездки — открыть календарь';
+  dt.setAttribute('role','button');dt.setAttribute('tabindex','0');
+  dt.onclick=function(){tripDatesSheet();};
+  dt.onkeydown=function(ev){if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();tripDatesSheet();}};
   var sep=el('span');sep.textContent=' · ';
-  var pl=el('span','heroEd');pl.textContent=S.trip.place;
-  edIn(pl,function(x){S.trip.place=x;},'место поездки');
+  var pl=el('span','heroEd heroTap',svg('pin','hdIc'));
+  var plx=document.createElement('span');plx.textContent=S.trip.place;pl.appendChild(plx);
+  pl.title='Куда едем — открыть карту';
+  pl.setAttribute('role','button');pl.setAttribute('tabindex','0');
+  pl.onclick=function(){tripPlaceSheet();};
+  pl.onkeydown=function(ev){if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();tripPlaceSheet();}};
   hd.appendChild(dt);hd.appendChild(sep);hd.appendChild(pl);
   var cd=el('div','cd','<span class="cdN">'+(d>0?d:(d===0?'сегодня':'—'))+'</span>'
    +'<span class="cdL">'+(d>1?'дней до выезда':d===1?'день до выезда':d===0?'выезд сегодня':'поездка позади')+'</span>');
