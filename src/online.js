@@ -672,7 +672,7 @@ function whoSheet(){
       if(on)any=true;
       var it=el('div','mItem'+(on?' on':''));
       it.appendChild(document.createRange().createContextualFragment(avaHtml(p)));
-      var av=it.querySelector('.av');if(av)av.style.cssText+=';width:26px;height:26px;font-size:12px';
+      var av=it.querySelector('.av');if(av)av.style.cssText+=';width:30px;height:30px;font-size:13px;border-radius:8px';
       var nm=document.createElement('span');
       nm.textContent=p.name+' · '+permName(p);
       var st=document.createElement('u');
