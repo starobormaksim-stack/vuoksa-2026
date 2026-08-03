@@ -740,9 +740,21 @@ function rtConnect(){
   };
 }
 
+/* ── шапка в онлайне: присутствие, поиск и тема ──
+   «Сохранить файл» дублируется пунктом «Скачать офлайн-копию» в «⋯», а аватарка «кто заполняет»
+   в онлайне не нужна: личность даёт ссылка, чужие сборы открываются из карточек экипажа.
+   Стиль вставляется отдельным тегом — при сохранении офлайн-файла он вычищается, и в офлайне
+   обе кнопки остаются на месте. */
+function mountHdrTrim(){
+  var st=document.createElement('style');
+  st.id='hdrTrim';
+  st.textContent='#bSave,#bMe{display:none!important}';
+  document.head.appendChild(st);
+}
+
 /* ── старт онлайна ── */
 (function startOnline(){
-  mountSyncBar(); mountWho(); mountMenu(); mountPwa(); applyUrlUser(); applyAuth(); render(); paintWho();
+  mountSyncBar(); mountWho(); mountMenu(); mountHdrTrim(); mountPwa(); applyUrlUser(); applyAuth(); render(); paintWho();
   setNet('work','подключаюсь…');
   pull(false).then(function(){weatherAuto(true);});   /* на старте погоду берём сразу */
   rtConnect();

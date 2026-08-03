@@ -3,28 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PackFlow · Вуокса-2026</title>
+<title>FLOPS · Вуокса-2026</title>
 <style id="app-css-hero">.heroPic{background-image:url(__HERO__)}</style>
 <style id="app-css">
+__FONTS__
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
+/* палитра FLOPS по брендбуку: светлая тема — песочный пергамент логотипа,
+   тёмная — хвойная зелень логотипа; акценты — янтарно-ржавые #BC6C25 / #A74612 */
 :root{
---night:#1B2B2E;--night2:#132022;--pine:#25473A;--amber:#BC6C25;--amberDeep:#A74612;--amberLt:#F3E4CD;
+--night:#222B15;--night2:#161C10;--pine:#3D5226;--amber:#BC6C25;--amberDeep:#A74612;--amberLt:#EBD9AE;
 --water:#3E6B7A;--bark:#7C5433;--moss:#5E7A5A;
---cream:#FCF9F3;--zebra:#F2EDE3;--line:#D8CFBF;--ink:#1E2723;--muted:#6C7570;
---bg:var(--cream);--card:#FFFFFF;--head:rgba(251,247,240,.84);
---shadow:0 1px 2px rgba(30,42,50,.05),0 10px 30px rgba(30,42,50,.07);
---shadowUp:0 2px 4px rgba(30,42,50,.07),0 18px 44px rgba(30,42,50,.11);
---serif:Georgia,"Times New Roman",serif;
---sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+--cream:#EDE0BB;--zebra:#E5D5A8;--line:#CBB88A;--ink:#20261A;--muted:#6E6F58;
+--bg:var(--cream);--card:#F8F1DC;--head:rgba(237,224,187,.85);
+--shadow:0 1px 2px rgba(43,57,27,.06),0 10px 30px rgba(43,57,27,.09);
+--shadowUp:0 2px 4px rgba(43,57,27,.08),0 18px 44px rgba(43,57,27,.13);
+--serif:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+--sans:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 --ease:cubic-bezier(.2,.8,.2,1);
 --r:16px;
 }
-/* тёмная тема — глубокая хвоя: фон еловой тени, текст песочный, акценты коры сосны */
+/* тёмная тема — хвоя логотипа: фон #161C10, поверхности к #2B391B, текст пергаментный */
 html[data-theme="dark"]{
---bg:#0E1F1A;--card:#162B24;--zebra:#13251F;--line:#2B4438;--ink:#EFE7D8;--muted:#9AACA1;
---pine:#6FA98D;--water:#6FA0B0;--bark:#C08A57;--moss:#8AA486;--amber:#D8944A;--amberDeep:#C0762A;
---amberLt:#33291D;--cream:#122420;--head:rgba(14,31,26,.86);
+--bg:#161C10;--card:#232D15;--zebra:#1C2411;--line:#3B4826;--ink:#EDE4C6;--muted:#A9A98C;
+--pine:#9DBB80;--water:#6FA0B0;--bark:#C89A5E;--moss:#8AA486;--amber:#D8944A;--amberDeep:#C0762A;
+--amberLt:#38301A;--cream:#1B2311;--head:rgba(22,28,16,.87);
 --shadow:0 1px 2px rgba(0,0,0,.34),0 10px 30px rgba(0,0,0,.36);
 --shadowUp:0 2px 6px rgba(0,0,0,.38),0 18px 44px rgba(0,0,0,.44);
 }
@@ -43,7 +46,8 @@ h1,h2,h3,h4{letter-spacing:.005em}
 }
 body,input,select,button,textarea{font-variant-numeric:tabular-nums}
 input,select,button,textarea{font-family:inherit;font-size:inherit;color:inherit}
-h1,h2,h3{margin:0;font-family:var(--serif);font-weight:400}
+h1,h2,h3{margin:0;font-family:var(--serif);font-weight:650}
+h4{font-weight:600}
 a{color:var(--amber);text-decoration:none}
 a:hover{color:var(--ink)}
 ::selection{background:var(--amberLt)}
@@ -152,14 +156,15 @@ transition:transform .25s var(--ease)}
 .navIn>button.on svg{transform:translateY(-1px) scale(1.06)}
 .navBar{position:absolute;top:0;left:0;height:2px;background:var(--amber);border-radius:2px;
 transition:transform .3s var(--ease),width .3s var(--ease)}
-/* бренд PackFlow: на телефоне скрыт, в левом меню занимает верхние 80 px */
+/* логотип FLOPS (эмблема + фирменное начертание — единый блок из брендбука):
+   на телефоне скрыт, в левом меню занимает верхние 80 px; вариант зависит от темы */
 .brand{display:none}
+.brand .lgD{display:none}
+html[data-theme="dark"] .brand .lgL{display:none}
+html[data-theme="dark"] .brand .lgD{display:block}
 @media (min-width:920px){
-  .brand{position:absolute;top:0;left:0;right:0;height:80px;display:flex;align-items:center;
-    gap:11px;padding:0 20px}
-  .brand svg{width:37px;height:37px;flex:0 0 auto;border-radius:50%;
-    box-shadow:0 0 0 1px color-mix(in oklab,var(--line) 60%,transparent)}
-  .brand span{font-family:var(--serif);font-size:18px;letter-spacing:.02em;color:var(--ink)}
+  .brand{position:absolute;top:0;left:0;right:0;height:80px;display:flex;align-items:center;padding:0 16px}
+  .brand svg{height:52px;width:auto;max-width:100%}
 }
 
 /* ── общие блоки ───────────────────────── */
@@ -186,6 +191,17 @@ animation:up14 .6s .06s var(--ease) both}
 padding-top:15px;border-top:1px solid rgba(247,241,230,.2);color:#F7F1E6;animation:up14 .6s .18s var(--ease) both}
 .cdN{font-family:var(--serif);font-size:32px;line-height:1}
 .cdL{font-size:12.5px;color:#CFC6B7;flex:1}
+/* верх «Поездки»: на телефоне обёртка прозрачна для потока, на десктопе — сетка,
+   обложка квадратная слева, готовность и деньги справа */
+.homeTop{display:contents}
+@media (min-width:920px){
+  .homeTop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;
+    align-items:stretch;margin-bottom:26px}
+  .homeTop .heroPic{aspect-ratio:1/1;min-height:100%;height:auto}
+  .homeSide{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .homeSide .sec{margin:0!important}
+  .homeSide .tiles{grid-template-columns:1fr 1fr}
+}
 
 .ringRow{display:flex;align-items:center;gap:20px;padding:20px}
 .ring{position:relative;width:96px;height:96px;flex:0 0 auto}
@@ -671,12 +687,14 @@ flex:0 0 auto}
 display:grid;place-items:center;font-family:var(--serif);font-size:11px;color:#fff;
 border:1.5px solid var(--bg);margin-left:-6px;flex:0 0 auto}
 .whoOn b{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}
-/* бейджи на фотографии: слева — кто это (роль, «это я»), справа под кнопкой — «сейчас здесь».
-   Раньше роль и присутствие стояли в одной точке и налезали друг на друга. */
-.crewPhoto.isOn{outline:2px solid var(--pine);outline-offset:-2px}
-.crewPhoto.isOn::before{content:"● сейчас здесь";position:absolute;right:11px;left:auto;top:49px;z-index:2;
-font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#0E1F1A;background:#9CC3AF;
-padding:4px 8px;border-radius:6px}
+/* бейджи: слева на фотографии — кто это (роль, «это я»); присутствие — не на фотографии,
+   а в текстовой части, справа напротив имени, зелёной точкой с подписью */
+.cpNow{display:none;position:absolute;right:13px;top:15px;z-index:2;align-items:center;gap:6px;
+font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#9CC3AF;white-space:nowrap}
+.cpNow i{width:7px;height:7px;border-radius:50%;background:#9CC3AF;flex:0 0 auto;
+box-shadow:0 0 0 3px rgba(156,195,175,.22)}
+.crewPhoto.isOn .cpNow{display:flex}
+.crewPhoto.isOn .cpTxt h4{padding-right:112px}
 .crewChief{position:absolute;top:11px;left:11px;z-index:2;font-size:10px;letter-spacing:.1em;
 text-transform:uppercase;color:#16222A;background:#E8A44A;padding:4px 8px;border-radius:6px}
 .crewMe{position:absolute;top:11px;left:11px;z-index:2;font-size:10px;letter-spacing:.08em;
@@ -694,7 +712,7 @@ background:transparent;font-size:13px;cursor:pointer;white-space:nowrap}
 .priceCell u{text-decoration:none;font-size:10px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;
 margin-top:1px}
 .numIn.fact{border-bottom-style:solid;border-bottom-color:var(--pine)}
-.boot{padding:60px 24px;text-align:center;font-family:Georgia,serif;font-size:17px;color:#6C7570}
+.boot{padding:60px 24px;text-align:center;font-family:"Manrope",-apple-system,Arial,sans-serif;font-size:17px;color:#6C7570}
 .crash{margin:16px;padding:18px;border-radius:14px;background:#F3E4CD;color:#7A3B18;font-size:14px;line-height:1.5;
 font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 .crash b{display:block;font-family:Georgia,serif;font-size:17px;font-weight:400;margin-bottom:8px}
@@ -706,7 +724,7 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .crew{grid-template-columns:repeat(2,1fr)}
 }
 @media (min-width:760px){
-  .crew{grid-template-columns:repeat(2,1fr);gap:14px}
+  .crew{grid-template-columns:repeat(3,1fr)}
   main{padding:22px 22px 150px}
 }
 @media (min-width:920px){
@@ -719,13 +737,8 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .navBar{width:2px!important;left:0;top:80px;height:52px;transition:transform .3s var(--ease)}
   .stick{left:222px} .toasts{left:222px}
   main{padding-bottom:130px}
-  /* заказчик просил крупные фотографии: две карточки в ряд, не четыре */
-  .crew{grid-template-columns:repeat(2,1fr);gap:18px}
-  .cpTxt{padding:18px}
-  .cpTxt h4{font-size:26px}
-  .cpTxt .rl{font-size:11.5px}
-  .cpStat{font-size:12px}
-  .cpNo{font-size:76px}
+  /* на широком контейнере 1120 четыре карточки в ряд читаются нормально */
+  .crew{grid-template-columns:repeat(4,1fr);gap:14px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
@@ -1230,8 +1243,8 @@ function avaHtml(p,cls){
 }
 
 /* ─────────── каркас ─────────── */
-/* название сервиса — меняется только здесь; логотип лежит в #logoTpl (src/logo-emblem.svg) */
-var APP_NAME='PackFlow';
+/* название сервиса — меняется только здесь; логотип лежит в #logoTpl (src/logo-light.svg / logo-dark.svg) */
+var APP_NAME='FLOPS';
 var TABS=[
  {id:'home',t:'Поездка',icon:'home',ttl:APP_NAME},
  {id:'crew',t:'Экипаж',icon:'user',ttl:'Экипаж'},
@@ -1268,9 +1281,9 @@ var navIn=$('#navIn');
    Эмблему клонируем из #logoTpl, а не переносим: при пересохранении файла #app
    заменяется заглушкой, и перенесённый узел потерялся бы. */
 (function(){
-  var brand=el('div','brand'), lt=document.getElementById('logoTpl');
-  if(lt&&lt.firstElementChild)brand.appendChild(lt.firstElementChild.cloneNode(true));
-  brand.appendChild(el('span',null,esc(APP_NAME)));
+  /* в #logoTpl два варианта логотипа FLOPS (для светлой и тёмной темы) — какой показать, решает CSS */
+  var brand=el('div','brand'), lt=document.getElementById('logoTpl'), i;
+  if(lt)for(i=0;i<lt.children.length;i++)brand.appendChild(lt.children[i].cloneNode(true));
   navIn.appendChild(brand);
 })();
 TABS.forEach(function(t){
@@ -1570,7 +1583,13 @@ function viewHome(v){
    +'<span class="cdL">'+(d>1?'дней до выезда':d===1?'день до выезда':d===0?'выезд сегодня':'поездка позади')+'</span>');
   ht.appendChild(h1);ht.appendChild(hs);ht.appendChild(hd);ht.appendChild(cd);
   hero.appendChild(ht);
-  v.appendChild(hero);
+  /* на телефоне всё идёт одной колонкой (homeTop = display:contents),
+     на десктопе обложка становится квадратом слева, готовность и деньги — справа */
+  var top=el('div','homeTop');
+  top.appendChild(hero);
+  var side=el('div','homeSide');
+  top.appendChild(side);
+  v.appendChild(top);
 
   var g=gearProg(null),b=buyProg(null),pct=readiness();
   var s1=el('div','sec');s1.style.marginTop='14px';
@@ -1582,7 +1601,7 @@ function viewHome(v){
    +'<div class="ringPct">'+pct+'\u2009%</div></div>'
    +'<div class="ringTxt"><strong>Готовность поездки</strong><span>Снаряжение: '+g.done+' из '+g.all
    +'. Закупка: '+b.done+' из '+b.all+'.</span></div></div>';
-  s1.appendChild(c1);v.appendChild(s1);
+  s1.appendChild(c1);side.appendChild(s1);
   setTimeout(function(){var f=$('#ringFg');if(f)f.setAttribute('stroke-dashoffset',257.6*(1-pct/100));},60);
 
   var G=grand();
@@ -1602,7 +1621,7 @@ function viewHome(v){
   s2.appendChild(tiles);
   s2.appendChild(el('div','hint','Делим на всех: бензин, аренда «Ладоги», парковка, продукты и расходники. '
    +'Алкоголь и сигареты — личное, считаются отдельно'+(G.pers?(': '+rub(G.pers)):'')+'.'));
-  v.appendChild(s2);
+  side.appendChild(s2);
 
   /* погода теперь двумя отдельными блоками: что за окном сегодня и что ждёт в дни поездки.
      Раньше была одна строка вида «3 августа, слабая морось, 20°, 51 %» — непонятно, к чему она */
@@ -1785,7 +1804,8 @@ function crewCard(p){
   eb.onclick=function(ev){ev.stopPropagation();editPerson(p);};
   c.appendChild(eb);
   var tx=el('div','cpTxt');
-  tx.innerHTML='<h4>'+esc(p.name)+'</h4>'+(p.car?'<div class="rl">'+esc(p.car)+'</div>':'')
+  tx.innerHTML='<span class="cpNow"><i></i>сейчас здесь</span>'
+   +'<h4>'+esc(p.name)+'</h4>'+(p.car?'<div class="rl">'+esc(p.car)+'</div>':'')
    +'<div class="cpBar"><i style="width:'+(pc*100)+'%"></i></div>'
    +'<div class="cpStat">собрано '+pr.done+' из '+pr.all+'</div>';
   c.appendChild(tx);
