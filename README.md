@@ -226,7 +226,10 @@ alter publication supabase_realtime add table trip_pings;
 ```js
 S = {
   v, updatedAt, author, me, theme,
-  trip: { title, sub, dates, place, route, start, note, hero, lat, lon },
+  trip: { title, sub, dates, place, route, start, end, note, hero, lat, lon },
+        // start/end и dates задаются календарём (tripDatesSheet) — тап по датам на обложке;
+        // place/lat/lon — шторкой с картой OSM (tripPlaceSheet) — тап по месту на обложке;
+        // менять могут владелец и редактор, участники смотрят; карта — только в онлайне
   tileLabels: [4 подписи денежных плиток],
   secTitles: { <id секции>: {h, sub} },
   people: [ { id, name, ini, color, car, role, desc, photo, perm, slug, key, ua } ],
