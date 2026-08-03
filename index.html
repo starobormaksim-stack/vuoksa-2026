@@ -82,11 +82,45 @@ html[data-theme="dark"] .warnBar{color:#E8C08A}
   .saveBtn{padding:0 12px}
   .hdrIn{gap:4px}
 }
+/* аватарка выбранного участника — всегда в шапке, тап открывает выбор «кто заполняет» */
+.meBtn{width:44px;height:44px;border:0;background:transparent;border-radius:12px;display:grid;place-items:center;
+cursor:pointer;flex:0 0 auto;padding:0;transition:background .15s var(--ease)}
+.meBtn:hover{background:color-mix(in oklab,var(--line) 28%,transparent)}
+.meBtn .av{width:28px;height:28px;border-radius:8px;background-size:cover;background-position:50% 50%;
+display:grid;place-items:center;font-family:var(--serif);font-size:13px;color:#fff;
+box-shadow:0 0 0 1.5px color-mix(in oklab,var(--line) 60%,transparent)}
+.meBtn.none .av{background:transparent;box-shadow:0 0 0 1.5px var(--line)}
+.meBtn.none .av svg{width:18px;height:18px;stroke:var(--muted);stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+/* полоска контекста: где ты сейчас находишься. Появляется, как только шапка отрывается от начала */
+.ctxBar{display:none;max-width:880px;margin:0 auto;padding:0 12px 8px;align-items:center;gap:8px}
+.ctxBar.on{display:flex}
+/* это индикатор «где я», а не кнопка: переход по разделам делает нижнее меню */
+.ctxBar>span{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 11px;border-radius:9px;
+border:1px solid color-mix(in oklab,var(--line) 50%,transparent);background:var(--card);
+font-size:12px;color:var(--muted);max-width:100%;min-width:0}
+.ctxBar b{font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ctxBar i{font-style:normal;color:var(--amber);flex:0 0 auto}
+.ctxBar svg{width:13px;height:13px;stroke:var(--muted);stroke-width:1.8;fill:none;stroke-linecap:round;
+flex:0 0 auto;transform:rotate(180deg)}
 .searchWrap{display:none;padding:0 12px 10px;max-width:880px;margin:0 auto}
 .searchWrap.on{display:block}
 .searchWrap input{width:100%;height:44px;border-radius:12px;border:1px solid var(--line);
 background:var(--card);padding:0 14px}
 .searchWrap input:focus{outline:none;border-color:var(--amber)}
+/* подсказки поиска: список найденных позиций, тап — переход к строке в её разделе */
+.sugg{margin-top:8px;background:var(--card);border-radius:12px;box-shadow:var(--shadow);
+overflow:hidden;max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sgI{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;border:0;
+background:transparent;padding:10px 14px;min-height:52px;cursor:pointer;text-align:left;color:var(--ink);
+border-bottom:1px solid color-mix(in oklab,var(--line) 30%,transparent);font-family:inherit}
+.sgI:last-child{border-bottom:0}
+.sgI:hover{background:color-mix(in oklab,var(--zebra) 60%,transparent)}
+.sgI b{font-weight:500;font-size:14.5px;line-height:1.3}
+.sgI u{text-decoration:none;font-size:11.5px;color:var(--muted);line-height:1.3}
+.sgI mark{background:color-mix(in oklab,var(--amber) 30%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+.sgEmpty{padding:16px 14px;color:var(--muted);font-size:13px;text-wrap:pretty}
+@keyframes hitFlash{0%,55%{box-shadow:inset 0 0 0 2px var(--amber)}100%{box-shadow:inset 0 0 0 2px transparent}}
+.row.hit .rowIn,.tlI.hit,.grp.hit{animation:hitFlash 2.2s var(--ease);border-radius:10px}
 
 main{flex:1;max-width:880px;width:100%;margin:0 auto;
   padding:18px max(16px,env(safe-area-inset-left)) 140px max(16px,env(safe-area-inset-right))}
@@ -170,6 +204,18 @@ text-align:center;min-width:0;transition:transform .2s var(--ease)}
 .wCell b{font-family:var(--serif);font-weight:400;font-size:16px;display:block}
 .wCell u{display:block;text-decoration:none;font-size:11px;color:var(--muted)}
 
+/* погода на сегодня — отдельной карточкой, чтобы не путалась с прогнозом на дни поездки */
+.wxNow{padding:16px;display:flex;flex-direction:column;gap:10px}
+.wxNowTop{display:flex;align-items:center;gap:13px}
+.wxNowTop>svg{width:38px;height:38px;stroke:var(--amber);stroke-width:1.4;fill:none;
+stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.wxT{font-family:var(--serif);font-size:31px;line-height:1;flex:0 0 auto}
+.wxD{flex:1;min-width:0}
+.wxD b{display:block;font-weight:500;font-size:14px;text-wrap:pretty}
+.wxD small{display:block;color:var(--muted);font-size:12px;margin-top:2px;text-wrap:pretty}
+.wxFoot{font-size:11.5px;color:var(--muted);text-wrap:pretty}
+button.wCell{border:0;font:inherit;cursor:pointer;color:var(--ink);width:100%;display:block}
+.wCell.trip{box-shadow:var(--shadow),inset 0 0 0 1.5px color-mix(in oklab,var(--amber) 55%,transparent)}
 .crew{display:grid;grid-template-columns:1fr;gap:12px}
 .crewC{position:relative;background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);
 padding:16px 12px 14px;text-align:center;min-width:0;transition:transform .18s var(--ease),box-shadow .22s var(--ease)}
@@ -373,8 +419,26 @@ border-top:1px solid color-mix(in oklab,var(--line) 42%,transparent);padding:10p
 .shopBtn{height:40px;padding:0 14px;border-radius:11px;border:1px solid var(--amber);color:var(--amber);
 background:transparent;font-size:13.5px;cursor:pointer;flex:0 0 auto;white-space:nowrap;transition:background .2s}
 .shopBtn:hover{background:color-mix(in oklab,var(--amber) 10%,transparent)}
-.assign{display:flex;align-items:center;gap:7px;flex-wrap:wrap;width:100%;padding-left:41px;margin-top:7px}
-.assign>span{font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+/* строка позиции в закупке собрана из трёх понятных полос, каждая переносится целиком:
+   числа · статус и корзина · кто покупает. Раньше «план» и «факт» разъезжались по разным строкам */
+.buyNums{display:flex;align-items:flex-end;gap:6px;flex-wrap:nowrap;min-width:0}
+.buyNums .numIn{width:54px}
+.buyNums .unIn{width:48px}
+.buyNums .mul{color:var(--muted);align-self:center;flex:0 0 auto}
+.buyMeta{display:flex;align-items:center;gap:8px;flex:1 1 232px;min-width:0}
+.buyMeta .selSt{flex:1 1 auto;min-width:0;max-width:220px}
+.buyMeta .trashB{margin-left:0}
+.buyWho{display:flex;align-items:center;gap:8px;width:100%;padding-left:40px;margin-top:8px}
+.buyWho>span{font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;flex:0 0 auto}
+.buyWho .pchip{min-height:44px;height:auto;flex:1 1 auto;justify-content:flex-start;min-width:0}
+.buyWho .pchip b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.buyWho .pchip.none b{color:var(--muted);font-family:var(--sans);font-size:13px}
+/* в «Сборах» нижняя полоса тоже делится на осмысленные строки, а не переносится как придётся */
+.gearLine{display:flex;align-items:center;gap:7px;flex:1 1 100%;min-width:0;flex-wrap:wrap}
+.gearOwn{display:flex;align-items:center;gap:7px;flex:1 1 100%;min-width:0;flex-wrap:wrap}
+.gearOwn .pchip{gap:5px;padding:0 9px 0 7px}
+.gearOwn .pchip b{font-family:var(--serif);font-size:14px}
+.gearOwn .pchip span.qty{font-size:12px;color:var(--muted)}
 
 /* режим магазина */
 .shop{position:fixed;inset:0;z-index:70;background:var(--bg);display:flex;flex-direction:column;
@@ -608,8 +672,9 @@ display:grid;place-items:center;font-family:var(--serif);font-size:13px;color:#f
 .meBar small{display:block;color:var(--muted);font-size:12px}
 .meBar button{height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--line);
 background:transparent;font-size:13px;cursor:pointer;white-space:nowrap}
-.priceCell{display:flex;align-items:center;gap:4px}
-.priceCell u{text-decoration:none;font-size:10.5px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.priceCell{display:flex;flex-direction:column;align-items:center;gap:0;flex:0 0 auto}
+.priceCell u{text-decoration:none;font-size:10px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;
+margin-top:1px}
 .numIn.fact{border-bottom-style:solid;border-bottom-color:var(--pine)}
 .boot{padding:60px 24px;text-align:center;font-family:Georgia,serif;font-size:17px;color:#6C7570}
 .crash{margin:16px;padding:18px;border-radius:14px;background:#F3E4CD;color:#7A3B18;font-size:14px;line-height:1.5;
@@ -3249,6 +3314,11 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 function el(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;}
+/* перерисовать содержимое узла заранее собранной разметкой (всё чужое проходит через esc) */
+function setHtml(node,html){
+  while(node.firstChild)node.removeChild(node.firstChild);
+  node.appendChild(document.createRange().createContextualFragment(html));
+}
 
 /* ─────────── состояние ─────────── */
 var SEED=JSON.parse($('#seed').textContent);
@@ -3348,6 +3418,88 @@ function mergeSeed(old,seed){
   out.menu=out.menu||seed.menu;out.seedAdded=added;
   return out;
 }
+/* ─── назначенные задачи ───
+   Когда кто-то создаёт позицию и вешает её на другого, тому приходит накопительное уведомление
+   «Костя добавил тебе 3 задачи». Кто поручил — в поле `as` (у закупки и у снаряжения);
+   если его нет, считаем автором позиции `by`. Отметка «что уже видел» лежит в браузере,
+   у каждого своя: в общий документ она не идёт, иначе один прочитал — и у всех погасло. */
+function markAssigned(item,who){
+  if(who&&who!==S.ui.me)item.as=S.ui.me||'';
+}
+function taskAuthor(item){return item.as||item.by||'';}
+function seenKey(){return LSKEY+'.seen.'+(S.ui.me||'guest');}
+function seenGet(){try{return +localStorage.getItem(seenKey())||0;}catch(e){return 0;}}
+function seenSet(t){try{localStorage.setItem(seenKey(),String(t));}catch(e){}}
+function myTasks(){
+  var me=S.ui.me, out=[];
+  if(!me)return out;
+  S.buy.forEach(function(p){
+    var a=taskAuthor(p);
+    if(p.who===me&&a&&a!==me&&!p.b)out.push({kind:'buy',i:p.i,n:p.n,by:a,ua:p.ua||0,item:p,
+      tab:'buy',what:'купить'});
+  });
+  S.gear.forEach(function(g){
+    var a=taskAuthor(g);
+    if((g.o[me]||0)>0&&a&&a!==me&&(g.s[me]||0)<ST_OK)out.push({kind:'gear',i:g.i,n:g.n,by:a,ua:g.ua||0,item:g,
+      tab:'gear',what:'везти'});
+  });
+  out.sort(function(x,y){return y.ua-x.ua;});
+  return out;
+}
+function newTasks(){var t=seenGet();return myTasks().filter(function(x){return x.ua>t;});}
+/* «Костя добавил тебе 3 задачи» — или «Тебе добавили 4 задачи», если поручали разные люди */
+function tasksTitle(list){
+  var who={},names=[];
+  list.forEach(function(x){if(!who[x.by]){who[x.by]=1;var p=person(x.by);if(p)names.push(p.name);}});
+  var n=list.length, tail=n+' '+plural(n,'задачу','задачи','задач');
+  return names.length===1?(names[0]+' добавил тебе '+tail):('Тебе добавили '+tail);
+}
+function tasksSeen(){
+  var mx=0;myTasks().forEach(function(x){if(x.ua>mx)mx=x.ua;});
+  seenSet(Math.max(mx,Date.now()-1));
+}
+function tasksSheet(){
+  var list=myTasks();
+  sheet(function(c,close){
+    c.appendChild(el('h3',null,'Что на тебе'));
+    if(!list.length){
+      c.appendChild(el('p',null,'Ничего не поручено — свободен.'));
+      return;
+    }
+    c.appendChild(el('p',null,'Тап по строке — переход к ней в её разделе.'));
+    list.forEach(function(x){
+      var a=person(x.by);
+      var it=el('button','mItem','<span>'+esc(x.n)+'<br><u style="margin:0">'
+        +esc((x.what==='купить'?'Закупка · купить':'Сборы · везти')
+          +(a?(' · поручил '+a.name):''))+'</u></span>');
+      it.onclick=function(){close();tasksSeen();jumpTo(x);renderSec('home');};
+      c.appendChild(it);
+    });
+    var r=el('div','btnRow');var ok=el('button','pri','Всё понятно');
+    ok.onclick=function(){tasksSeen();close();renderSec('home');};
+    r.appendChild(ok);c.appendChild(r);
+  });
+}
+/* плашка на «Поездке»: висит, пока не откроешь список, — тост бы потерялся */
+function plashTasks(){
+  var fresh=newTasks();
+  if(!fresh.length)return null;
+  var p=el('div','plash');
+  var all=myTasks().length;
+  p.appendChild(document.createRange().createContextualFragment(
+    '<div>'+esc(tasksTitle(fresh))+'.'
+    +'<small>'+esc(fresh.map(function(x){return x.n;}).slice(0,3).join(', ')
+      +(fresh.length>3?' и ещё '+(fresh.length-3):''))+'.'
+    +(all>fresh.length?(' Всего на тебе '+all+'.'):'')+'</small></div>'));
+  var box=el('div','plashB');
+  var b1=el('button','pri','Показать');
+  b1.onclick=function(){tasksSheet();};
+  var b2=el('button',null,'Понятно');
+  b2.onclick=function(){tasksSeen();renderSec('home');};
+  box.appendChild(b1);box.appendChild(b2);
+  $('div',p).appendChild(box);
+  return p;
+}
 /* ─── удалённые позиции: помним, что убрали и когда, иначе слияние их воскресит ─── */
 function forget(kind,item){S.del=S.del||{};S.del[kind+':'+item.i]=Date.now();}
 function revive(kind,item){if(S.del)delete S.del[kind+':'+item.i];}
@@ -3408,7 +3560,7 @@ function mergeInto(inc){
       if(take!==av){a.s[p]=take;m++;}
     });
     if((b.ua||0)>(a.ua||0)){
-      e+=fields(a,b,['n','c','sec','by']);
+      e+=fields(a,b,['n','c','sec','by','as']);
       if(JSON.stringify(b.o)!==JSON.stringify(a.o)){a.o=cl(b.o);e++;}
       if(JSON.stringify(b.q||{})!==JSON.stringify(a.q||{})){a.q=cl(b.q||{});e++;}
       a.ua=b.ua;
@@ -3419,7 +3571,7 @@ function mergeInto(inc){
     var m=0,e=0;
     if(!!b.b!==!!a.b){if((b.ua||0)>=(a.ua||0)||b.b){a.b=!!b.b;m++;}}
     if((b.ua||0)>(a.ua||0)){
-      e+=fields(a,b,['n','q','pr','prf','st','u','who','sec','c','by']);
+      e+=fields(a,b,['n','q','pr','prf','st','u','who','sec','c','by','as']);
       a.ua=b.ua;
     }
     return {marks:m,edits:e};
@@ -3623,14 +3775,21 @@ var TABS=[
  {id:'log',t:'Логистика',icon:'road',ttl:'Логистика'},
  {id:'menu',t:'Меню',icon:'menu',ttl:'Меню'}
 ];
-var app=$('#app'), searchQ='';
+var app=$('#app');
+/* кого показываем в «Сборах». false — «как выбранное я»; иначе явный фильтр (его ставит поиск).
+   Отдельная переменная нужна, чтобы переход к чужой вещи не менял выбранного участника и права */
+var gearFilter=false;
+function gearWho(){return gearFilter===false?(S.ui.me||null):gearFilter;}
 app.innerHTML='<div class="shell">'
 +'<header class="hdr"><div id="warn"></div><div class="hdrIn">'
 +'<div class="hdrTitle" id="hTtl"></div>'
++'<button class="meBtn" id="bMe" aria-label="Кто заполняет"><span class="av"></span></button>'
 +'<button class="ib" id="bSearch" aria-label="Поиск">'+svg('search')+'</button>'
 +'<button class="saveBtn" id="bSave">'+svg('dl')+'<span>Сохранить файл</span></button>'
 +'<button class="ib" id="bMenu" aria-label="Ещё">'+svg('dots')+'</button>'
-+'</div><div class="searchWrap" id="sw"><input type="search" id="sq" placeholder="Найти позицию" autocomplete="off"></div></header>'
++'</div><div class="ctxBar" id="ctxBar"></div>'
++'<div class="searchWrap" id="sw"><input type="search" id="sq" placeholder="Найти позицию" autocomplete="off">'
++'<div class="sugg" id="sugg" style="display:none"></div></div></header>'
 +'<main id="main"></main>'
 +'<nav class="nav"><div class="navIn" id="navIn"><i class="navBar" id="navBar"></i></div></nav>'
 +'</div><div class="toasts" id="toasts"></div><div id="modals"></div>'
@@ -3651,6 +3810,44 @@ function syncNav(){
   $('#hTtl').textContent=TABS[i].ttl;
   $('#bSearch').style.display='';
   $('#bSave').style.display=canSaveFile()?'':'none';
+  paintMeBtn();
+}
+/* ─── кто заполняет: аватарка держится в шапке на всех разделах ─── */
+function paintMeBtn(){
+  var b=document.getElementById('bMe'); if(!b)return;
+  var p=meP(), av=$('.av',b);
+  b.classList.toggle('none',!p);
+  if(p){
+    av.style.backgroundColor=p.color;
+    av.style.backgroundImage=p.photo?('url('+p.photo+')'):'none';
+    setHtml(av,p.photo?'':esc(p.ini));
+    b.title='Ты — '+p.name+' · '+permName(p)+'. Тап — сменить.';
+    b.setAttribute('aria-label','Ты — '+p.name+'. Сменить участника');
+  }else{
+    av.style.backgroundColor='transparent';av.style.backgroundImage='none';
+    setHtml(av,svg('user'));
+    b.title='Участник не выбран — тап, чтобы выбрать себя';
+    b.setAttribute('aria-label','Выбрать себя');
+  }
+}
+/* ─── полоска контекста: в каком разделе и в какой группе сейчас находишься ───
+   На длинных списках без неё непонятно, к чему относятся строки на экране. */
+function paintCtx(){
+  var bar=document.getElementById('ctxBar'); if(!bar)return;
+  if($('#sw').classList.contains('on')||window.scrollY<140){bar.classList.remove('on');return;}
+  var top=window.scrollY+104, cur=null;
+  $$('#s-'+S.ui.tab+' .grp').forEach(function(g){
+    var r=g.getBoundingClientRect();
+    if(r.top+window.scrollY<=top&&r.bottom+window.scrollY>top)cur=g;
+  });
+  var sec=TABS.filter(function(t){return t.id===S.ui.tab;})[0];
+  var name=cur?($('.grpName',cur).textContent||'').trim():'';
+  var txt=(sec?sec.ttl:'')+(name?' · '+name:'');
+  if(bar._txt===txt&&bar.classList.contains('on'))return;
+  bar._txt=txt;
+  setHtml(bar,'');
+  bar.appendChild(el('span',null,svg('chev')+'<b>'+esc(txt)+'</b>'));
+  bar.classList.add('on');
 }
 function go(tab){
   S.ui.tab=tab; persist(); syncNav();
@@ -3669,14 +3866,112 @@ window.addEventListener('scroll',function(){
     TABS.forEach(function(tb){var n=document.getElementById('s-'+tb.id);
       if(n&&n.getBoundingClientRect().top+window.scrollY<=y)best=tb.id;});
     if(best!==S.ui.tab){S.ui.tab=best;syncNav();}
+    paintCtx();
   },140);
 },{passive:true});
+/* ─── поиск: подсказки по существующим позициям и переход к найденной строке ───
+   Раньше поле просто фильтровало списки — было непонятно, что и где нашлось.
+   Теперь под полем список находок с указанием раздела, тап прокручивает к строке,
+   раскрыв её группу, и подсвечивает найденное. */
+function searchIndex(){
+  var out=[];
+  function sec(list,id){var t='';list.forEach(function(x){if(x.id===id)t=x.t;});return t;}
+  S.gear.forEach(function(g){out.push({kind:'gear',i:g.i,n:g.n,c:g.c||'',tab:'gear',
+    where:'Сборы · '+sec(S.gearSections,g.sec),item:g});});
+  S.buy.forEach(function(p){out.push({kind:'buy',i:p.i,n:p.n,c:p.c||'',tab:'buy',
+    where:'Закупка · '+sec(S.buySections,p.sec),item:p});});
+  S.route.forEach(function(r){out.push({kind:'route',i:r.i,n:r.n,c:r.c||'',tab:'log',
+    where:'Логистика · маршрут и тайминг',item:r});});
+  S.ideas.forEach(function(q){out.push({kind:'ideas',i:q.i,n:q.n,c:q.why||'',tab:'log',
+    where:'Логистика · что уточнить',item:q});});
+  S.menu.forEach(function(d){(d.dishes||[]).forEach(function(x){
+    out.push({kind:'menu',i:d.i,n:x.n,c:x.q||'',tab:'menu',where:'Меню · '+d.t,item:d});});});
+  return out;
+}
+function searchFind(q){
+  q=String(q||'').trim().toLowerCase();
+  if(q.length<2)return [];
+  var head=[], tail=[];
+  searchIndex().forEach(function(h){
+    var n=(h.n||'').toLowerCase(), c=(h.c||'').toLowerCase();
+    var pn=n.indexOf(q);
+    if(pn===0)head.push(h);
+    else if(pn>0)tail.push(h);
+    else if(c.indexOf(q)>=0)tail.push(h);
+  });
+  return head.concat(tail).slice(0,14);
+}
+function markUp(text,q){
+  var s=String(text||''), p=s.toLowerCase().indexOf(String(q).toLowerCase());
+  if(p<0||!q)return esc(s);
+  return esc(s.slice(0,p))+'<mark>'+esc(s.slice(p,p+q.length))+'</mark>'+esc(s.slice(p+q.length));
+}
+function paintSugg(){
+  var box=$('#sugg'), q=$('#sq').value.trim();
+  if(!box)return;
+  setHtml(box,'');
+  if(q.length<2){box.style.display='none';return;}
+  box.style.display='';
+  var hits=searchFind(q);
+  if(!hits.length){
+    box.appendChild(el('div','sgEmpty','Ничего не нашлось. Поищи по части слова — например «чайн» или «бензин».'));
+    return;
+  }
+  hits.forEach(function(h){
+    var b=el('button','sgI','<b>'+markUp(h.n,q)+'</b><u>'+esc(h.where)+(h.c?(' · '+esc(h.c)):'')+'</u>');
+    b.onclick=function(){jumpTo(h);};
+    box.appendChild(b);
+  });
+}
+function closeSearch(){
+  var sw=$('#sw');if(!sw)return;
+  sw.classList.remove('on');$('#sq').value='';
+  var box=$('#sugg');if(box){setHtml(box,'');box.style.display='none';}
+}
+function jumpTo(h){
+  closeSearch();
+  var tab=h.tab, key=null, note='';
+  if(h.kind==='gear'){
+    /* вещь может быть не в личном списке — тогда показываем общую базу.
+       Выбранное «я» при этом не трогаем: права остаются прежними */
+    if(gearWho()&&!((h.item.o||{})[gearWho()]>0)){
+      gearFilter=null;
+      note='«'+h.n+'» в твоём списке нет — показал общую базу.';
+    }
+    key='g_'+h.item.sec+(gearWho()||'');
+  }
+  else if(h.kind==='buy')key='b_'+h.item.sec;
+  else if(h.kind==='menu')key='m_'+h.item.i;
+  if(key){S.ui.open[key]=true;persist();}
+  renderSec(tab);
+  S.ui.tab=tab;syncNav();
+  /* именно setTimeout, а не кадр отрисовки: в свёрнутой вкладке кадры не приходят */
+  setTimeout(function(){
+    var node=document.querySelector('#s-'+tab+' [data-hit="'+h.i+'"]');
+    if(!node){go(tab);return;}
+    var top=Math.max(0,node.getBoundingClientRect().top+window.scrollY-96);
+    try{window.scrollTo({top:top,behavior:'smooth'});}catch(e){window.scrollTo(0,top);}
+    /* если плавная прокрутка не сработала (свёрнутая вкладка, отключённая анимация) — доводим сразу */
+    setTimeout(function(){if(Math.abs(window.scrollY-top)>40)window.scrollTo(0,top);},420);
+    node.classList.remove('hit');void node.offsetWidth;node.classList.add('hit');
+    setTimeout(function(){node.classList.remove('hit');},2400);
+    if(note)toast(note,null,null,5000);
+  },0);
+}
+$('#bMe').onclick=whoAmI;
 $('#bSearch').onclick=function(){
   var sw=$('#sw'); sw.classList.toggle('on');
-  if(sw.classList.contains('on'))$('#sq').focus();
-  else{searchQ='';$('#sq').value='';render();}
+  if(sw.classList.contains('on')){$('#sq').focus();$('#ctxBar').classList.remove('on');}
+  else{closeSearch();paintCtx();}
 };
-$('#sq').oninput=function(){searchQ=this.value.trim().toLowerCase();render();};
+$('#sq').oninput=paintSugg;
+$('#sq').onkeydown=function(e){
+  if(e.key==='Escape'){closeSearch();return;}
+  if(e.key==='Enter'){
+    var first=$('#sugg .sgI');
+    if(first){e.preventDefault();first.click();}
+  }
+};
 window.addEventListener('resize',syncNav);
 function renderWarn(){$('#warn').innerHTML=lsOk?''
   :'<div class="warnBar">Правки хранятся только до закрытия вкладки — не забудь сохранить файл.</div>';}
@@ -3696,7 +3991,7 @@ function render(){
     if(ix)sec.appendChild(pageHead(s));
     s.fn(sec); v.appendChild(sec);
   });
-  m.appendChild(v); syncNav(); renderWarn();
+  m.appendChild(v); syncNav(); renderWarn(); paintCtx();
   if(window.paintWho)paintWho();
   requestAnimationFrame(function(){
     $$('.grp',v).forEach(function(g){if(!g.classList.contains('closed'))openBody(g);});
@@ -3757,6 +4052,7 @@ function sheet(build){
 /* ══════════ ГЛАВНАЯ ══════════ */
 function viewHome(v){
   if(restoreCand)v.appendChild(plashRestore());
+  var pt=plashTasks(); if(pt)v.appendChild(pt);
   var d=daysLeft();
   var hero=el('div','heroPic');
   if(S.trip.hero)hero.style.backgroundImage='url('+S.trip.hero+')';
@@ -3828,18 +4124,74 @@ function viewHome(v){
    +'Алкоголь и сигареты — личное, считаются отдельно'+(G.pers?(': '+rub(G.pers)):'')+'.'));
   v.appendChild(s2);
 
+  /* погода теперь двумя отдельными блоками: что за окном сегодня и что ждёт в дни поездки.
+     Раньше была одна строка вида «3 августа, слабая морось, 20°, 51 %» — непонятно, к чему она */
+  var now=S.weather.today;
+  if(now&&now.t!=null){
+    var s0=el('div','sec');
+    s0.innerHTML='<div class="secTtl"><b>Сегодня</b><i></i><span>'+esc(wxPlace())+'</span></div>';
+    var nc=el('div','card wxNow');
+    var top0=el('div','wxNowTop',svg(wxIcon(now.prec))
+      +'<div class="wxT">'+esc(wxDeg(now.t))+'</div>'
+      +'<div class="wxD"><b>'+esc(now.prec||'—')+'</b><small>'
+      +(now.feels!=null?('ощущается как '+esc(wxDeg(now.feels))+' · '):'')
+      +'ветер '+esc(now.wind||'—')
+      +(now.hi!=null?(' · днём '+esc(wxDeg(now.hi))+', ночью '+esc(wxDeg(now.lo))):'')
+      +'</small></div>');
+    nc.appendChild(top0);
+    nc.appendChild(el('div','wxFoot',wxStale()
+      ?('Данные от '+esc(S.weather.updated||'прошлого раза')+' — сейчас без связи, свежее взять неоткуда.')
+      :('Обновлено '+esc(S.weather.updated||'—')+'. Обновляется само, пока лист открыт.')));
+    s0.appendChild(nc);
+    v.appendChild(s0);
+  }
+
   var s3=el('div','sec');
-  s3.innerHTML='<div class="secTtl"><b>Погода на поездку</b><i></i><span>'+esc(S.trip.place)+'</span></div>';
+  s3.innerHTML='<div class="secTtl"><b>Дни поездки</b><i></i><span>'+esc(S.trip.dates)+'</span></div>';
   var wr=el('div','wRow');
   S.weather.days.forEach(function(w){
-    wr.appendChild(el('div','wCell','<i>'+esc(w.wd)+' '+esc(w.d)+'</i>'+svg(wxIcon(w.prec))
-      +'<b>+'+esc(w.day)+'°</b><u>ночь +'+esc(w.night)+'°</u>'));
+    var cell=el('button','wCell'+(wxIsToday(w)?' trip':''),'<i>'+esc(w.wd)+' '+esc(w.d)+'</i>'+svg(wxIcon(w.prec))
+      +'<b>'+esc(wxDeg(w.day))+'</b><u>ночь '+esc(wxDeg(w.night))+'</u>');
+    cell.title=w.prec+' · ветер '+w.wind;
+    cell.onclick=function(){wxDaySheet(w);};
+    wr.appendChild(cell);
   });
   s3.appendChild(wr);
-  var wt=S.weather.days.map(function(w){return w.prec;}).join(' · ');
-  s3.appendChild(el('div','hint','Прогноз от '+esc(S.weather.updated)+'. '+esc(wt)+'.'));
+  s3.appendChild(el('div','hint','Тап по дню — осадки, ветер и заметка «что это значит для нас». '
+   +'Прогноз дальше двух недель метеослужбы не дают: до выезда цифры ещё поменяются.'));
   v.appendChild(s3);
 
+}
+/* температура всегда со знаком: «+19°», «−3°», «0°» */
+function wxDeg(t){
+  var n=Math.round(+t||0);
+  return (n>0?'+':(n<0?'−':''))+Math.abs(n)+'°';
+}
+function wxPlace(){return (S.trip.place||'').split('·')[0].trim()||S.trip.place||'';}
+/* прогноз старше суток — показываем это честно, а не выдаём за сегодняшний */
+function wxStale(){
+  var ts=S.weather&&S.weather.ts;
+  return !ts||(Date.now()-ts)>26*3600*1000;
+}
+function wxIsToday(w){
+  var d=new Date(), s=('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2);
+  return w&&w.d===s;
+}
+function wxDaySheet(w){
+  sheet(function(c,close){
+    c.appendChild(el('h3',null,w.wd+', '+w.d));
+    c.appendChild(el('p',null,esc(w.prec||'—')+' · днём '+wxDeg(w.day)+', ночью '+wxDeg(w.night)
+      +' · ветер '+esc(w.wind||'—')));
+    c.appendChild(el('p',null,'Что это значит для нас'));
+    var box=el('div','fld');
+    var t=edText(function(){return w.means;},function(x){w.means=x;touch();},'edT',
+      'например: дождь днём — тент ставим первым');
+    t.style.cssText+=';min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:11px';
+    box.appendChild(t);c.appendChild(box);
+    var r=el('div','btnRow');var ok=el('button','pri','Готово');
+    ok.onclick=function(){close();renderSec('home');};
+    r.appendChild(ok);c.appendChild(r);
+  });
 }
 function viewCrew(v){
   var me=meP();
@@ -4172,7 +4524,7 @@ function askKeys(g){
   return out;
 }
 function viewGear(v){
-  var me=S.ui.me||null;
+  var me=gearWho();
   var lg=el('div','card');
   var leg=el('div','legend');
   ST_NAME.forEach(function(n,i){
@@ -4190,11 +4542,11 @@ function viewGear(v){
   var who=el('div','who');
   var all=gearProg(null);
   var bAll=el('button',(me?'':'on'),'<span>Все</span><u>'+all.done+'/'+all.all+'</u>');
-  bAll.onclick=function(){S.ui.me=null;persist();renderSec('gear');};who.appendChild(bAll);
+  bAll.onclick=function(){S.ui.me=null;gearFilter=false;persist();renderSec('gear');};who.appendChild(bAll);
   S.people.forEach(function(p){
     var pr=gearProg(p.id);
     var b=el('button',(me===p.id?'on':''),avaHtml(p)+'<span>'+esc(p.name)+'</span><u>'+pr.done+'/'+pr.all+'</u>');
-    b.onclick=function(){S.ui.me=p.id;persist();renderSec('gear');};who.appendChild(b);
+    b.onclick=function(){S.ui.me=p.id;gearFilter=false;persist();renderSec('gear');};who.appendChild(b);
   });
   v.appendChild(who);
   v.appendChild(el('div','hint', me
@@ -4205,12 +4557,10 @@ function viewGear(v){
     var items=S.gear.filter(function(g){
       if(g.sec!==sc.id)return false;
       if(me&&!(g.o[me]>0))return false;
-      if(searchQ&&g.n.toLowerCase().indexOf(searchQ)<0)return false;
       return true;});
-    if(searchQ&&!items.length)return;
     var pg=secProg(sc.id,me);
     var key='g_'+sc.id+(me||'');
-    var closed=S.ui.open[key]===false||(S.ui.open[key]==null&&!searchQ&&sc.id!=='od');
+    var closed=S.ui.open[key]===false||(S.ui.open[key]==null&&sc.id!=='od');
     var grp=el('div','grp'+(closed?' closed':''));
     var h=el('button','grpH','<span class="grpCnt">'+pg.done+'\u2009/\u2009'+pg.all+'</span>'
       +'<span class="grpName">'+esc(sc.t)+'</span>'
@@ -4220,7 +4570,7 @@ function viewGear(v){
     var body=el('div','grpBody');
     lazyBody(grp,body,function(b){
       items.forEach(function(g,ix){var r=gearRow(g,me,grp,sc.id);r.style.setProperty('--d',Math.min(ix,12)*14+'ms');b.appendChild(r);});
-      if(!items.length&&!searchQ)b.appendChild(el('div','empty','<b>Здесь пусто</b>Из этого раздела ты ничего не везёшь. Добавь строкой ниже, если что-то вспомнил.'));
+      if(!items.length)b.appendChild(el('div','empty','<b>Здесь пусто</b>Из этого раздела ты ничего не везёшь. Добавь строкой ниже, если что-то вспомнил.'));
       b.appendChild(gearAdd(grp,sc.id,me,b));
     });
     grp.appendChild(body);
@@ -4251,6 +4601,7 @@ function chkBtn(getS,setS,after){
 }
 function gearRow(g,me,grp,sec){
   var row=el('div','row'), inn=el('div','rowIn');
+  row.setAttribute('data-hit',g.i);
   row.appendChild(el('div','rowDel','Удалить')); row.appendChild(inn);
   var top=el('div','rowTop');
   function doneNow(){return me?((g.s[me]||0)>=ST_OK):pairs(g).every(function(p){return (g.s[p]||0)>=ST_OK;});}
@@ -4307,33 +4658,47 @@ function gearRow(g,me,grp,sec){
   inn.appendChild(qNode);
 
   var bot=el('div','rowBot');
+  var del=el('button','trashB',svg('trash'));del.title='Удалить позицию';
+  del.onclick=function(){delGear(g,row,grp,sec,me);};
   if(me){
-    bot.appendChild(stepper(function(){return g.o[me]||0;},function(n){g.o[me]=n;itouch(g);},'шт.'));
+    /* две осмысленные полосы: сколько везу — и что с этим делать. Иначе на 390 px
+       кнопки переносились по одной и строка выглядела сломанной */
+    var l1=el('div','gearLine');
+    l1.appendChild(stepper(function(){return g.o[me]||0;},function(n){g.o[me]=n;itouch(g);},'шт.'));
+    l1.appendChild(del);
+    var l2=el('div','gearLine');
     var mv=el('button','pchip','<span>'+svg('user','gl')+'</span><b>передать</b>');
     mv.title='Передать другому участнику';
     mv.onclick=function(){if(!canEditItem(g))return needRight();movePerson(g,me);};
-    bot.appendChild(mv);
-    var ab=el('button','askB'+(hasAsk(g,me)?' on':''),svg('ask')+'<span>'+(hasAsk(g,me)?'не могу взять':'не могу взять')+'</span>');
+    l2.appendChild(mv);
+    var ab=el('button','askB'+(hasAsk(g,me)?' on':''),svg('ask')+'<span>не могу взять</span>');
     ab.onclick=function(){askSheet(g,me,function(){paintQ();
       ab.className='askB'+(hasAsk(g,me)?' on':'');
       if(stLbl)paintLbl();});};
-    bot.appendChild(ab);
+    l2.appendChild(ab);
+    bot.appendChild(l1);bot.appendChild(l2);
   }else{
+    /* общая база: имена целиком, а не ряд инициалов — сразу видно, кто везёт и сколько */
+    var own=el('div','gearOwn');
     pairs(g).forEach(function(p){
       if(p==='base'){
         var cb=el('button','pchip base');cb.dataset.s=g.s.base||0;
-        cb.innerHTML='<span class="av" style="background:#8A8F94">'+svg('user','gl')+'</span><b>никто</b>'+svg(ST_ICON[g.s.base||0],'gl');
-        cb.title='Пока не распределено · '+ST_NAME[g.s.base||0];
-        cb.onclick=function(){g.s.base=((g.s.base||0)+1)%ST_N;itouch(g);
-          cb.dataset.s=g.s.base;cb.innerHTML='<span class="av" style="background:#8A8F94">'+svg('user','gl')+'</span><b>никто</b>'+svg(ST_ICON[g.s.base],'gl');
-          cb.title='Пока не распределено · '+ST_NAME[g.s.base];
+        function paintBase(){
+          cb.dataset.s=g.s.base||0;
+          setHtml(cb,'<span class="av" style="background:#8A8F94">'+svg('user','gl')+'</span>'
+            +'<b>пока никто не везёт</b>'+svg(ST_ICON[g.s.base||0],'gl'));
+          cb.title='Пока не распределено · '+ST_NAME[g.s.base||0];
+        }
+        paintBase();
+        cb.onclick=function(){g.s.base=((g.s.base||0)+1)%ST_N;itouch(g);paintBase();
           cb.classList.remove('pop');void cb.offsetWidth;cb.classList.add('pop');refresh();};
-        bot.appendChild(cb);return;
+        own.appendChild(cb);return;
       }
       var pp=person(p), c=el('button','pchip');
       function paint(){
         c.dataset.s=g.s[p]||0;
-        c.innerHTML=avaHtml(pp)+'<b>'+esc(pp.ini)+'</b><span>'+ru(g.o[p])+'</span>'+svg(ST_ICON[g.s[p]||0],'gl');
+        setHtml(c,avaHtml(pp)+'<b>'+esc(pp.name)+'</b><span class="qty">×'+ru(g.o[p])+'</span>'
+          +svg(ST_ICON[g.s[p]||0],'gl'));
         c.title=pp.name+' · '+ru(g.o[p])+' шт. · '+ST_NAME[g.s[p]||0];
       }
       paint();
@@ -4341,14 +4706,16 @@ function gearRow(g,me,grp,sec){
         if(!canMark(p))return needRight('За '+rodit(pp.name)+' отмечать нельзя — это его список. Поставь задачу или напиши ему.');
         g.s[p]=((g.s[p]||0)+1)%ST_N;itouch(g);paint();
         c.classList.remove('pop');void c.offsetWidth;c.classList.add('pop');refresh();};
-      bot.appendChild(c);
+      own.appendChild(c);
     });
     var sum=0;Object.keys(g.o).forEach(function(k){sum+=g.o[k]||0;});
-    if(sum)bot.appendChild(el('span','totMini','всего '+ru(sum)));
+    if(sum)own.appendChild(el('span','totMini','всего '+ru(sum)));
+    bot.appendChild(own);
+    var acts=el('div','gearLine');
     var asg=el('button','pchip','<b>+ назначить</b>');
     asg.title='Назначить, кто везёт';
     asg.onclick=function(){assignSheet(g);};
-    bot.appendChild(asg);
+    acts.appendChild(asg);
     var ab2=el('button','askB'+(askKeys(g).length?' on':''),
       svg('ask')+'<span>не могу взять</span>');
     ab2.title='Отметить, что кто-то не может взять эту вещь';
@@ -4367,11 +4734,10 @@ function gearRow(g,me,grp,sec){
         });
       });
     };
-    bot.appendChild(ab2);
+    acts.appendChild(ab2);
+    acts.appendChild(del);
+    bot.appendChild(acts);
   }
-  var del=el('button','trashB',svg('trash'));del.title='Удалить позицию';
-  del.onclick=function(){delGear(g,row,grp,sec,me);};
-  bot.appendChild(del);
   inn.appendChild(bot);
   if(doneNow())inn.classList.add('done');
   paintQ();
@@ -4416,6 +4782,7 @@ function movePerson(g,from){
         var q=g.o[from]||1, st=g.s[from];
         delete g.o[from]; g.o[p.id]=(g.o[p.id]||0)+q;
         if(st!=null){g.s[p.id]=st;delete g.s[from];}
+        markAssigned(g,p.id);
         itouch(g);close();render();
         toast('«'+g.n+'» теперь везёт '+p.name+'.','Отменить',function(){
           var qq=g.o[p.id]||1;delete g.o[p.id];g.o[from]=qq;
@@ -4437,7 +4804,7 @@ function assignSheet(g){
       d.appendChild(document.createRange().createContextualFragment('<em>'+esc(p.name)+'</em>'));
       r.appendChild(d);
       r.appendChild(stepper(function(){return g.o[p.id]||0;},function(n){
-        if(n<=0)delete g.o[p.id];else g.o[p.id]=n; itouch(g);},''));
+        if(n<=0)delete g.o[p.id];else{g.o[p.id]=n;markAssigned(g,p.id);} itouch(g);},''));
       c.appendChild(r);
     });
     var r2=el('div','btnRow');var ok=el('button','pri','Готово');
@@ -4488,7 +4855,7 @@ function gearAdd(grp,sec,me,body){
     function commit(){
       var t=(inp.value||'').trim(); if(!t){inp.focus();return;}
       var g={i:'g_'+Date.now().toString(36)+Math.floor(Math.random()*99),sec:sec,n:t,o:{},s:{},q:{},by:(S.ui.me||''),nw:1,ua:Date.now()};
-      if(who)g.o[who]=qty||1;
+      if(who){g.o[who]=qty||1;markAssigned(g,who);}
       S.gear.push(g);touch();
       var node=gearRow(g,me,grp,sec);
       f.parentNode.insertBefore(node,f);
@@ -4521,13 +4888,9 @@ function swipeDel(row,inn,onDel){
 function viewBuy(v){
   v.appendChild(buyTotalsCard());
   S.buySections.forEach(function(sc){
-    var items=S.buy.filter(function(p){
-      if(p.sec!==sc.id)return false;
-      if(searchQ&&p.n.toLowerCase().indexOf(searchQ)<0)return false;
-      return true;});
-    if(searchQ&&!items.length)return;
+    var items=S.buy.filter(function(p){return p.sec===sc.id;});
     var pg=buyProg(sc.id), key='b_'+sc.id;
-    var closed=S.ui.open[key]===false||(S.ui.open[key]==null&&!searchQ&&sc.id!=='byt');
+    var closed=S.ui.open[key]===false||(S.ui.open[key]==null&&sc.id!=='byt');
     var grp=el('div','grp'+(closed?' closed':''));grp.dataset.sec=sc.id;
     var h=el('button','grpH','<span class="grpCnt">'+pg.done+'\u2009/\u2009'+pg.all+'</span>'
       +'<span class="grpName">'+esc(sc.t)+'</span>'
@@ -4583,6 +4946,7 @@ function updTotals(sec){
 }
 function buyRow(p,grp){
   var row=el('div','row'), inn=el('div','rowIn');
+  row.setAttribute('data-hit',p.i);
   row.appendChild(el('div','rowDel','Удалить'));row.appendChild(inn);
   var top=el('div','rowTop');
   var cb=el('button','chk');
@@ -4615,10 +4979,13 @@ function buyRow(p,grp){
   inn.appendChild(top);
 
   var bot=el('div','rowBot');
+  /* числа держим одной неразрывной полосой: «2 шт. × 900 план · — факт».
+     Раньше «план» и «факт» разъезжались по разным строкам — на 390 px это читалось как каша */
+  var nums=el('div','buyNums');
   var qi=el('input','numIn');qi.type='text';qi.inputMode='decimal';qi.value=ru(p.q);qi.setAttribute('aria-label','Количество');
-  var un=el('input','numIn');un.type='text';un.value=p.u;un.style.width='50px';un.setAttribute('aria-label','Единица');
+  var un=el('input','numIn unIn');un.type='text';un.value=p.u;un.setAttribute('aria-label','Единица');
   un.oninput=function(){p.u=un.value;itouch(p);};
-  var mul=el('span');mul.style.cssText='color:var(--muted)';mul.textContent='×';
+  var mul=el('span','mul');mul.textContent='×';
   var c1=el('div','priceCell'), c2=el('div','priceCell');
   var pi=el('input','numIn');pi.type='text';pi.inputMode='decimal';pi.value=ru(p.pr);pi.setAttribute('aria-label','Цена по плану');
   c1.appendChild(pi);c1.appendChild(el('u',null,'план'));
@@ -4630,7 +4997,9 @@ function buyRow(p,grp){
   qi.oninput=function(){p.q=parseFloat(String(qi.value).replace(',','.'))||0;itouch(p);recalc();};
   pi.oninput=function(){p.pr=parseFloat(String(pi.value).replace(',','.'))||0;itouch(p);recalc();};
   pf.oninput=function(){p.prf=parseFloat(String(pf.value).replace(',','.'))||0;itouch(p);recalc();};
-  [qi,un,mul,c1,c2].forEach(function(x){bot.appendChild(x);});
+  [qi,un,mul,c1,c2].forEach(function(x){nums.appendChild(x);});
+  bot.appendChild(nums);
+  var meta=el('div','buyMeta');
   var sel=el('select','selSt'+(p.st==='buy'?'':' skip'));sel.setAttribute('aria-label','Статус');
   var opts=[['buy','Купить']].concat(S.people.map(function(pp){return ['has_'+pp.id,'Есть у '+rodit(pp.name)];}));
   opts.push(['ask','Под вопросом']);opts.push(['skip','Не берём']);
@@ -4638,28 +5007,59 @@ function buyRow(p,grp){
     if(p.st===o[0])op.selected=true;sel.appendChild(op);});
   sel.onchange=function(){p.st=sel.value;itouch(p);
     sel.className='selSt'+(p.st==='buy'?'':' skip');recalc();updBuyHead(grp);};
-  sel.style.marginLeft='auto';
-  bot.appendChild(sel);
-  var del=el('button','trashB',svg('trash'));del.title='Удалить позицию';del.style.marginLeft='0';
+  meta.appendChild(sel);
+  var del=el('button','trashB',svg('trash'));del.title='Удалить позицию';
   del.onclick=function(){if(!canDel(p))return needEditor();delBuy(p,row,grp);};
-  bot.appendChild(del);
+  meta.appendChild(del);
+  bot.appendChild(meta);
   inn.appendChild(bot);
 
-  var asg=el('div','assign');
+  /* раньше здесь стоял ряд одних инициалов — «М К М Ж», по которому не понять, кто покупает.
+     Теперь одна строка с фотографией и именем того, на ком позиция; тап открывает выбор. */
+  var asg=el('div','buyWho');
   asg.appendChild(el('span',null,'Покупает'));
-  S.people.forEach(function(pp){
-    var c=el('button','pchip'+(p.who===pp.id?' sel':''),avaHtml(pp)+'<b>'+esc(pp.ini)+'</b>');
-    c.title='Покупает '+pp.name;
-    c.onclick=function(){p.who=(p.who===pp.id?'':pp.id);itouch(p);
-      $$('.pchip',asg).forEach(function(x){x.classList.remove('sel');});
-      if(p.who)c.classList.add('sel');
-      toast(p.who?('«'+p.n+'» покупает '+pp.name+'.'):'С «'+p.n+'» задание снято.');};
-    asg.appendChild(c);
-  });
+  var whoBtn=el('button','pchip');
+  function paintWhoBtn(){
+    var pp=p.who?person(p.who):null;
+    whoBtn.className='pchip'+(pp?' sel':' none');
+    setHtml(whoBtn,pp?(avaHtml(pp)+'<b>'+esc(pp.name)+'</b>')
+      :('<span class="av" style="background:#8A8F94">'+svg('user','gl')+'</span><b>не назначено</b>'));
+    whoBtn.title=pp?('Покупает '+pp.name+'. Тап — сменить или снять.'):'Тап — выбрать, кто покупает';
+  }
+  paintWhoBtn();
+  whoBtn.onclick=function(){buyWhoSheet(p,paintWhoBtn);};
+  asg.appendChild(whoBtn);
   inn.appendChild(asg);
   if(p.b)inn.classList.add('done');
   swipeDel(row,inn,function(){if(!canDel(p))return needEditor();delBuy(p,row,grp);});
   return row;
+}
+/* выбор того, кто покупает: список с именами и фотографиями вместо ряда инициалов */
+function buyWhoSheet(p,after){
+  sheet(function(c,close){
+    c.appendChild(el('h3',null,'Кто покупает «'+p.n+'»'));
+    c.appendChild(el('p',null,'У него это появится как задача. Снять поручение — «пока никто».'));
+    S.people.forEach(function(pp){
+      var it=el('button','mItem'+(p.who===pp.id?' on':''),
+        '<span>'+esc(pp.name)+'</span>'+(p.who===pp.id?'<u>покупает</u>':''));
+      it.insertBefore(document.createRange().createContextualFragment(avaHtml(pp)),it.firstChild);
+      var av=$('.av',it);if(av)av.style.cssText+=';width:26px;height:26px;font-size:12px';
+      it.onclick=function(){
+        setBuyWho(p,pp.id);close();if(after)after();
+        toast('«'+p.n+'» покупает '+pp.name+'.');
+      };
+      c.appendChild(it);
+    });
+    var no=el('button','mItem'+(p.who?'':' on'),svg('user')+'<span>Пока никто</span>');
+    no.onclick=function(){setBuyWho(p,'');close();if(after)after();toast('С «'+p.n+'» поручение снято.');};
+    c.appendChild(no);
+  });
+}
+/* «as» — кто поручил. По нему потом собирается уведомление «Костя добавил тебе 3 задачи» */
+function setBuyWho(p,id){
+  p.who=id;
+  p.as=(id&&id!==S.ui.me)?(S.ui.me||''):'';
+  itouch(p);
 }
 function delBuy(p,row,grp){
   var ix=S.buy.indexOf(p);if(ix<0)return;
@@ -4704,6 +5104,7 @@ function buyAdd(grp,sec,body){
       var t=(inp.value||'').trim();if(!t){inp.focus();return;}
       var p={i:'p_'+Date.now().toString(36)+Math.floor(Math.random()*99),sec:sec,n:t,q:qty||1,
         u:unit||'шт.',pr:price,prf:0,st:'buy',b:false,who:who,by:(S.ui.me||''),nw:1,ua:Date.now()};
+      if(who&&who!==S.ui.me)p.as=S.ui.me||'';
       S.buy.push(p);touch();
       f.parentNode.insertBefore(buyRow(p,grp),f);
       updBuyHead(grp);updTotals(sec);
@@ -4797,6 +5198,7 @@ function viewLog(v){
   var c5=el('div','card'), tl=el('div','tl');
   function routeRow(r){
     var i=el('div','tlI'+(r.done?' on':''));
+    i.setAttribute('data-hit',r.i);
     var d=el('button','tlD'+(r.done?' on':''),svg('check'));
     d.setAttribute('aria-label','Этап пройден');
     d.onclick=function(){r.done=!r.done;itouch(r);d.classList.toggle('on',r.done);i.classList.toggle('on',r.done);};
@@ -4837,6 +5239,7 @@ function viewLog(v){
   var c6=el('div','card');
   function ideaRow(q){
     var row=el('div','row'),inn=el('div','rowIn'),top=el('div','rowTop');
+    row.setAttribute('data-hit',q.i);
     var ch=chkBtn(function(){return q.done?2:0;},function(n){q.done=(n>=2);itouch(q);},
       function(){inn.classList.toggle('done',q.done);});
     top.appendChild(ch);
@@ -4918,6 +5321,7 @@ var viewMenu=function(v){
     var key='m_'+d.i;
     var closed=S.ui.open[key]===false||(S.ui.open[key]==null&&S.menu.indexOf(d)>0);
     var grp=el('div','grp'+(closed?' closed':''));
+    grp.setAttribute('data-hit',d.i);
     var h=el('div','grpH');h.style.cursor='default';
     var ch=chkBtn(function(){return d.done?2:0;},function(n){d.done=(n>=2);touch();},
       function(){$('.grpName',h).style.opacity=d.done?.5:1;});
@@ -5416,6 +5820,17 @@ document.addEventListener('focusout',function(){
   setTimeout(function(){if(pendingRender&&!editing())renderSoon();},250);
 });
 /* вливаем состояние с сервера в своё */
+var tasksKnown=null;
+/* пока лист открыт, о новых поручениях говорим сразу — плашка на «Поездке» может быть не видна */
+function tasksNotify(){
+  var n=newTasks().length;
+  if(tasksKnown===null){tasksKnown=n;return;}
+  if(n>tasksKnown){
+    var fresh=newTasks();
+    toast(tasksTitle(fresh)+'.','Показать',function(){tasksSheet();},9000);
+  }
+  tasksKnown=n;
+}
 function applyRemote(data){
   if(!data)return 0;
   var inc;
@@ -5425,6 +5840,7 @@ function applyRemote(data){
   if((inc.updatedAt||'')>(S.updatedAt||''))S.updatedAt=inc.updatedAt;
   applyAuth();
   if(r.total){persist();renderSoon();}
+  tasksNotify();
   return r.total;
 }
 function pull(force){
@@ -5600,6 +6016,27 @@ function tripDates(){
   }
   return out;
 }
+/* погода на сегодня — отдельным запросом: диапазон дат в основном запросе относится
+   к дням поездки, а «что сейчас за окном» нужно независимо от них */
+function fetchToday(pt){
+  return fetch('https://api.open-meteo.com/v1/forecast?latitude='+pt.latitude+'&longitude='+pt.longitude
+   +'&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m'
+   +'&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
+   +'&forecast_days=1&timezone=auto')
+   .then(function(r){return r.json();})
+   .then(function(j){
+     var cu=j&&j.current; if(!cu||cu.temperature_2m==null)return null;
+     var dd=j.daily, pp=(dd&&dd.precipitation_probability_max)?dd.precipitation_probability_max[0]:null;
+     return {
+       t:Math.round(cu.temperature_2m),
+       feels:(cu.apparent_temperature!=null)?Math.round(cu.apparent_temperature):null,
+       prec:(WX[cu.weather_code]||'—')+(pp!=null?(' ('+pp+' %)'):''),
+       wind:Math.round((cu.wind_speed_10m||0)/3.6)+' м/с',
+       hi:(dd&&dd.temperature_2m_max)?Math.round(dd.temperature_2m_max[0]):null,
+       lo:(dd&&dd.temperature_2m_min)?Math.round(dd.temperature_2m_min[0]):null
+     };
+   },function(){return null;});
+}
 function refreshWeather(silent){
   var q=placeQuery();
   setNet('work','погода…');
@@ -5612,11 +6049,20 @@ function refreshWeather(silent){
      return fetch('https://api.open-meteo.com/v1/forecast?latitude='+pt.latitude+'&longitude='+pt.longitude
       +'&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max'
       +'&timezone=auto&start_date='+ds[0]+'&end_date='+ds[ds.length-1])
-      .then(function(r){return r.json();}).then(function(f){return {pt:pt,f:f,ds:ds};});
+      .then(function(r){return r.json();})
+      .then(function(f){return fetchToday(pt).then(function(td){return {pt:pt,f:f,ds:ds,today:td};});});
    })
    .then(function(o){
      var d=o.f&&o.f.daily;
-     if(!d||!d.time||!d.time.length)throw new Error('прогноза на эти даты пока нет');
+     /* даже если до поездки ещё далеко и прогноза по дням нет, сегодняшнюю погоду сохраняем */
+     if(o.today){S.weather.today=o.today;S.weather.ts=Date.now();
+       S.weather.updated=fmtWhen(new Date().toISOString());}
+     if(!d||!d.time||!d.time.length){
+       if(o.today){touch();renderSec('home');setNet('ok');
+         if(!silent)toast('Погода на сегодня обновлена. Прогноза на дни поездки пока нет — они дальше двух недель.');
+         return;}
+       throw new Error('прогноза на эти даты пока нет');
+     }
      var WD=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
      var days=d.time.map(function(iso,i){
        var dt=new Date(iso+'T12:00:00');
@@ -5630,6 +6076,7 @@ function refreshWeather(silent){
      });
      S.weather.days=days;
      S.weather.updated=fmtWhen(new Date().toISOString());
+     S.weather.ts=Date.now();
      S.weather.src='Прогноз Open-Meteo для «'+o.pt.name+'» ('+o.pt.latitude.toFixed(2)+', '
        +o.pt.longitude.toFixed(2)+'), обновлён '+S.weather.updated+'.';
      touch();renderSec('home');
@@ -5641,6 +6088,21 @@ function refreshWeather(silent){
      setNet('ok');
      if(!silent)toast('Погода не обновилась: '+(e&&e.message?e.message:'нет связи')+'.');
    });
+}
+/* ── погода обновляется сама ──
+   Раз в полчаса — свежие цифры. Тянет только тот, у кого они устарели: остальные получат
+   их обычной синхронизацией и второй раз в Open-Meteo не пойдут. */
+var WX_EVERY=30*60*1000, wxBusy=false;
+function weatherStale(){
+  var ts=(S.weather&&S.weather.ts)||0;
+  return (Date.now()-ts)>WX_EVERY;
+}
+function weatherAuto(force){
+  if(wxBusy||!navigator.onLine)return;
+  if(document.hidden&&!force)return;      /* в фоне не ходим в сеть без нужды */
+  if(!weatherStale())return;
+  wxBusy=true;
+  refreshWeather(true).then(function(){wxBusy=false;},function(){wxBusy=false;});
 }
 
 /* ── скачать офлайн-копию / загрузить офлайн-файл ── */
@@ -5932,10 +6394,7 @@ function rtConnect(){
 (function startOnline(){
   mountSyncBar(); mountWho(); mountMenu(); mountPwa(); applyUrlUser(); applyAuth(); render(); paintWho();
   setNet('work','подключаюсь…');
-  pull(false).then(function(){
-    var stamp=(S.weather&&S.weather.updated)||'';
-    if(!S.trip.lat||!/\d{2}:\d{2}/.test(stamp))refreshWeather(true);
-  });
+  pull(false).then(function(){weatherAuto(true);});   /* на старте погоду берём сразу */
   rtConnect();
   var tick=0;
   setInterval(function(){
@@ -5944,13 +6403,14 @@ function rtConnect(){
     /* сокет живой — опрашиваем раз в минуту, иначе каждые 8 секунд */
     if(rtLive&&rtJoined){ if(tick%8===0)pull(false); }
     else if(tick%2===0)pull(false);
+    if(tick%75===0)weatherAuto();          /* раз в пять минут проверяем, не устарела ли погода */
   },4000);
   window.addEventListener('online',function(){setNet('work');rtConnect();pull(false);});
   window.addEventListener('offline',function(){setNet('off','нет сети — правки в браузере');});
   document.addEventListener('visibilitychange',function(){
     if(document.hidden)return;
     if(!rtSock||rtSock.readyState>1)rtConnect();
-    pull(false);
+    pull(false);weatherAuto();
   });
 })();
 

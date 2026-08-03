@@ -170,6 +170,17 @@ document.addEventListener('focusout',function(){
   setTimeout(function(){if(pendingRender&&!editing())renderSoon();},250);
 });
 /* вливаем состояние с сервера в своё */
+var tasksKnown=null;
+/* пока лист открыт, о новых поручениях говорим сразу — плашка на «Поездке» может быть не видна */
+function tasksNotify(){
+  var n=newTasks().length;
+  if(tasksKnown===null){tasksKnown=n;return;}
+  if(n>tasksKnown){
+    var fresh=newTasks();
+    toast(tasksTitle(fresh)+'.','Показать',function(){tasksSheet();},9000);
+  }
+  tasksKnown=n;
+}
 function applyRemote(data){
   if(!data)return 0;
   var inc;
@@ -179,6 +190,7 @@ function applyRemote(data){
   if((inc.updatedAt||'')>(S.updatedAt||''))S.updatedAt=inc.updatedAt;
   applyAuth();
   if(r.total){persist();renderSoon();}
+  tasksNotify();
   return r.total;
 }
 function pull(force){
@@ -354,6 +366,27 @@ function tripDates(){
   }
   return out;
 }
+/* погода на сегодня — отдельным запросом: диапазон дат в основном запросе относится
+   к дням поездки, а «что сейчас за окном» нужно независимо от них */
+function fetchToday(pt){
+  return fetch('https://api.open-meteo.com/v1/forecast?latitude='+pt.latitude+'&longitude='+pt.longitude
+   +'&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m'
+   +'&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
+   +'&forecast_days=1&timezone=auto')
+   .then(function(r){return r.json();})
+   .then(function(j){
+     var cu=j&&j.current; if(!cu||cu.temperature_2m==null)return null;
+     var dd=j.daily, pp=(dd&&dd.precipitation_probability_max)?dd.precipitation_probability_max[0]:null;
+     return {
+       t:Math.round(cu.temperature_2m),
+       feels:(cu.apparent_temperature!=null)?Math.round(cu.apparent_temperature):null,
+       prec:(WX[cu.weather_code]||'—')+(pp!=null?(' ('+pp+' %)'):''),
+       wind:Math.round((cu.wind_speed_10m||0)/3.6)+' м/с',
+       hi:(dd&&dd.temperature_2m_max)?Math.round(dd.temperature_2m_max[0]):null,
+       lo:(dd&&dd.temperature_2m_min)?Math.round(dd.temperature_2m_min[0]):null
+     };
+   },function(){return null;});
+}
 function refreshWeather(silent){
   var q=placeQuery();
   setNet('work','погода…');
@@ -366,11 +399,20 @@ function refreshWeather(silent){
      return fetch('https://api.open-meteo.com/v1/forecast?latitude='+pt.latitude+'&longitude='+pt.longitude
       +'&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max'
       +'&timezone=auto&start_date='+ds[0]+'&end_date='+ds[ds.length-1])
-      .then(function(r){return r.json();}).then(function(f){return {pt:pt,f:f,ds:ds};});
+      .then(function(r){return r.json();})
+      .then(function(f){return fetchToday(pt).then(function(td){return {pt:pt,f:f,ds:ds,today:td};});});
    })
    .then(function(o){
      var d=o.f&&o.f.daily;
-     if(!d||!d.time||!d.time.length)throw new Error('прогноза на эти даты пока нет');
+     /* даже если до поездки ещё далеко и прогноза по дням нет, сегодняшнюю погоду сохраняем */
+     if(o.today){S.weather.today=o.today;S.weather.ts=Date.now();
+       S.weather.updated=fmtWhen(new Date().toISOString());}
+     if(!d||!d.time||!d.time.length){
+       if(o.today){touch();renderSec('home');setNet('ok');
+         if(!silent)toast('Погода на сегодня обновлена. Прогноза на дни поездки пока нет — они дальше двух недель.');
+         return;}
+       throw new Error('прогноза на эти даты пока нет');
+     }
      var WD=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
      var days=d.time.map(function(iso,i){
        var dt=new Date(iso+'T12:00:00');
@@ -384,6 +426,7 @@ function refreshWeather(silent){
      });
      S.weather.days=days;
      S.weather.updated=fmtWhen(new Date().toISOString());
+     S.weather.ts=Date.now();
      S.weather.src='Прогноз Open-Meteo для «'+o.pt.name+'» ('+o.pt.latitude.toFixed(2)+', '
        +o.pt.longitude.toFixed(2)+'), обновлён '+S.weather.updated+'.';
      touch();renderSec('home');
@@ -395,6 +438,21 @@ function refreshWeather(silent){
      setNet('ok');
      if(!silent)toast('Погода не обновилась: '+(e&&e.message?e.message:'нет связи')+'.');
    });
+}
+/* ── погода обновляется сама ──
+   Раз в полчаса — свежие цифры. Тянет только тот, у кого они устарели: остальные получат
+   их обычной синхронизацией и второй раз в Open-Meteo не пойдут. */
+var WX_EVERY=30*60*1000, wxBusy=false;
+function weatherStale(){
+  var ts=(S.weather&&S.weather.ts)||0;
+  return (Date.now()-ts)>WX_EVERY;
+}
+function weatherAuto(force){
+  if(wxBusy||!navigator.onLine)return;
+  if(document.hidden&&!force)return;      /* в фоне не ходим в сеть без нужды */
+  if(!weatherStale())return;
+  wxBusy=true;
+  refreshWeather(true).then(function(){wxBusy=false;},function(){wxBusy=false;});
 }
 
 /* ── скачать офлайн-копию / загрузить офлайн-файл ── */
@@ -686,10 +744,7 @@ function rtConnect(){
 (function startOnline(){
   mountSyncBar(); mountWho(); mountMenu(); mountPwa(); applyUrlUser(); applyAuth(); render(); paintWho();
   setNet('work','подключаюсь…');
-  pull(false).then(function(){
-    var stamp=(S.weather&&S.weather.updated)||'';
-    if(!S.trip.lat||!/\d{2}:\d{2}/.test(stamp))refreshWeather(true);
-  });
+  pull(false).then(function(){weatherAuto(true);});   /* на старте погоду берём сразу */
   rtConnect();
   var tick=0;
   setInterval(function(){
@@ -698,12 +753,13 @@ function rtConnect(){
     /* сокет живой — опрашиваем раз в минуту, иначе каждые 8 секунд */
     if(rtLive&&rtJoined){ if(tick%8===0)pull(false); }
     else if(tick%2===0)pull(false);
+    if(tick%75===0)weatherAuto();          /* раз в пять минут проверяем, не устарела ли погода */
   },4000);
   window.addEventListener('online',function(){setNet('work');rtConnect();pull(false);});
   window.addEventListener('offline',function(){setNet('off','нет сети — правки в браузере');});
   document.addEventListener('visibilitychange',function(){
     if(document.hidden)return;
     if(!rtSock||rtSock.readyState>1)rtConnect();
-    pull(false);
+    pull(false);weatherAuto();
   });
 })();
