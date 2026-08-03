@@ -5060,7 +5060,42 @@ var SB={url:'https://oagonfdnlgqkoosvgaly.supabase.co',
  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZ29uZmRubGdxa29vc3ZnYWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NTc4NTMsImV4cCI6MjEwMTMzMzg1M30.hpQyHLXKsmGVSTS-pFG66rtM_uF-8kXmj8ituNCvbww'};
 /* обычно все работают с одним документом; ?sandbox=1 открывает отдельную копию для проверок */
 var TRIP_ID=/[?&]sandbox=1/.test(location.search||'')?'vuoksa2026-test':'vuoksa2026';
-ONLINE=true; SAVE_STRIP=['#sync-code','#syncBar'];
+ONLINE=true; SAVE_STRIP=['#sync-code','#syncBar','#pwaLinks','link[rel="manifest"]','link[rel="apple-touch-icon"]'];
+
+/* ═════ приложение на экране «Домой» ═════
+   На айфоне скачанный HTML открывается системным просмотрщиком, где скрипты выключены, —
+   поэтому офлайн там делается не файлом, а самим приложением: страница кешируется служебным
+   работником, данные лежат в браузере, синхронизация подхватывается, как только появится сеть. */
+function mountPwa(){
+  var head=document.head;
+  if(!head||document.getElementById('pwaLinks'))return;
+  var box=document.createElement('meta');           /* якорь, чтобы всё это убрать при сохранении файла */
+  box.id='pwaLinks';box.setAttribute('name','pwa-mounted');box.setAttribute('content','1');
+  head.appendChild(box);
+  function add(tag,attrs){
+    var n=document.createElement(tag);
+    for(var k in attrs)if(attrs.hasOwnProperty(k))n.setAttribute(k,attrs[k]);
+    head.appendChild(n);return n;
+  }
+  add('link',{rel:'manifest',href:'manifest.webmanifest'});
+  add('link',{rel:'apple-touch-icon',href:'icon-192.png'});
+  add('meta',{name:'apple-mobile-web-app-capable',content:'yes'});
+  add('meta',{name:'mobile-web-app-capable',content:'yes'});
+  add('meta',{name:'apple-mobile-web-app-title',content:'Вуокса-2026'});
+  add('meta',{name:'apple-mobile-web-app-status-bar-style',content:'black-translucent'});
+  if(navigator.serviceWorker&&location.protocol==='https:'){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  }
+}
+function standalone(){
+  return !!(window.navigator.standalone||(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches));
+}
+/* встроенные браузеры мессенджеров не умеют сохранять файлы и открывать их обратно */
+function inApp(){
+  var ua=navigator.userAgent||'';
+  if(/Telegram|FBAN|FBAV|Instagram|Line\/|VKClient|OKApp|MiuiBrowser/i.test(ua))return true;
+  return /iPhone|iPad|iPod/.test(ua)&&!/Safari/.test(ua)&&!standalone();
+}
 var netState='idle', netMsg='', lastPull=0, pushT=null, pulling=false;
 
 /* ═════ права по личной ссылке ═════
@@ -5418,7 +5453,54 @@ function refreshWeather(silent){
 
 /* ── скачать офлайн-копию / загрузить офлайн-файл ── */
 function downloadOffline(){
+  if(inApp()){                       /* во встроенном браузере файл «скачается» в никуда */
+    sheet(function(c,close){
+      c.appendChild(el('h3',null,'Здесь файл не сохранится'));
+      c.appendChild(el('p',null,'Это встроенный браузер мессенджера — он делает вид, что скачал файл, '
+        +'но найти его потом негде. Открой сборный лист в Safari: «⋯» внизу справа → «Открыть в Safari».'));
+      var b=el('button','mItem',svg('link')+'<span>Скопировать адрес</span>');
+      b.onclick=function(){close();copyHere();};
+      c.appendChild(b);
+      var r=el('div','btnRow');var ok=el('button','pri','Понятно');
+      r.appendChild(ok);c.appendChild(r);ok.onclick=close;
+    });
+    return;
+  }
   refreshWeather(true).then(function(){ saveFile(); });
+}
+function copyHere(){
+  var url=location.href;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){toast('Адрес скопирован.');},function(){copyOld(url);});
+  } else if(copyOld(url))toast('Адрес скопирован.');
+}
+/* инструкция «поставить на телефон» — на айфоне это единственный рабочий офлайн */
+function offlineSheet(){
+  sheet(function(c,close){
+    c.appendChild(el('h3',null,'Работать без интернета'));
+    if(standalone()){
+      c.appendChild(el('p',null,'Приложение уже стоит на экране «Домой». Оно открывается и работает '
+        +'без сети: правки живут в телефоне, а как появится интернет — сами уезжают на сервер.'));
+    } else {
+      var ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
+      c.appendChild(el('p',null,ios
+        ? 'На айфоне: открой этот адрес в Safari, нажми «Поделиться» внизу, пролистай до пункта '
+          +'«На экран «Домой»» и добавь. Появится значок с елью — из него сборный лист открывается '
+          +'и работает без интернета.'
+        : 'В браузере телефона открой меню и выбери «Добавить на главный экран». '
+          +'Приложение будет открываться и работать без интернета.'));
+      c.appendChild(el('p',null,'Скачанный файл для этого не годится: айфон открывает такие файлы '
+        +'в просмотрщике, где скрипты выключены, и виден только серый экран «Загружаю сборный лист…». '
+        +'Файл остаётся резервной копией и способом перекинуть данные на компьютер.'));
+      if(inApp()){
+        var b=el('button','mItem',svg('link')+'<span>Скопировать адрес для Safari</span>');
+        b.onclick=function(){close();copyHere();};
+        c.appendChild(b);
+      }
+    }
+    var r=el('div','btnRow');var ok=el('button','pri','Понятно');
+    r.appendChild(ok);c.appendChild(r);ok.onclick=close;
+  });
 }
 function uploadOffline(){ document.getElementById('fileIn').click(); }
 
@@ -5462,7 +5544,10 @@ function mountMenu(){
       i3.onclick=function(){close();refreshWeather();};
       var i4=el('button','mItem',svg('txt')+'<span>Экспорт в текст для Телеграма</span>');
       i4.onclick=function(){close();exportText();};
-      items.push(i2,i3,i4);
+      var i8=el('button','mItem',svg('dl')+'<span>Работать без интернета</span><u>'
+        +(standalone()?'приложение уже на телефоне':'поставить на экран «Домой»')+'</u>');
+      i8.onclick=function(){close();offlineSheet();};
+      items.push(i2,i3,i4,i8);
       var cur=THEMES.filter(function(x){return x[0]===(S.theme||null);})[0];
       var i5=el('button','mItem',svg('theme')+'<span>Тема</span><u>'+cur[1]+'</u>');
       i5.onclick=function(){
@@ -5555,7 +5640,7 @@ function rtConnect(){
 
 /* ── старт онлайна ── */
 (function startOnline(){
-  mountSyncBar(); mountMenu(); applyUrlUser(); applyAuth(); render();
+  mountSyncBar(); mountMenu(); mountPwa(); applyUrlUser(); applyAuth(); render();
   setNet('work','подключаюсь…');
   pull(false).then(function(){
     var stamp=(S.weather&&S.weather.updated)||'';
