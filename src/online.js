@@ -134,7 +134,7 @@ function setNet(state,msg){
   netState=state; netMsg=msg||'';
   var b=document.getElementById('syncDot');
   if(!b)return;
-  var col={ok:'var(--pine)',work:'var(--amber)',err:'#B4472C',off:'var(--muted)'}[state]||'var(--muted)';
+  var col={ok:'var(--pine)',work:'var(--amber)',err:'var(--dang)',off:'var(--muted)'}[state]||'var(--muted)';
   b.style.background=col;
   var l=document.getElementById('syncTxt');
   if(l)l.textContent=msg||({ok:'всё сохранено',work:'сохраняю…',err:'нет связи',off:'офлайн'}[state]||'');
@@ -325,7 +325,7 @@ function versionsSheet(){
       rows.forEach(function(v){
         var it=el('button','mItem',svg('file')+'<span>'+esc(fmtWhen(v.created_at))
           +(v.author?(' · '+esc(v.author)):'')+(v.note?('<br><u style="margin:0">'+esc(v.note)+'</u>'):'')+'</span>');
-        var dl=el('span');dl.style.cssText='margin-left:auto;color:#A8442E;font-size:12px';dl.textContent='убрать';
+        var dl=el('span');dl.style.cssText='margin-left:auto;color:var(--dang);font-size:12px';dl.textContent='убрать';
         dl.onclick=function(ev){
           ev.stopPropagation();
           if(!isEditor()){needEditor();return;}
