@@ -64,7 +64,9 @@ export function MobileHeader({
             type="button"
             onClick={onHome}
             aria-label="Pine-to-Pine — наверх"
-            className="rounded-xl transition-opacity active:opacity-70"
+            /* Знак 26 px, но нажимать надо по 44 px: высоту добирает сама кнопка,
+               не трогая размер логотипа (заказчик отдельно просил его не растить). */
+            className="-mx-2 flex min-h-11 items-center rounded-xl px-2 transition-opacity active:opacity-70"
           >
             <Logo height={26} />
           </button>

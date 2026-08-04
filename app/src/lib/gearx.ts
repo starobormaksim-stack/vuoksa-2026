@@ -108,6 +108,15 @@ export function readyAll(S: State): { done: number; total: number; pct: number }
   return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 }
 }
 
+/**
+ * Строка собрана целиком: у всех, кто её везёт, состояние готово.
+ * Позиция, которую не везёт никто, собранной не считается — её ещё некому нести.
+ */
+export function rowReady(g: Gear): boolean {
+  const hs = Object.keys(g.o || {}).filter((id) => (g.o[id] || 0) > 0)
+  return hs.length > 0 && hs.every((id) => isReady(statusOf(g, id)))
+}
+
 /** Готовность одной группы для одного режима (человек или «все»). */
 export function readyOfGroup(
   S: State,
@@ -124,8 +133,7 @@ export function readyOfGroup(
       if (isReady(statusOf(g, personId))) done++
     } else {
       total++
-      const hs = Object.keys(g.o || {}).filter((id) => (g.o[id] || 0) > 0)
-      if (hs.length > 0 && hs.every((id) => isReady(statusOf(g, id)))) done++
+      if (rowReady(g)) done++
     }
   }
   return { done, total }
@@ -229,13 +237,22 @@ export function rankedPeople(S: State): Person[] {
   return [...list.slice(0, meFirst), ...sorted]
 }
 
-/** Хвост строки человека в «Кто уже собрался»: «осталось 4 · не может взять 1». */
-export function restLineOf(b: ReadyBreakdown): string {
+/** Всё несобранное человека одним списком: сначала не начатое, потом в работе, потом отказы. */
+export function missingOf(b: ReadyBreakdown): Gear[] {
+  return [...b.todo, ...b.inWork, ...b.cant]
+}
+
+/**
+ * Строка человека в «Кто уже собрался»: «не собрано 5: палатка, спальник, тент и ещё 2».
+ * Заказчик просил не проценты, а сами названия — первые `max`, остальные счётом.
+ */
+export function missingLineOf(b: ReadyBreakdown, max = 3): string {
   if (b.total === 0) return 'ничего не поручено'
-  const left = b.total - b.done.length
-  if (left === 0) return 'всё собрано'
-  const head = `осталось ${left}`
-  return b.cant.length > 0 ? `${head} · не может взять ${b.cant.length}` : head
+  const rest = missingOf(b)
+  if (rest.length === 0) return 'всё собрано'
+  const head = rest.slice(0, max).map((g) => g.n).join(', ')
+  const more = rest.length - Math.min(max, rest.length)
+  return `не собрано ${rest.length}: ${head}${more > 0 ? ` и${NBSP}ещё ${more}` : ''}`
 }
 
 /** Фраза под кольцом: «Осталось 12 позиций у троих». */

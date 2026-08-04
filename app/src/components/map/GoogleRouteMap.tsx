@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RoutePoint } from '@/lib/types'
-import { GOOGLE_MAP_ID, loadGoogleMaps } from '@/lib/gmaps'
+import { GOOGLE_MAP_ID, googleFailCode, loadGoogleMaps } from '@/lib/gmaps'
 import { cn } from '@/lib/utils'
 import { destPinEl, pointPinEl } from './marks'
 
@@ -59,9 +59,25 @@ interface Props {
   fitAt?: number
   /** навестись на произвольное место (находка строки поиска над картой) */
   lookAt?: { lat: number; lon: number; at: number } | null
-  /** Google не поднялся — вызывающий откатится на OpenStreetMap */
-  onFail?: () => void
+  /**
+   * Google не поднялся — вызывающий откатится на OpenStreetMap. Код причины
+   * (см. GoogleFailCode в lib/gmaps.ts) нужен, чтобы человеку под картой
+   * написали, что именно случилось, а не «карта другая, и почему — неизвестно».
+   */
+  onFail?: (reason: string) => void
   className?: string
+}
+
+/** Через сколько переспросить Google после сетевой неудачи, мс. */
+const RETRY_MS = 2000
+
+/**
+ * Стоит ли пробовать ещё раз. Сеть могла моргнуть — такое лечится повтором.
+ * Отказ по ключу или домену ('auth') от повтора не изменится, а вот вторая
+ * попытка отложит откат на OpenStreetMap ещё на две секунды впустую.
+ */
+function worthRetry(code: string): boolean {
+  return code === 'script-error' || code === 'timeout' || code.startsWith('import-failed:')
 }
 
 /** Метка на карте: сам маркер и его узел — узел нужен, чтобы качнуть метку. */
@@ -92,37 +108,60 @@ export function GoogleRouteMap({
   const cb = useRef({ canEdit, onAdd, onMove, onSelect, onMoveDest, onFail })
   cb.current = { canEdit, onAdd, onMove, onSelect, onMoveDest, onFail }
 
-  /* ── создание карты ── */
+  /* ── создание карты ──
+     Одна повторная попытка на сетевые причины и обязательный доклад наверх на всех
+     остальных путях: молчаливый выход оставлял бы пустой прямоугольник вместо карты. */
   useEffect(() => {
     let dead = false
-    loadGoogleMaps()
-      .then((maps) => {
-        if (dead || !box.current || map.current) return
-        const m = new maps.Map(box.current, {
-          center: { lat: centerLat, lng: centerLon },
-          zoom: 9,
-          /* Без mapId AdvancedMarkerElement не рисуется — см. комментарий наверху. */
-          mapId: GOOGLE_MAP_ID,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          /* Прокрутка колесом без Ctrl пролистывала бы страницу мимо карты. */
-          gestureHandling: 'cooperative',
+    let timer = 0
+
+    const attempt = (retried: boolean) => {
+      loadGoogleMaps()
+        .then((maps) => {
+          if (dead || map.current) return
+          if (!box.current) {
+            /* Рисовать некуда: контейнера уже нет, а компонент ещё жив. Промолчать
+               нельзя — на месте карты останется пустое место без объяснения. */
+            cb.current.onFail?.('script-error')
+            return
+          }
+          const m = new maps.Map(box.current, {
+            center: { lat: centerLat, lng: centerLon },
+            zoom: 9,
+            /* Без mapId AdvancedMarkerElement не рисуется — см. комментарий наверху. */
+            mapId: GOOGLE_MAP_ID,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
+            /* Прокрутка колесом без Ctrl пролистывала бы страницу мимо карты. */
+            gestureHandling: 'cooperative',
+          })
+          m.addListener('click', (e: google.maps.MapMouseEvent) => {
+            if (!cb.current.canEdit || !e.latLng) return
+            cb.current.onAdd(e.latLng.lat(), e.latLng.lng())
+          })
+          map.current = m
+          fitted.current = false
+          setReady(true)
         })
-        m.addListener('click', (e: google.maps.MapMouseEvent) => {
-          if (!cb.current.canEdit || !e.latLng) return
-          cb.current.onAdd(e.latLng.lat(), e.latLng.lng())
+        .catch((e: unknown) => {
+          if (dead) return
+          const code = googleFailCode(e)
+          console.warn(`Google Maps не поднялся (${code})`, e)
+          if (!retried && worthRetry(code)) {
+            timer = window.setTimeout(() => {
+              if (!dead) attempt(true)
+            }, RETRY_MS)
+            return
+          }
+          cb.current.onFail?.(code)
         })
-        map.current = m
-        fitted.current = false
-        setReady(true)
-      })
-      .catch((e: unknown) => {
-        console.warn('Google Maps не поднялся — показываем OpenStreetMap', e)
-        if (!dead) cb.current.onFail?.()
-      })
+    }
+
+    attempt(false)
     return () => {
       dead = true
+      window.clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

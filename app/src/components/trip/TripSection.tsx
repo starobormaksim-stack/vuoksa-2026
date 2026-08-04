@@ -3,7 +3,7 @@ import type { State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { fmtRange, withDate } from '@/format'
-import { RouteBoard } from '../map/RouteBoard'
+import { TextSheet } from '@/components/flops'
 import { TripCover } from './TripCover'
 import { ReadyRing } from './ReadyRing'
 import { MoneyTiles } from './MoneyTiles'
@@ -28,6 +28,8 @@ function tripPlaces(S: State): TripPlace[] {
 export function TripSection({ S, perms }: { S: State; perms: Perms }) {
   const [calOpen, setCalOpen] = useState(false)
   const [placesOpen, setPlacesOpen] = useState(false)
+  /** какая строка обложки правится: название или подзаголовок */
+  const [textOpen, setTextOpen] = useState<null | 'title' | 'sub'>(null)
   const places = tripPlaces(S)
   const canEdit = perms.isEditor()
 
@@ -47,26 +49,22 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
-      {/* Обложка, лента точек и карта — один блок (см. map/RouteBoard.tsx).
-          Заказчик 04.08.2026: «тайминг и маршрут вместе… должно быть рядом с картой»,
-          а слева — информационная часть: обложка, даты, конечная точка. */}
-      <RouteBoard
-        S={S}
-        perms={perms}
-        cover={
-          <TripCover
-            trip={S.trip}
-            places={places}
-            canEdit={canEdit}
-            onEditDates={() => setCalOpen(true)}
-            onShowPlaces={() => setPlacesOpen(true)}
-          />
-        }
+      {/* Обложка поездки. Маршрут с картой отсюда уехал в «Дорогу» (заказчик
+          04.08.2026: «в „Дороге“ должен жить сам маршрут и расчёт»), а обложка
+          осталась здесь — в одном месте, а не двух. */}
+      <TripCover
+        trip={S.trip}
+        places={places}
+        canEdit={canEdit}
+        onEditDates={() => setCalOpen(true)}
+        onShowPlaces={() => setPlacesOpen(true)}
+        onEditTitle={() => setTextOpen('title')}
+        onEditSub={() => setTextOpen('sub')}
       />
 
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
         <ReadyRing S={S} />
-        <MoneyTiles S={S} />
+        <MoneyTiles S={S} perms={perms} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
@@ -82,7 +80,43 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
           onDone={saveDates}
         />
       )}
-      {placesOpen && <PlacesSheet places={places} onClose={() => setPlacesOpen(false)} />}
+      {placesOpen && (
+        <PlacesSheet places={places} canEdit={canEdit} onClose={() => setPlacesOpen(false)} />
+      )}
+
+      {/* Правка названия и подзаголовка обложки — тем же путём, что и даты:
+          update() сам ставит метку документа, отдельного touch у trip нет. */}
+      {canEdit && (
+        <>
+          <TextSheet
+            open={textOpen === 'title'}
+            onOpenChange={(v) => !v && setTextOpen(null)}
+            title="Название поездки"
+            subtitle="Так она подписана на обложке"
+            value={S.trip.title}
+            placeholder="Вуокса-2026"
+            onDone={(v) =>
+              v &&
+              update((s) => {
+                s.trip.title = v
+              })
+            }
+          />
+          <TextSheet
+            open={textOpen === 'sub'}
+            onOpenChange={(v) => !v && setTextOpen(null)}
+            title="Подзаголовок"
+            subtitle={S.trip.title}
+            value={S.trip.sub}
+            placeholder="Например, водный поход по озеру"
+            onDone={(v) =>
+              update((s) => {
+                s.trip.sub = v
+              })
+            }
+          />
+        </>
+      )}
     </div>
   )
 }

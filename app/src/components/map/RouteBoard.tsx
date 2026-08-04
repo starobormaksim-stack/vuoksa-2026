@@ -1,33 +1,33 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { List, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 import type { RoutePoint, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { remove, touch, update } from '@/store'
-import { onListFocus, type ListFocus } from '@/lib/mapfocus'
+import { askMap, onListFocus, onMapRequest, type ListFocus, type MapRequest } from '@/lib/mapfocus'
 import { RouteTiming } from '@/components/road/RouteTiming'
 import { RoutePointSheet } from '@/components/road/RoutePointSheet'
 import { TextSheet } from '@/components/flops'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { plural } from '@/format'
 import { TripMap } from './TripMap'
 
 /**
- * Единый блок «куда и когда едем»: обложка, лента точек и карта — рядом.
+ * Блок «Маршрут»: сам маршрут и есть — лента точек с таймингом и карта.
  *
- * Раньше карта жила в «Поездке», а лента тайминга — в «Дороге», и заказчик
- * 04.08.2026 сказал прямо: «тайминг и маршрут вместе совпадали… вот это вот,
- * которое у тебя есть, оно должно быть рядом с картой». Разъезд был не только
- * зрительный: чтобы посмотреть, где точка, приходилось прокручивать страницу
- * через два раздела.
+ * Живёт в разделе «Дорога» (заказчик 04.08.2026: «в „Дороге“ должен жить сам
+ * маршрут и расчёт, а не ссылка на них»). Раньше блок стоял в «Поездке», а в
+ * «Дороге» на его месте была карточка-указатель «Маршрут и тайминг наверху» —
+ * её заказчик и назвал идиотизмом. Обложка поездки осталась в «Поездке», одна.
  *
- * Блок поселился в «Поездке», а не в «Дороге», по трём причинам:
- *   он начинается с обложки поездки, а она живёт здесь;
- *   заказчик уже просил «сначала заглавная фотография, за ней сразу карта»;
- *   «Дорога» осталась тем, чем и должна быть, — деньгами на дорогу.
- * В «Дороге» на месте бывшей ленты — короткая карточка со ссылкой сюда,
- * чтобы лента не оказалась в двух местах сразу и никто её не потерял.
+ * Две вкладки, а не две колонки: на телефоне карта и лента одна под другой
+ * занимали два экрана, и до расчёта человек не доезжал.
+ *   «Списком» — лента точек во всю ширину: время, название, заметка, расстояние;
+ *   «На карте» — карта с полосой действий под ней (полосу рисует сам TripMap).
  *
- * Раскладка: на десктопе слева обложка и под ней лента, справа карта во всю
- * высоту; на телефоне сверху обложка, под ней карта, под картой лента — карта
- * должна быть видна раньше списка, иначе тап по строке некуда наводить.
+ * Тап по строке «на карте» в ленте сам открывает вкладку с картой и повторяет
+ * просьбу, когда карта уже смонтирована: карта на скрытой вкладке не живёт
+ * и просьбу, посланную до её появления, услышать не может.
  *
  * Правка точки живёт здесь, а не в карте и не в ленте: и лента, и карта только
  * показывают, а правит одна шторка на двоих (правило «список показывает —
@@ -37,18 +37,47 @@ import { TripMap } from './TripMap'
 interface Props {
   S: State
   perms: Perms
-  /** обложка поездки — левый верхний угол блока */
-  cover: ReactNode
 }
 
-export function RouteBoard({ S, perms, cover }: Props) {
+type Tab = 'list' | 'map'
+
+export function RouteBoard({ S, perms }: Props) {
   const canEdit = perms.isEditor()
+  const [tab, setTab] = useState<Tab>('list')
   const [sheet, setSheet] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   /** какую точку подсветить в ленте: по её метке тапнули на карте */
   const [active, setActive] = useState<ListFocus | null>(null)
+  /** просьба к карте, которую та ещё не слышала: карта была на скрытой вкладке */
+  const pending = useRef<MapRequest | null>(null)
+  /** это наш собственный повтор просьбы — второй раз вкладку переключать не надо */
+  const replaying = useRef(false)
 
   useEffect(() => onListFocus(setActive), [])
+
+  useEffect(
+    () =>
+      onMapRequest((r) => {
+        if (replaying.current) return
+        pending.current = r
+        setTab('map')
+      }),
+    [],
+  )
+
+  /* Карта появилась — повторяем просьбу, которая пришла, пока её не было. */
+  useEffect(() => {
+    if (tab !== 'map') return
+    const r = pending.current
+    if (!r) return
+    pending.current = null
+    const t = window.setTimeout(() => {
+      replaying.current = true
+      askMap(r.pointId, r.mode, false)
+      replaying.current = false
+    }, 0)
+    return () => window.clearTimeout(t)
+  }, [tab])
 
   const patch = (id: string, f: (p: RoutePoint) => void) =>
     update((s) => {
@@ -72,37 +101,69 @@ export function RouteBoard({ S, perms, cover }: Props) {
   }
 
   const current = sheet ? S.route.find((p) => p.i === sheet) : null
+  const onMap = S.route.filter((p) => typeof p.lat === 'number' && typeof p.lon === 'number').length
 
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
-        <div className="lg:col-start-1 lg:row-start-1">{cover}</div>
+      <section className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-[17px] font-[650] text-ink">Маршрут</h3>
+          {/* Словесное описание маршрута из документа (trip.route). Показать его
+              больше негде, а потерять нельзя. */}
+          {S.trip.route ? (
+            <p className="mt-0.5 text-[14px] leading-snug text-muted">{S.trip.route}</p>
+          ) : null}
+          <p className="tnum mt-0.5 text-[13px] text-muted">
+            {S.route.length} {plural(S.route.length, 'точка', 'точки', 'точек')}
+            {onMap > 0 ? ` · ${onMap} на карте` : ' · на карте ни одной'}
+          </p>
+        </div>
 
-        <TripMap S={S} perms={perms} className="lg:col-start-2 lg:row-span-2 lg:row-start-1" />
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-3">
+          <TabsList className="h-12! w-full justify-start gap-1 rounded-2xl border border-line bg-surface p-1">
+            <TabsTrigger
+              value="list"
+              className="h-10 flex-none gap-2 rounded-xl px-3 text-[15px] font-semibold whitespace-nowrap text-muted data-active:bg-accent-soft data-active:text-ink dark:data-active:border-transparent dark:data-active:bg-accent-soft"
+            >
+              <List size={18} strokeWidth={1.5} aria-hidden />
+              Списком
+            </TabsTrigger>
+            <TabsTrigger
+              value="map"
+              className="h-10 flex-none gap-2 rounded-xl px-3 text-[15px] font-semibold whitespace-nowrap text-muted data-active:bg-accent-soft data-active:text-ink dark:data-active:border-transparent dark:data-active:bg-accent-soft"
+            >
+              <MapPin size={18} strokeWidth={1.5} aria-hidden />
+              На карте
+            </TabsTrigger>
+          </TabsList>
 
-        <section className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm lg:col-start-1 lg:row-start-2 lg:max-h-[420px]">
-          <h3 className="shrink-0 border-b border-line px-4 py-3 text-[17px] font-[650] text-ink">
-            Тайминг
-          </h3>
-          {/* Прокрутка только на десктопе: на телефоне лента должна прокручиваться
-              вместе со страницей, а не отдельным окошком внутри неё. */}
-          <div className="min-h-0 flex-1 lg:overflow-y-auto">
-            <RouteTiming
-              points={S.route}
-              canEdit={canEdit}
-              onToggle={(id) =>
-                patch(id, (p) => {
-                  p.done = !p.done
-                })
-              }
-              onOpen={setSheet}
-              onAdd={() => setAdding(true)}
-              activeId={active?.pointId ?? null}
-              activeAt={active?.at}
-            />
-          </div>
-        </section>
-      </div>
+          <TabsContent value="list">
+            <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+              {tab === 'list' && (
+                <RouteTiming
+                  points={S.route}
+                  canEdit={canEdit}
+                  onToggle={(id) =>
+                    patch(id, (p) => {
+                      p.done = !p.done
+                    })
+                  }
+                  onOpen={setSheet}
+                  onAdd={() => setAdding(true)}
+                  activeId={active?.pointId ?? null}
+                  activeAt={active?.at}
+                />
+              )}
+            </section>
+          </TabsContent>
+
+          <TabsContent value="map">
+            {/* Карта поднимается только на своей вкладке: на скрытой ей нечего
+                показывать, а тайлы она тянет всерьёз. */}
+            {tab === 'map' && <TripMap S={S} perms={perms} />}
+          </TabsContent>
+        </Tabs>
+      </section>
 
       {current && (
         <RoutePointSheet

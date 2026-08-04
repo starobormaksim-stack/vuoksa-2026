@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { UserPlus, Users } from 'lucide-react'
+import { Link2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Person } from '@/lib/types'
-import { permName } from '@/lib/perm'
+import { linkFor, permName } from '@/lib/perm'
 import { readyOf } from '@/lib/gearx'
 import { orderedPeople, toneOf, type PersonTone } from '@/lib/people'
 import { useTrip, touch } from '@/store'
@@ -78,13 +78,28 @@ export function CrewSection() {
     })
   }
 
+  /**
+   * Скопировать личную ссылку прямо с карточки — чтобы за ней не приходилось
+   * ходить в меню «⋯» → «Ссылки команды». Видит владелец и редактор: ссылка
+   * несёт права, участникам её раздача не положена (модель прав в lib/perm.ts).
+   */
+  const copyLink = async (p: Person) => {
+    try {
+      await navigator.clipboard.writeText(linkFor(p))
+      toast(`Ссылка для ${p.name} скопирована`)
+    } catch {
+      toast('Скопировать не вышло — ссылка есть в меню «Ссылки команды»')
+    }
+  }
+
   const current = sheet ? S.people.find((p) => p.id === sheet) : null
 
   return (
     <div className="flex flex-col gap-4">
       <SectionHead
         title="Команда"
-        hint="Тап по карточке открывает участника: права, роль и личную ссылку"
+        secId="crew"
+        hint="У каждого своя ссылка — по ней сервис узнаёт человека и даёт права"
       />
 
       {S.people.length === 0 ? (
@@ -115,6 +130,7 @@ export function CrewSection() {
                 tone={toneOf(S.people, p.id)}
                 ready={readyOf(S, p.id)}
                 onOpen={() => setSheet(p.id)}
+                onCopyLink={perms.isEditor() ? () => void copyLink(p) : undefined}
               />
             ))}
           </div>
@@ -175,10 +191,15 @@ export function CrewSection() {
 /**
  * Карточка-фотография (docs/v2-ux-redesign.md, 7.2).
  *
- * Пропорция 04.08.2026 приведена к квадрату: заказчик просил квадратные портреты,
- * а карточка была 171 × 220. Снимки, снятые до правки, лежат в данных как 3 : 4 —
- * `object-cover` кадрирует их по центру, поэтому они обрезаются, а не растягиваются.
- * Фотографии заказчик расставит сам: пока её нет — фирменная подложка с инициалом.
+ * Плитка квадратная, а вот снимок в ней больше не режется: заказчик 04.08.2026
+ * отдельно сказал, что принудительное кадрирование ему не нравится. Поэтому
+ * `object-contain` — фотография видна целиком, как её загрузили, а поля закрывает
+ * размытая копия её же. Фотографии заказчик расставит сам: пока её нет — фирменная
+ * подложка с инициалом.
+ *
+ * Сама карточка — кнопка (открывает участника), поэтому «Скопировать ссылку» живёт
+ * НЕ поверх фотографии, а строкой-действием под ней: кнопка в кнопке — невалидная
+ * разметка, и промах по иконке открывал бы карточку вместо копирования.
  */
 function CrewCard({
   person,
@@ -187,6 +208,7 @@ function CrewCard({
   tone,
   ready,
   onOpen,
+  onCopyLink,
 }: {
   person: Person
   me: string
@@ -194,68 +216,104 @@ function CrewCard({
   tone: PersonTone
   ready: { done: number; total: number; pct: number }
   onOpen: () => void
+  /** Скопировать личную ссылку; нет права — нет и строки-действия. */
+  onCopyLink?: () => void
 }) {
   const mine = person.id === me
   const line = person.car || person.role
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`${person.name}, ${permName(person.perm)}. Собрано ${ready.done} из ${ready.total}`}
-      className="relative block aspect-square w-full overflow-hidden rounded-2xl border border-line bg-zebra text-left shadow-sm transition-shadow hover:shadow-md"
-    >
-      {person.photo ? (
-        <img src={person.photo} alt="" aria-hidden className="size-full object-cover" />
-      ) : (
-        <span className="grid size-full place-items-center bg-zebra text-[64px] leading-none font-bold text-muted" aria-hidden>
-          {initialOf(person.name, person.ini)}
-        </span>
-      )}
-
-      {/* бейдж уровня прав — слева сверху, поверх фотографии */}
-      <span className="absolute top-2 left-2 rounded-lg bg-surface/85 px-2 py-0.5 text-[11px] font-[600] text-ink backdrop-blur-sm">
-        {permName(person.perm)}
-      </span>
-      {here && (
-        <span className="absolute top-2 right-2 flex items-center gap-1 rounded-lg bg-surface/85 px-2 py-0.5 text-[11px] font-[600] text-ink backdrop-blur-sm">
-          <span className="size-1.5 rounded-full bg-accent" aria-hidden />
-          здесь
-        </span>
-      )}
-
-      {/* градиент снизу: имя читается на любой фотографии */}
-      <span
-        className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-brand-dark/90 via-brand-dark/50 to-transparent"
-        aria-hidden
-      />
-
-      <span className="absolute inset-x-0 bottom-0 block px-3 pt-2 pb-3">
-        <span className="flex items-center gap-1.5">
-          {/* личная метка: кружок янтаря на подложке, новых цветов не заводим */}
-          <PersonMark tone={tone} size={14} />
-          <span className="min-w-0 flex-1 truncate text-[17px] leading-tight font-[650] text-brand-cream">
-            {person.name}
+    <div className="flex flex-col gap-0.5">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`${person.name}, ${permName(person.perm)}. Собрано ${ready.done} из ${ready.total}`}
+        className="relative block aspect-square w-full overflow-hidden rounded-2xl border border-line bg-zebra text-left shadow-sm transition-shadow hover:shadow-md"
+      >
+        {person.photo ? (
+          /* Снимок вписывается целиком и НЕ обрезается (заказчик, 04.08.2026).
+             Пустоту по краям закрывает размытая копия того же снимка — плитки
+             остаются одного размера, а лицо не режется рамкой. */
+          <span className="absolute inset-0 block">
+            <img
+              src={person.photo}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 size-full scale-110 object-cover opacity-40 blur-xl"
+            />
+            <img
+              src={person.photo}
+              alt=""
+              aria-hidden
+              className="relative size-full object-contain"
+            />
           </span>
-          {mine && (
-            <span className="shrink-0 rounded-md bg-brand-cream px-1.5 py-0.5 text-[11px] font-[600] text-brand-dark">
-              это я
-            </span>
-          )}
-        </span>
-        <span className="mt-0.5 flex items-baseline gap-1.5 text-[12px] leading-snug font-[500] text-brand-cream/80">
-          <span className="min-w-0 flex-1 truncate">{line}</span>
-          {ready.total > 0 && (
-            <span className="tnum shrink-0 font-semibold">{`${ready.pct}${NBSP}%`}</span>
-          )}
-        </span>
-      </span>
+        ) : (
+          <span className="grid size-full place-items-center bg-zebra text-[64px] leading-none font-bold text-muted" aria-hidden>
+            {initialOf(person.name, person.ini)}
+          </span>
+        )}
 
-      <Progress
-        value={ready.pct}
-        aria-hidden
-        className={cn('absolute inset-x-0 bottom-0 h-1 rounded-none bg-brand-cream/25')}
-      />
-    </button>
+        {/* бейдж уровня прав — слева сверху, поверх фотографии */}
+        <span className="absolute top-2 left-2 rounded-lg bg-surface/85 px-2 py-0.5 text-[11px] font-[600] text-ink backdrop-blur-sm">
+          {permName(person.perm)}
+        </span>
+        {here && (
+          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-lg bg-surface/85 px-2 py-0.5 text-[11px] font-[600] text-ink backdrop-blur-sm">
+            <span className="size-1.5 rounded-full bg-accent" aria-hidden />
+            здесь
+          </span>
+        )}
+
+        {/* градиент снизу: имя читается на любой фотографии */}
+        <span
+          className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-brand-dark/90 via-brand-dark/50 to-transparent"
+          aria-hidden
+        />
+
+        <span className="absolute inset-x-0 bottom-0 block px-3 pt-2 pb-3">
+          <span className="flex items-center gap-1.5">
+            {/* личная метка: кружок янтаря на подложке, новых цветов не заводим */}
+            <PersonMark tone={tone} size={14} />
+            <span className="min-w-0 flex-1 truncate text-[17px] leading-tight font-[650] text-brand-cream">
+              {person.name}
+            </span>
+            {mine && (
+              <span className="shrink-0 rounded-md bg-brand-cream px-1.5 py-0.5 text-[11px] font-[600] text-brand-dark">
+                это я
+              </span>
+            )}
+          </span>
+          <span className="mt-0.5 flex items-baseline gap-1.5 text-[12px] leading-snug font-[500] text-brand-cream/80">
+            <span className="min-w-0 flex-1 truncate">{line}</span>
+            {ready.total > 0 && (
+              <span className="tnum shrink-0 font-semibold">{`${ready.pct}${NBSP}%`}</span>
+            )}
+          </span>
+        </span>
+
+        <Progress
+          value={ready.pct}
+          aria-hidden
+          className={cn('absolute inset-x-0 bottom-0 h-1 rounded-none bg-brand-cream/25')}
+        />
+      </button>
+
+      {onCopyLink && (
+        <button
+          type="button"
+          aria-label={`Скопировать ссылку для ${person.name}`}
+          onClick={(e) => {
+            /* Карточка рядом — тоже кнопка: не даём клику дойти до общих обработчиков. */
+            e.stopPropagation()
+            onCopyLink()
+          }}
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold text-accent-text transition-colors hover:bg-zebra"
+        >
+          <Link2 size={16} strokeWidth={1.5} aria-hidden />
+          Скопировать ссылку
+        </button>
+      )}
+    </div>
   )
 }

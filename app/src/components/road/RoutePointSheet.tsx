@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { MapPinned, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { LegMode, RouteLabel, RoutePoint } from '@/lib/types'
 import { Btn, NumberSheet, PickSheet, ResponsiveSheet, SheetRow, TextSheet } from '@/components/flops'
 import { Switch } from '@/components/ui/switch'
+import { plural } from '@/format'
+import { calcLegsByMap } from './legs'
 import { coordLabel, kmLabel, labelName, LABEL_OPTIONS, legName } from './roadx'
 
 /**
@@ -32,9 +34,33 @@ export function RoutePointSheet({
   item, index, canEdit, canDelete, onPatch, onDelete, onClose,
 }: Props) {
   const [lvl, setLvl] = useState<Level2>(null)
+  /** идёт запрос к маршрутизатору */
+  const [busy, setBusy] = useState(false)
   const back = () => setLvl(null)
   const go = (l: Level2) => (canEdit ? () => setLvl(l) : undefined)
   const coord = coordLabel(item)
+
+  /**
+   * Посчитать расстояния между точками по дорогам (lib/osrm.ts).
+   * Считается сразу весь маршрут: участок этой точки — часть цепочки,
+   * в одиночку его не посчитать. Пробег поездки от этого молча не меняется.
+   */
+  const byMap = async () => {
+    setBusy(true)
+    const r = await calcLegsByMap()
+    setBusy(false)
+    if (r.ok) {
+      toast(
+        `Посчитали по карте: ${r.legs} ${plural(r.legs, 'участок', 'участка', 'участков')} · ${kmLabel(r.km)} по дороге`,
+      )
+      return
+    }
+    toast(
+      r.why === 'few'
+        ? 'На карте меньше двух точек — считать нечего'
+        : 'Карта не ответила: похоже, нет сети. Расстояние можно вписать руками',
+    )
+  }
 
   const sub = [item.time, labelName(item)].filter(Boolean).join(' · ')
 
@@ -66,15 +92,33 @@ export function RoutePointSheet({
             label="От прошлой точки"
             value={item.leg > 0 ? kmLabel(item.leg) : 'не считали'}
             empty={item.leg <= 0}
-            hint={item.legSrc === 'osrm' ? 'Посчитано по карте' : undefined}
+            hint={
+              item.legSrc === 'osrm'
+                ? 'Посчитано по карте'
+                : item.legSrc === 'hand'
+                  ? 'Вписано руками'
+                  : undefined
+            }
             onClick={go('leg')}
           />
+          {canEdit && (
+            <div className="border-b border-line/70 py-2">
+              <Btn tone="secondary" disabled={busy} onClick={() => void byMap()}>
+                <MapPinned size={18} strokeWidth={1.5} aria-hidden />
+                {busy ? 'Считаем по карте…' : 'Посчитать по карте'}
+              </Btn>
+              <p className="mt-1 text-[13px] leading-snug text-muted">
+                Расстояния между всеми точками возьмём по дорогам. Руками вписанное
+                число встанет поверх.
+              </p>
+            </div>
+          )}
           <SheetRow label="Адрес" value={item.addr || 'нет'} empty={!item.addr} onClick={go('addr')} />
           <SheetRow
             label="Координаты"
             value={coord || 'не поставлены'}
             empty={!coord}
-            hint="Точка ставится и двигается на карте, во вкладке «Маршрут»"
+            hint="Точка ставится и двигается на карте — на вкладке «На карте»"
           />
 
           {canEdit ? (

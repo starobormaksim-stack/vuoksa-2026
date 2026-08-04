@@ -4,12 +4,11 @@
  * ─── Зачем это вообще ───
  * Сейчас разграничение прав «джентльменское»: anon-ключ лежит в коде, а голый адрес
  * без `?u=` даёт права владельца (см. `perm.ts`, `myPerm`). 04.08.2026 это стоило
- * боевых данных — их четырежды затёрла чужая вкладка. Настоящее лечение — RLS на
- * таблице `trips` по `auth.uid()`: тогда запись сможет сделать только тот, кто вошёл.
- * Здесь — клиентская половина: вход, хранение сеанса и подстановка токена в запросы.
- * Серверная половина (сама политика RLS) в базе ПОКА НЕ ВКЛЮЧЕНА — её включение
- * закроет доступ всем сразу, поэтому делается отдельно и с согласия владельца.
- * Готовый текст миграции лежит в `docs/rls-migration.sql`.
+ * боевых данных — их четырежды затёрла чужая вкладка. Лечение — запись только через
+ * серверную функцию trip_write, которая сверяет либо личный ключ из ссылки, либо
+ * почту вошедшего. Здесь — клиентская половина: вход, хранение сеанса и подстановка
+ * токена в запросы. Серверная половина — в `docs/rls-apply-c.sql` (владелец
+ * выполняет её сам в панели Supabase, см. `docs/owner-signup-steps.md`).
  *
  * ─── Почему без библиотеки supabase-js ───
  * Ровно по той же причине, что и весь остальной обмен с Supabase (см. `supabase.ts`):
@@ -109,8 +108,14 @@ export function redirectTarget(): string {
 /**
  * Послать ссылку для входа на почту.
  *
- * `create_user: false` — новых людей заводить нельзя: владелец у поездки один,
- * и его запись в базе создаётся вручную. Иначе войти смог бы кто угодно.
+ * `create_user: true` — вход и регистрация теперь одно письмо: первый вход с нового
+ * адреса сам заводит учётную запись, отдельной регистрации нет. Права это не раздаёт:
+ * на сервере (docs/rls-apply-c.sql) владельцем строки становится ровно первый
+ * вошедший, остальным вошедшим запись в чужой документ не даётся.
+ *
+ * Адрес возврата передаётся query-параметром `redirect_to` — именно так его ждёт
+ * GoTrue REST. Поле `options.email_redirect_to` в теле — форма supabase-js,
+ * голый сервер её молча игнорирует.
  */
 export async function sendMagicLink(email: string): Promise<{ ok: boolean; error?: string }> {
   const mail = email.trim().toLowerCase()
@@ -118,10 +123,9 @@ export async function sendMagicLink(email: string): Promise<{ ok: boolean; error
     return { ok: false, error: 'Не похоже на адрес почты' }
   }
   try {
-    const r = await authFetch('otp', {
+    const r = await authFetch('otp?redirect_to=' + encodeURIComponent(redirectTarget()), {
       email: mail,
-      create_user: false,
-      options: { email_redirect_to: redirectTarget() },
+      create_user: true,
     })
     if (r.ok) return { ok: true }
     const j = (await r.json().catch(() => ({}))) as TokenReply
@@ -129,7 +133,13 @@ export async function sendMagicLink(email: string): Promise<{ ok: boolean; error
        ограничением (несколько писем в час). Об этом честнее сказать словами. */
     if (r.status === 429) return { ok: false, error: 'Слишком часто. Попробуйте через несколько минут' }
     if (r.status === 400 || r.status === 422) {
-      return { ok: false, error: 'Этот адрес не заведён владельцем поездки' }
+      /* Так GoTrue отказывает, когда адрес новый, а в панели выключен
+         «Enable Sign Ups» — заводить людей серверу запрещено. */
+      return {
+        ok: false,
+        error:
+          'Регистрация по почте пока не включена. Владелец должен один раз включить её в Supabase (см. шаги настройки)',
+      }
     }
     return { ok: false, error: j.error_description || j.msg || 'Сервер не принял запрос' }
   } catch {
@@ -151,11 +161,20 @@ function sessionFrom(j: TokenReply, fallbackEmail = ''): Session | null {
 /**
  * Забрать сеанс из адреса после перехода по ссылке из письма.
  *
- * Supabase кладёт токены в решётку (`#access_token=…`), а не в запрос. Решётку
- * сразу же стираем: адрес с токенами не должен попасть ни в историю браузера,
- * ни в чужие руки через пересланную ссылку.
+ * Письмо может привести в двух видах, и оба надо понимать:
+ *  - implicit: токены в решётке (`#access_token=…`) — их берём как есть;
+ *  - PKCE: в запросе `?token_hash=…&type=magiclink` — одноразовый код, который
+ *    ещё надо обменять на токены через `/auth/v1/verify`.
+ * И решётку, и код сразу стираем из адреса: ни то ни другое не должно попасть
+ * ни в историю браузера, ни в чужие руки через пересланную ссылку.
  */
 export async function adoptSessionFromUrl(): Promise<boolean> {
+  if (await adoptImplicit()) return true
+  return adoptPkce()
+}
+
+/** Implicit-форма: токены приезжают прямо в решётке адреса. */
+async function adoptImplicit(): Promise<boolean> {
   const hash = location.hash || ''
   if (!hash || hash.indexOf('access_token=') === -1) return false
   const p = new URLSearchParams(hash.slice(1))
@@ -182,6 +201,39 @@ export async function adoptSessionFromUrl(): Promise<boolean> {
   const expires = Number(p.get('expires_in') || 3600)
   save({ access_token: access, refresh_token: refresh, expires_at: Date.now() + expires * 1000, email, uid })
   return true
+}
+
+/**
+ * PKCE-форма: в адресе одноразовый код, токены выдаёт сервер в обмен на него.
+ *
+ * Контракт GoTrue: POST /auth/v1/verify с телом `{ token_hash, type }` возвращает
+ * готовый сеанс (access_token, refresh_token, expires_in, user) — ровно этим путём
+ * ходит verifyOtp из supabase-js. Код одноразовый: если обмен не удался, повторять
+ * его бессмысленно — человек просто запросит новое письмо.
+ */
+async function adoptPkce(): Promise<boolean> {
+  const q = new URLSearchParams(location.search)
+  const tokenHash = q.get('token_hash') || ''
+  const type = q.get('type') || ''
+  if (!tokenHash || (type !== 'magiclink' && type !== 'email' && type !== 'signup')) return false
+
+  /* Код стираем из адреса до похода на сервер: даже неудачный обмен
+     не повод оставлять его в истории браузера. */
+  q.delete('token_hash')
+  q.delete('type')
+  const rest = q.toString()
+  history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash)
+
+  try {
+    const r = await authFetch('verify', { token_hash: tokenHash, type })
+    if (!r.ok) return false
+    const next = sessionFrom((await r.json()) as TokenReply)
+    if (!next) return false
+    save(next)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Продлить сеанс, если он вот-вот истечёт. Возвращает, есть ли живой сеанс. */

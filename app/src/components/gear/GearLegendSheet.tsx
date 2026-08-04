@@ -52,6 +52,9 @@ export function GearLegendSheet({
           </li>
         ))}
       </ul>
+      <p className="text-[13px] leading-snug text-muted">
+        Долгое нажатие на ячейку открывает количество, тап по названию вещи — её карточку.
+      </p>
     </ResponsiveSheet>
   )
 }

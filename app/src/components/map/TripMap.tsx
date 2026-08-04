@@ -69,6 +69,20 @@ function isOfflineCopy(): boolean {
   return location.protocol === 'file:'
 }
 
+/**
+ * Почему вместо Google показывается OpenStreetMap — человеческими словами.
+ * Коды приходят из lib/gmaps.ts. null — говорить нечего: ключа просто нет,
+ * и это штатное состояние, а не поломка. Незнакомый код объясняем общо:
+ * лучше расплывчато, чем молча.
+ */
+function failWhy(code: string): string | null {
+  if (code === 'no-key') return null
+  if (code === 'auth') return 'Google не пускает с этого адреса'
+  if (code === 'timeout') return 'Google не ответил'
+  if (code.startsWith('import-failed:')) return 'часть карты Google не докачалась'
+  return 'не удалось загрузить карту Google'
+}
+
 /** Главное место поездки: та самая «конечная». Пусто — его ещё не отметили. */
 function mainPlace(S: State): TripPlace | null {
   const list = S.trip.places ?? []
@@ -89,8 +103,11 @@ export function TripMap({ S, perms, className }: Props) {
   const [placingMain, setPlacingMain] = useState(false)
   /** после постановки: предложенное название, которое человек может исправить */
   const [rename, setRename] = useState<{ id: string; name: string } | null>(null)
-  /** Google не поднялся — дальше показываем OpenStreetMap и не дёргаем его больше */
-  const [googleDead, setGoogleDead] = useState(false)
+  /**
+   * Google не поднялся — дальше показываем OpenStreetMap и не дёргаем его больше.
+   * Хранится не «да/нет», а код причины: без него откат виден, а объяснить его нечем.
+   */
+  const [googleDead, setGoogleDead] = useState<string | null>(null)
   /** открыт мастер «Разметить маршрут» */
   const [wizard, setWizard] = useState(false)
   /** метка «подгони вид под точки заново»: после разметки маршрут вылезает за экран */
@@ -112,7 +129,7 @@ export function TripMap({ S, perms, className }: Props) {
 
   /* Google отказал (домен не в списке, ключ отозван, кончился биллинг) —
      молча уходим на OpenStreetMap, а не показываем серый прямоугольник. */
-  useEffect(() => onGoogleAuthFail(() => setGoogleDead(true)), [])
+  useEffect(() => onGoogleAuthFail((reason) => setGoogleDead(reason)), [])
 
   /* ── просьбы из ленты точек ── */
   useEffect(
@@ -289,6 +306,8 @@ export function TripMap({ S, perms, className }: Props) {
   }
 
   const useGoogle = hasGoogleKey() && !googleDead
+  /** Причина отката словами — её показываем под картой вместе с номером сборки. */
+  const osmWhy = googleDead ? failWhy(googleDead) : null
   const mapProps = {
     points,
     centerLat: center.lat,
@@ -325,7 +344,7 @@ export function TripMap({ S, perms, className }: Props) {
           <MapSearch near={center} onPick={onPick} hint={searchHint} />
 
           {useGoogle ? (
-            <GoogleRouteMap {...mapProps} onFail={() => setGoogleDead(true)} />
+            <GoogleRouteMap {...mapProps} onFail={(reason) => setGoogleDead(reason)} />
           ) : (
             <OsmRouteMap {...mapProps} />
           )}
@@ -402,6 +421,14 @@ export function TripMap({ S, perms, className }: Props) {
                   </Btn>
                 )}
               </>
+            )}
+
+            {/* Карта молча подменилась на другую — человек имеет право знать, почему.
+                Номер сборки рядом: без него по рассказу не понять, ту ли версию видят. */}
+            {osmWhy && (
+              <p className="w-full text-[12px] leading-snug text-muted">
+                Карта OpenStreetMap · {osmWhy} · сборка {__BUILD__}
+              </p>
             )}
           </div>
         </div>

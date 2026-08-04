@@ -5,6 +5,7 @@ import type { Person } from '@/lib/types'
 import type { Perm, Perms } from '@/lib/perm'
 import { linkFor, permName, permRights } from '@/lib/perm'
 import type { PersonTone } from '@/lib/people'
+import { scrollToSection } from '@/sections'
 import {
   Btn,
   PersonMark,
@@ -138,7 +139,15 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
   }
 
   const photoBody = person.photo ? (
-    <img src={person.photo} alt="" aria-hidden className="size-full object-cover" />
+    <span className="absolute inset-0 block">
+      <img
+        src={person.photo}
+        alt=""
+        aria-hidden
+        className="absolute inset-0 size-full scale-110 object-cover opacity-40 blur-xl"
+      />
+      <img src={person.photo} alt="" aria-hidden className="relative size-full object-contain" />
+    </span>
   ) : (
     <span
       className="grid size-full place-items-center text-[56px] leading-none font-bold text-muted"
@@ -147,10 +156,11 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
       {initialOf(person.name, person.ini)}
     </span>
   )
-  /* Квадрат — та же пропорция, что у карточки в сетке: снимок нигде не переобрезается.
-     Портреты стали квадратными 04.08.2026 по просьбе заказчика; снятое до правки
-     (в данных это 3 : 4) `object-cover` кадрирует по центру, не растягивая. */
-  const photoBox = 'mx-auto block aspect-square w-40 overflow-hidden rounded-2xl border border-line bg-zebra'
+  /* Квадратная рамка одна и та же, что у карточки в сетке, но снимок в ней
+     вписывается целиком: принудительное кадрирование заказчик забраковал
+     04.08.2026. `relative` нужен размытой подложке внутри. */
+  const photoBox =
+    'relative mx-auto block aspect-square w-40 overflow-hidden rounded-2xl border border-line bg-zebra'
 
   return (
     <>
@@ -310,13 +320,19 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
               Скопировать его ссылку
             </Btn>
           )}
+          {/* Разделы теперь идут одной лентой, поэтому это честный переход к «Сборам»,
+              а не обещание. Матрица показывает всю команду сразу — колонка этого
+              человека там уже есть, проваливаться в него отдельно не нужно. */}
           <Btn
             tone="secondary"
             className="w-full justify-start"
-            onClick={() => toast('Появится вместе с переходами между разделами')}
+            onClick={() => {
+              onClose()
+              scrollToSection('gear')
+            }}
           >
             <Backpack size={18} strokeWidth={1.5} aria-hidden />
-            Открыть его сборы
+            Показать сборы
           </Btn>
           {canSetPerm && (
             <Btn

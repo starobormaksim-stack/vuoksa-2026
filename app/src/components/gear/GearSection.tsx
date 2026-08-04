@@ -1,47 +1,42 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Backpack, ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Gear, GearSection as GearSec, Person } from '@/lib/types'
 import { useTrip, touch } from '@/store'
-import {
-  cantOf, crewLine, crewSegments, cycleStatus, myLine, qtyLabel,
-  readyOf, readyOfGroup, statusOf, totalQty,
-} from '@/lib/gearx'
+import { cantOf, cycleStatus, qtyLabel, readyOfGroup } from '@/lib/gearx'
 import { orderedPeople } from '@/lib/people'
 import {
-  AddRow, Btn, EmptyState, Group, ItemRow, ResponsiveSheet, SectionHead, StatusDial, TextSheet,
-  useIsDesktop,
+  AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
 } from '@/components/flops'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { GearAddSheet } from './GearAddSheet'
-import { GearAvatar } from './GearAvatar'
-import { GearCrewBar } from './GearCrewBar'
 import { GearDeniedSheet } from './GearDeniedSheet'
 import { GearItemSheet } from './GearItemSheet'
 import { GearLegendSheet } from './GearLegendSheet'
-import { GearMatrix } from './GearMatrix'
-import { NBSP } from '@/format'
+import { GearMatrix, type MatrixScroll } from './GearMatrix'
 
 /**
  * Раздел «Сборы» (docs/v2-ux-redesign.md, раздел 8).
  *
- * Главное решение — два режима разного устройства, а не один список с разной начинкой:
- * личный режим человек проходит сверху вниз и отмечает (кружок, вещь, количество),
- * а в режиме «Все» владелец смотрит и распределяет (полоса экипажа и одна фраза).
- * Ряда из четырёх чипов «фото + имя + количество + значок», на который жаловался
- * заказчик, здесь нет ни в одном режиме: имена живут в карточке позиции.
+ * Вид один — матрица «вещь × люди», как лист «Снаряжение» в таблице заказчика.
+ * Вкладок по людям нет: заказчик прямо сказал, что проваливаться в каждого
+ * человека неудобно, а всю раскладку хочется видеть сразу.
+ * Ряда из четырёх чипов «фото + имя + количество + значок», на который он жаловался,
+ * здесь тоже нет: имена стоят в шапке колонок.
  */
 
-/** Значение вкладки «Все» — остальные вкладки это id человека. */
-const ALL = 'all'
+/** Что открыто в карточке позиции: чья ячейка и надо ли сразу править количество. */
+interface SheetAt {
+  id: string
+  who: string
+  qty: boolean
+}
 
 export function GearSection() {
   const { S, update, remove, perms } = useTrip()
-  const desktop = useIsDesktop()
-  /* по умолчанию человек попадает в свой список: он пришёл сюда отмечать, а не смотреть */
-  const [mode, setMode] = useState<string>(() => perms.me || ALL)
+  /* один общий сдвиг вбок на все блоки: лист в таблице один */
+  const scroll = useRef<MatrixScroll>({ nodes: new Set(), x: 0, busy: false })
   const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [S.gearSections[0]?.i]: true }))
-  const [sheet, setSheet] = useState<string | null>(null)
+  const [sheet, setSheet] = useState<SheetAt | null>(null)
   const [addTo, setAddTo] = useState<string | null>(null)
   const [legend, setLegend] = useState(false)
   const [denied, setDenied] = useState<{ item: Gear; person: Person } | null>(null)
@@ -64,13 +59,6 @@ export function GearSection() {
     () => [...S.gearSections].sort((a, b) => a.ord - b.ord),
     [S.gearSections],
   )
-
-  const person = mode === ALL ? null : S.people.find((p) => p.id === mode) ?? null
-  /** в личном режиме показываем только то, что человек везёт */
-  const rowsOf = (secId: string) => {
-    const rows = bySec[secId] ?? []
-    return person ? rows.filter((g) => (g.o?.[person.id] || 0) > 0) : rows
-  }
 
   const patch = (id: string, f: (g: Gear) => void) =>
     update((s) => {
@@ -202,46 +190,31 @@ export function GearSection() {
     })
   }
 
-  const current = sheet ? S.gear.find((g) => g.i === sheet) : null
+  const current = sheet ? S.gear.find((g) => g.i === sheet.id) : null
   const menuSec = menu ? sections.find((s) => s.i === menu) ?? null : null
 
-  /* «Все» остаётся первой вкладкой, дальше люди в порядке читателя */
-  const tabs = [
-    { id: ALL, label: 'Все', person: null as Person | null },
-    ...people.map((p) => ({
-      id: p.id,
-      label: `${p.name} ${readyOf(S, p.id).pct}${NBSP}%`,
-      person: p,
-    })),
-  ]
-
-  /* Тело вкладки собирается один раз: активна всегда ровно одна. */
-  const body =
-    person === null && desktop ? (
-      <GearMatrix
-        people={people}
-        perms={perms}
-        sections={sections}
-        rowsOf={rowsOf}
-        onOpen={(g) => setSheet(g.i)}
-        onCycle={cycle}
-        onAssign={assign}
-        onDenied={(g, id) => {
-          const p = S.people.find((x) => x.id === id)
-          if (p) setDenied({ item: g, person: p })
-        }}
-        onQty={(g) => setSheet(g.i)}
+  return (
+    <div className="flex flex-col gap-4">
+      <SectionHead
+        title="Сборы"
+        secId="gear"
+        hint="Цифра — сколько штук везёт человек. «Всего» считается само"
+        onHelp={() => setLegend(true)}
       />
-    ) : (
-      sections.map((sec) => {
-        const rows = rowsOf(sec.i)
-        const r = readyOfGroup(S, sec.i, person ? person.id : null)
+
+      {sections.map((sec) => {
+        const rows = bySec[sec.i] ?? []
+        const r = readyOfGroup(S, sec.i, null)
         return (
           <Group
             key={sec.i}
             title={sec.t}
-            done={r.done}
-            total={r.total}
+            /* итог как в таблице заказчика: «собрано: 0 из 14» */
+            badge={
+              <span className="tnum shrink-0 text-[13px] font-semibold text-muted">
+                собрано: {r.done} из {r.total}
+              </span>
+            }
             open={!!open[sec.i]}
             onToggle={() => setOpen((o) => ({ ...o, [sec.i]: !o[sec.i] }))}
             onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
@@ -249,84 +222,46 @@ export function GearSection() {
             {rows.length === 0 ? (
               <EmptyState
                 icon={Backpack}
-                title={person ? 'Здесь пусто' : 'Раздел пустой'}
-                text={
-                  person
-                    ? 'Из этого раздела ты ничего не везёшь'
-                    : 'Ни одной вещи не заведено'
-                }
+                title="Раздел пустой"
+                text="Ни одной вещи не заведено"
                 action={{ label: 'Добавить вещь', onClick: () => setAddTo(sec.i) }}
               />
             ) : (
-              <div role="list">
-                {rows.map((g, idx) =>
-                  person ? (
-                    <MyRow
-                      key={g.i}
-                      item={g}
-                      person={person}
-                      zebra={idx % 2 === 1}
-                      canMark={perms.canMark(person.id)}
-                      people={S.people}
-                      onOpen={() => setSheet(g.i)}
-                      onCycle={() => cycle(g, person.id)}
-                      onDenied={() => setDenied({ item: g, person })}
-                      onDelete={perms.canDel(g) ? () => del(g) : undefined}
-                    />
-                  ) : (
-                    <AllRow
-                      key={g.i}
-                      item={g}
-                      people={S.people}
-                      zebra={idx % 2 === 1}
-                      onOpen={() => setSheet(g.i)}
-                      onDelete={perms.canDel(g) ? () => del(g) : undefined}
-                    />
-                  ),
-                )}
-                <AddRow label="Добавить вещь" onClick={() => setAddTo(sec.i)} />
-              </div>
+              <>
+                <GearMatrix
+                  rows={rows}
+                  people={people}
+                  perms={perms}
+                  label={sec.t}
+                  sync={scroll}
+                  onOpen={(g) => setSheet({ id: g.i, who: '', qty: false })}
+                  onCycle={cycle}
+                  onAssign={assign}
+                  onDenied={(g, id) => {
+                    const p = S.people.find((x) => x.id === id)
+                    if (p) setDenied({ item: g, person: p })
+                  }}
+                  onQty={(g, id) => setSheet({ id: g.i, who: id, qty: true })}
+                />
+                <div className="border-t border-line">
+                  <AddRow label="Добавить вещь" onClick={() => setAddTo(sec.i)} />
+                </div>
+              </>
             )}
           </Group>
         )
-      })
-    )
+      })}
 
-  return (
-    <div className="flex flex-col gap-4">
-      <SectionHead
-        title="Сборы"
-        hint="Тап по строке открывает карточку, тап по кружку меняет состояние"
-        onHelp={() => setLegend(true)}
-      />
-
-      <Tabs value={mode} onValueChange={setMode} className="gap-4">
-        <TabsList className="h-12! w-full justify-start gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1">
-          {tabs.map((t) => (
-            <TabsTrigger
-              key={t.id}
-              value={t.id}
-              className="h-10 flex-none gap-2 rounded-xl px-3 text-[15px] font-semibold whitespace-nowrap text-muted data-active:bg-accent-soft data-active:text-ink dark:data-active:border-transparent dark:data-active:bg-accent-soft"
-            >
-              {t.person && <GearAvatar p={t.person} size={24} />}
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {tabs.map((t) => (
-          <TabsContent key={t.id} value={t.id} className="flex flex-col gap-4">
-            {t.id === mode ? body : null}
-          </TabsContent>
-        ))}
-      </Tabs>
-
-      {current && (
+      {current && sheet && (
         <GearItemSheet
+          /* карточка заводится заново на каждое открытие: иначе на новой вещи
+             остался бы второй уровень, открытый на прошлой */
+          key={`${sheet.id}:${sheet.who}:${sheet.qty}`}
           item={current}
           S={S}
           perms={perms}
-          focus={person ? person.id : ''}
+          focus={sheet.who}
+          qtyFor={sheet.qty ? sheet.who : undefined}
           onPatch={(f) => patch(current.i, f)}
           onCycle={(id) => cycle(current, id)}
           onAskMark={(id) => askMark(current, id)}
@@ -352,7 +287,7 @@ export function GearSection() {
         onOpenChange={(v) => !v && setAddTo(null)}
         sectionName={S.gearSections.find((s) => s.i === addTo)?.t}
         people={people}
-        preselect={person?.id}
+        preselect={perms.me || undefined}
         onAdd={(name, qty) => {
           if (addTo) addItem(addTo, name, qty)
         }}
@@ -426,70 +361,3 @@ export function GearSection() {
 }
 
 const MDASH = '—'
-
-/**
- * Строка личного режима (8.3): кружок, вещь, количество и одна фраза —
- * «не могу взять» → просьба → «упаковано · поручил Костя» → просто состояние.
- */
-function MyRow({
-  item, person, people, zebra, canMark, onOpen, onCycle, onDenied, onDelete,
-}: {
-  item: Gear
-  person: Person
-  people: Person[]
-  zebra: boolean
-  canMark: boolean
-  onOpen: () => void
-  onCycle: () => void
-  onDenied: () => void
-  onDelete?: () => void
-}) {
-  const cant = cantOf(item, person.id)
-  return (
-    <ItemRow
-      dataHit={item.i}
-      zebra={zebra}
-      alarm={!!cant}
-      onOpen={onOpen}
-      onDelete={onDelete}
-      lead={
-        <StatusDial
-          value={statusOf(item, person.id)}
-          cant={!!cant}
-          who={person.name}
-          onCycle={canMark ? onCycle : undefined}
-          onDenied={canMark ? undefined : onDenied}
-        />
-      }
-      title={item.n}
-      line2={myLine(item, person.id, people)}
-      right={qtyLabel(item.o?.[person.id] || 0)}
-    />
-  )
-}
-
-/** Строка режима «Все» (8.3): полоса экипажа вместо чипов и фраза под ней. */
-function AllRow({
-  item, people, zebra, onOpen, onDelete,
-}: {
-  item: Gear
-  people: Person[]
-  zebra: boolean
-  onOpen: () => void
-  onDelete?: () => void
-}) {
-  const segs = crewSegments(item, people)
-  return (
-    <ItemRow
-      dataHit={item.i}
-      zebra={zebra}
-      alarm={segs.some((s) => s.cant)}
-      onOpen={onOpen}
-      onDelete={onDelete}
-      title={item.n}
-      line2={<GearCrewBar segs={segs} />}
-      line3={<span className="block text-[13px] leading-snug text-muted">{crewLine(segs)}</span>}
-      right={qtyLabel(totalQty(item))}
-    />
-  )
-}

@@ -101,7 +101,8 @@ export function BuySection() {
     <div className="flex flex-col gap-4">
       <SectionHead
         title="Закупка"
-        hint="Тап по строке открывает карточку, тап по галочке отмечает купленное"
+        secId="buy"
+        hint="«Купить» попадает в сумму, «Есть у…» и «Не берём» — нет"
       />
 
       <BuyTotals S={S} onShop={() => setShop(true)} />

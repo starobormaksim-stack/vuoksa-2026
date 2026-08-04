@@ -26,6 +26,10 @@ interface Props {
   places: TripPlace[]
   onEditDates: () => void
   onShowPlaces: () => void
+  /** тап по названию поездки — шторка правки текста (живёт в TripSection) */
+  onEditTitle: () => void
+  /** тап по подзаголовку — своя шторка там же */
+  onEditSub: () => void
   /**
    * Даты и места меняют только владелец и редактор. Участнику кнопки не рисуются
    * вовсе (правило 12.2: «действие не положено — кнопки нет, а не серая»).
@@ -37,7 +41,9 @@ interface Props {
  * Обложка поездки: на десктопе квадрат слева, фото-hero с градиентной подложкой,
  * заголовок, подзаголовок, даты (тап — календарь), места (тап — шторка) и обратный отсчёт.
  */
-export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: Props) {
+export function TripCover({
+  trip, places, onEditDates, onShowPlaces, onEditTitle, onEditSub, canEdit,
+}: Props) {
   const main = places.find((p) => p.main) ?? places[0]
   const extra = places.length - 1
   const dates = datesLabel(trip)
@@ -113,10 +119,40 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: 
         <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-dark">
           {countdown(trip.start, trip.end)}
         </span>
+        {/* Название и подзаголовок: у редактора это кнопки правки («как вижу, так и
+            редактирую»), у участника — обычный текст, не кнопка. Зона нажатия
+            добирается до 44 px невидимыми полями (py + отрицательный my). */}
         <h1 className="mt-3 text-[32px] leading-[1.1] font-[750] text-balance lg:text-4xl">
-          {trip.title}
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={onEditTitle}
+              aria-label={`Название поездки: ${trip.title}. Изменить`}
+              className="editable -mx-2 -my-1.5 max-w-full rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-brand-dark/40"
+            >
+              {trip.title}
+            </button>
+          ) : (
+            trip.title
+          )}
         </h1>
-        {trip.sub && <p className="mt-1 text-[15.5px] text-brand-cream/85">{trip.sub}</p>}
+        {canEdit ? (
+          <p className="mt-1 text-[15.5px] text-brand-cream/85">
+            <button
+              type="button"
+              onClick={onEditSub}
+              aria-label={
+                trip.sub ? `Подзаголовок: ${trip.sub}. Изменить` : 'Добавить подзаголовок'
+              }
+              className="editable -mx-2 -my-3 max-w-full rounded-xl px-2 py-3 text-left transition-colors hover:bg-brand-dark/40"
+            >
+              {/* Пустой подзаголовок — спокойное приглашение, чтобы было по чему тапнуть */}
+              {trip.sub || <span className="text-brand-cream/55">Подзаголовок</span>}
+            </button>
+          </p>
+        ) : (
+          trip.sub && <p className="mt-1 text-[15.5px] text-brand-cream/85">{trip.sub}</p>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           {canEdit ? (

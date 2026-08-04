@@ -5,14 +5,13 @@ import type { ReadyBreakdown } from '@/lib/gearx'
 import {
   breakdownAll, breakdownOf, cantOf, isReady, qtyLabel, rankedPeople, statusOf,
 } from '@/lib/gearx'
-import { toneOf } from '@/lib/people'
-import { Btn, EmptyState, ItemRow, PersonMark, ResponsiveSheet, StatusDial, toneStyle } from '@/components/flops'
+import { Btn, EmptyState, ItemRow, ResponsiveSheet, StatusDial } from '@/components/flops'
 import { cn } from '@/lib/utils'
 
 /**
  * Разбор готовности (пожелание заказчика: «видно, что осталось и у кого»).
- * Процент в блоке «Кто уже собрался» и в кольце отвечает на вопрос «насколько»,
- * а эта шторка — на вопрос «что именно»: четыре корзины из breakdownOf.
+ * Заголовок отвечает на вопрос «сколько», а корзины — на вопрос «что именно»:
+ * четыре списка из breakdownOf. Полосы с процентом нет: заказчику нужны штуки.
  *
  * Только просмотр: отметки за других не ставятся, поэтому ни одной кнопки
  * действия внутри строк нет — статус показан значком, как в «Сборах».
@@ -50,9 +49,6 @@ export function ReadySheet({ S, personId, onClose }: Props) {
 
   const total = b ? b.total : (crew?.total ?? 0)
   const doneN = b ? b.done.length : (crew?.total ?? 0) - (crew?.left ?? 0)
-  const pct = b ? b.pct : (crew?.pct ?? 0)
-  const tone = person ? toneOf(S.people, person.id) : null
-  const bar = tone ? toneStyle(tone) : { background: 'var(--accent-fill)', opacity: 1 }
 
   const todo = lines((x) => x.todo)
   const inWork = lines((x) => x.inWork)
@@ -83,14 +79,6 @@ export function ReadySheet({ S, personId, onClose }: Props) {
         />
       ) : (
         <>
-          <div className="flex items-center gap-3">
-            {tone && <PersonMark tone={tone} size={14} />}
-            <span className="tnum text-[32px] leading-none font-bold text-ink">{pct} %</span>
-            <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zebra" aria-hidden>
-              <span className="block h-full rounded-full" style={{ ...bar, width: `${pct}%` }} />
-            </span>
-          </div>
-
           <Bucket S={S} title="Осталось взять" lines={todo} showName={!person} />
           <Bucket S={S} title="Собирает" lines={inWork} showName={!person} />
           <Bucket S={S} title="Не может взять" lines={cant} showName={!person} why />

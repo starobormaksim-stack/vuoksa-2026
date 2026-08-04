@@ -47,15 +47,45 @@ export function hasGoogleKey(): boolean {
 let loading: Promise<typeof google.maps> | null = null
 
 /**
+ * Код причины, по которой Google-карта не поднялась. По нему вызывающий решает,
+ * имеет ли смысл повторная попытка, а бейдж под картой говорит причину по-русски:
+ *   'no-key'          — ключ не задан (штатное состояние, не поломка);
+ *   'auth'            — Google отказал: домен не в списке, ключ отозван, биллинг;
+ *   'script-error'    — тег script не загрузился (нет сети, блокировщик);
+ *   'timeout'         — загрузка молча зависла и не ответила за отведённое время;
+ *   'import-failed:…' — скрипт поднялся, но одна из библиотек не докачалась.
+ */
+export type GoogleFailCode =
+  | 'no-key'
+  | 'auth'
+  | 'script-error'
+  | 'timeout'
+  | `import-failed:${string}`
+
+/** Ошибка загрузки с машиночитаемым кодом причины — для бейджа и решения о повторе. */
+export class GoogleMapsError extends Error {
+  readonly code: GoogleFailCode
+  constructor(code: GoogleFailCode, message: string) {
+    super(message)
+    this.code = code
+  }
+}
+
+/** Достать код причины из любой ошибки загрузки; незнакомую считаем сетевой. */
+export function googleFailCode(e: unknown): GoogleFailCode {
+  return e instanceof GoogleMapsError ? e.code : 'script-error'
+}
+
+/**
  * Google отказал: домен не в списке разрешённых, ключ отозван, кончился биллинг.
  * Скрипт при этом загружается нормально, и без этого сигнала на месте карты остался бы
  * серый прямоугольник с чужой надписью поверх. Google зовёт глобальную gm_authFailure —
  * ловим её и переводим приложение на OpenStreetMap.
  */
-const authFailed = new Set<() => void>()
+const authFailed = new Set<(reason: 'auth') => void>()
 
-/** Подписаться на отказ Google. Возвращает отписку. */
-export function onGoogleAuthFail(l: () => void): () => void {
+/** Подписаться на отказ Google. Слушателю приходит код 'auth'. Возвращает отписку. */
+export function onGoogleAuthFail(l: (reason: 'auth') => void): () => void {
   authFailed.add(l)
   return () => {
     authFailed.delete(l)
@@ -67,12 +97,21 @@ if (typeof window !== 'undefined') {
     /* Единственное место, где видно причину отката на OpenStreetMap. Без этой строки
        остаётся гадать, почему карта «не та»: сам Google в консоль ничего не пишет. */
     console.warn('Google Maps отказал (домен, ключ или биллинг) — показываем OpenStreetMap')
-    authFailed.forEach((l) => l())
+    authFailed.forEach((l) => l('auth'))
   }
 }
 
 /** Имя глобальной функции, которой Google сообщает, что загрузчик готов. */
 const READY = '__pineMapsReady'
+
+/**
+ * Сколько ждём загрузку целиком, мс. Без этого срока промис мог висеть вечно:
+ * тег script отдал 200, а обещанный callback так и не позвали (перехватчик
+ * трафика, корпоративный прокси, отрезанная на полпути сеть). Тогда карта не
+ * появлялась и отката на OpenStreetMap тоже не было — оставался пустой
+ * прямоугольник, и понять по нему было нечего.
+ */
+const LOAD_TIMEOUT_MS = 12_000
 
 /**
  * Загрузить Maps JavaScript API и дождаться нужных наборов классов.
@@ -83,53 +122,101 @@ const READY = '__pineMapsReady'
  * Поэтому промис резолвится не по onload, а после importLibrary: иначе компонент
  * получает «Map is not a constructor» и молча уходит на OpenStreetMap.
  *
- * Повторные вызовы получают тот же промис.
+ * Повторные вызовы получают тот же промис. Отказ промис не запоминает: после
+ * неудачи следующий вызов честно пробует всё заново.
  */
 export function loadGoogleMaps(): Promise<typeof google.maps> {
   if (loading) return loading
-  loading = (async () => {
-    if (!hasGoogleKey()) throw new Error('Ключ Google Maps не задан')
-
-    const w = window as unknown as Record<string, unknown> & {
-      google?: { maps?: typeof google.maps }
-    }
-
-    if (!w.google?.maps) {
-      await new Promise<void>((resolve, reject) => {
-        w[READY] = () => {
-          delete w[READY]
-          resolve()
-        }
-        const s = document.createElement('script')
-        s.async = true
-        s.src =
-          'https://maps.googleapis.com/maps/api/js?key=' +
-          encodeURIComponent(GOOGLE_MAPS_KEY) +
-          '&language=ru&region=RU&loading=async&callback=' +
-          READY
-        s.onerror = () => reject(new Error('Google Maps не загрузился'))
-        document.head.appendChild(s)
-      })
-    }
-
-    const maps = (window as unknown as { google: { maps: typeof google.maps } }).google.maps
-    /* Наборы классов: core — LatLngBounds и перечисления, maps — сама карта и линии,
-       marker — маркеры, geocoding — обратное геокодирование. После importLibrary
-       классы появляются и в самом пространстве google.maps, так что дальше код
-       пользуется привычным `maps.Map`, `maps.Marker` и так далее. */
-    await Promise.all([
-      maps.importLibrary('core'),
-      maps.importLibrary('maps'),
-      maps.importLibrary('marker'),
-      maps.importLibrary('geocoding'),
-    ])
-    return maps
-  })()
-  /* Не удалось — забываем промис, чтобы следующая попытка началась с чистого листа. */
-  loading.catch(() => {
-    loading = null
+  const attempt = withTimeout(loadAll(), LOAD_TIMEOUT_MS)
+  loading = attempt
+  /* Не удалось — забываем промис, чтобы следующая попытка началась с чистого листа.
+     Сверяемся с attempt: пока этот отказ шёл, кто-то мог начать новую попытку. */
+  attempt.catch(() => {
+    if (loading === attempt) loading = null
   })
-  return loading
+  return attempt
+}
+
+/** Вся загрузка: скрипт, потом четыре набора классов. Сроком её ограничивает вызывающий. */
+async function loadAll(): Promise<typeof google.maps> {
+  if (!hasGoogleKey()) throw new GoogleMapsError('no-key', 'Ключ Google Maps не задан')
+
+  const w = window as unknown as Record<string, unknown> & {
+    google?: { maps?: typeof google.maps }
+  }
+  if (!w.google?.maps) await injectScript()
+
+  const maps = (window as unknown as { google: { maps: typeof google.maps } }).google.maps
+  /* Наборы классов: core — LatLngBounds и перечисления, maps — сама карта и линии,
+     marker — маркеры, geocoding — обратное геокодирование. После importLibrary
+     классы появляются и в самом пространстве google.maps, так что дальше код
+     пользуется привычным `maps.Map`, `maps.Marker` и так далее.
+
+     Каждый набор оборачиваем отдельно: у общего Promise.all все четыре падают
+     скопом и по ошибке не понять, чего именно не приехало. */
+  await Promise.all([
+    needLib('core', () => maps.importLibrary('core')),
+    needLib('maps', () => maps.importLibrary('maps')),
+    needLib('marker', () => maps.importLibrary('marker')),
+    needLib('geocoding', () => maps.importLibrary('geocoding')),
+  ])
+  return maps
+}
+
+/** Дождаться одного набора классов, назвав его в коде отказа. */
+async function needLib(name: string, load: () => Promise<unknown>): Promise<void> {
+  try {
+    await load()
+  } catch (e) {
+    throw new GoogleMapsError(`import-failed:${name}`, `Набор «${name}» не докачался: ${String(e)}`)
+  }
+}
+
+/** Подтянуть загрузчик тегом script и дождаться его сигнала готовности. */
+function injectScript(): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const w = window as unknown as Record<string, unknown>
+    const ready = () => {
+      /* Убираем только своё имя: новая попытка могла уже положить туда своё. */
+      if (w[READY] === ready) delete w[READY]
+      resolve()
+    }
+    w[READY] = ready
+
+    /* Прошлая попытка могла оставить тег, который так и не ожил. Второй такой же
+       Google встречает руганью «included multiple times» — старый сначала убираем. */
+    document.querySelector('script[data-pine-maps]')?.remove()
+
+    const s = document.createElement('script')
+    s.async = true
+    s.dataset.pineMaps = ''
+    s.src =
+      'https://maps.googleapis.com/maps/api/js?key=' +
+      encodeURIComponent(GOOGLE_MAPS_KEY) +
+      '&language=ru&region=RU&loading=async&callback=' +
+      READY
+    s.onerror = () => reject(new GoogleMapsError('script-error', 'Google Maps не загрузился'))
+    document.head.appendChild(s)
+  })
+}
+
+/** Ограничить ожидание сроком: молчание тоже должно кончаться отказом, а не висеть. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = window.setTimeout(() => {
+      reject(new GoogleMapsError('timeout', `Google Maps не ответил за ${Math.round(ms / 1000)} с`))
+    }, ms)
+    p.then(
+      (v) => {
+        window.clearTimeout(t)
+        resolve(v)
+      },
+      (e: unknown) => {
+        window.clearTimeout(t)
+        reject(e instanceof Error ? e : new GoogleMapsError('script-error', String(e)))
+      },
+    )
+  })
 }
 
 /** Что вернуло обратное геокодирование: адрес целиком и короткое имя для названия точки. */

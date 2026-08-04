@@ -2,18 +2,32 @@ import { useEffect, useRef } from 'react'
 import { Check, MapPin, MapPinPlus, Route } from 'lucide-react'
 import type { RoutePoint } from '@/lib/types'
 import { AddRow, EmptyState } from '@/components/flops'
-import { askMap } from '@/lib/mapfocus'
+import { askMap, type MapMode } from '@/lib/mapfocus'
+import { scrollToSection } from '@/sections'
 import { cn } from '@/lib/utils'
 import { coordLabel, pointMeta } from './roadx'
+
+/**
+ * Попросить карту и подвести к ней страницу.
+ *
+ * Своя обёртка нужна из-за переезда: askMap(…, true) прокручивает к «Поездке»,
+ * а маршрут теперь живёт в «Дороге». Прокрутку берём на себя, самой просьбе
+ * говорим scroll:false — иначе страница улетела бы к обложке поездки.
+ */
+function askHere(pointId: string, mode: MapMode): void {
+  scrollToSection('road')
+  askMap(pointId, mode, false)
+}
 
 /**
  * Тайминг поездки (docs/v2-ux-redesign.md, 10.6) — вертикальная лента точек:
  * кружок «этап пройден», время, название, заметка и третья строка с меткой и расстоянием.
  *
- * Лента стоит рядом с картой — это одна вещь, а не две (заказчик 04.08.2026:
- * «тайминг и маршрут вместе… оно должно быть рядом с картой»). Связь двусторонняя
- * и идёт через посредник lib/mapfocus.ts: тап по строке адреса наводит карту,
- * а тап по метке на карте подсвечивает здесь нужную точку (activeId).
+ * Лента и карта — одна вещь, а не две (заказчик 04.08.2026: «тайминг и маршрут
+ * вместе»), поэтому они стоят двумя вкладками одного блока «Маршрут» в «Дороге».
+ * Связь двусторонняя и идёт через посредник lib/mapfocus.ts: тап по строке адреса
+ * открывает вкладку с картой и наводит её, а тап по метке на карте подсвечивает
+ * здесь нужную точку (activeId).
  *
  * Участнику лента показывается целиком, но без единой кнопки правки: ни кружка,
  * ни «добавить» — их просто нет в разметке (правило 12.2). Строка «показать на карте»
@@ -51,7 +65,7 @@ export function RouteTiming({
       <EmptyState
         icon={Route}
         title="Маршрута пока нет"
-        text="Добавьте первую точку — или поставьте её тапом по карте наверху, в «Поездке»"
+        text="Добавьте первую точку — или поставьте её тапом по карте, на соседней вкладке"
         action={canEdit ? { label: 'Добавить точку', onClick: onAdd } : undefined}
       />
     )
@@ -95,16 +109,10 @@ export function RouteTiming({
                 <div className="min-w-0 flex-1 pb-1">
                   <Body
                     point={p}
-                    onOpen={
-                      canEdit
-                        ? () => {
-                            /* Тап по точке в ленте заодно наводит карту рядом —
-                               без прокрутки страницы: карта и так на виду. */
-                            if (typeof p.lat === 'number') askMap(p.i, 'show', false)
-                            onOpen(p.i)
-                          }
-                        : undefined
-                    }
+                    /* Карту тап по строке больше не двигает: она на соседней вкладке,
+                       и переключать её из-под пальца, когда человек открывает
+                       карточку точки, — значит убирать ленту у него с глаз. */
+                    onOpen={canEdit ? () => onOpen(p.i) : undefined}
                   />
                   <PlaceRow point={p} canEdit={canEdit} />
                 </div>
@@ -148,7 +156,7 @@ function PlaceRow({ point, canEdit }: { point: RoutePoint; canEdit: boolean }) {
     return (
       <button
         type="button"
-        onClick={() => askMap(point.i, 'place')}
+        onClick={() => askHere(point.i, 'place')}
         className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-xl pr-2 text-left text-[13px] font-semibold text-accent-text transition-colors hover:bg-zebra/60"
       >
         <MapPinPlus size={17} strokeWidth={1.75} aria-hidden className="shrink-0" />
@@ -160,7 +168,7 @@ function PlaceRow({ point, canEdit }: { point: RoutePoint; canEdit: boolean }) {
   return (
     <button
       type="button"
-      onClick={() => askMap(point.i, 'show')}
+      onClick={() => askHere(point.i, 'show')}
       aria-label={`${point.n}: показать на карте`}
       className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-xl pr-2 text-left transition-colors hover:bg-zebra/60"
     >

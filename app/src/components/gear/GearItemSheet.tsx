@@ -27,8 +27,10 @@ interface Props {
   item: Gear
   S: State
   perms: Perms
-  /** чей это экран: вкладка человека, иначе я сам */
+  /** чей это экран: ячейка человека в матрице, иначе я сам */
   focus: string
+  /** открыть сразу правку количества этого человека — долгое нажатие по ячейке матрицы */
+  qtyFor?: string
   onPatch: (f: (g: Gear) => void) => void
   /** смена состояния по кругу — правило живёт в разделе, чтобы не разъехалось со строкой */
   onCycle: (personId: string) => void
@@ -39,11 +41,11 @@ interface Props {
 }
 
 export function GearItemSheet({
-  item, S, perms, focus, onPatch, onCycle, onAskMark, onDelete, onClose,
+  item, S, perms, focus, qtyFor, onPatch, onCycle, onAskMark, onDelete, onClose,
 }: Props) {
-  const [lvl, setLvl] = useState<Level2>(null)
+  const [lvl, setLvl] = useState<Level2>(qtyFor ? 'qty' : null)
   /** человек, к которому относится второй уровень («сколько везёт», отказ, «не могу взять») */
-  const [who, setWho] = useState('')
+  const [who, setWho] = useState(qtyFor ?? '')
   const back = () => setLvl(null)
 
   const sec = S.gearSections.find((x) => x.i === item.sec)

@@ -3,7 +3,7 @@ import * as LeafletModule from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { RoutePoint } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { destPinHtml, pointPinHtml } from './marks'
+import { DEST_H, DEST_W, destPinHtml, pointPinHtml } from './marks'
 import type { MapDest } from './GoogleRouteMap'
 
 /**
@@ -57,9 +57,14 @@ function pinIcon(n: number, done: boolean) {
   })
 }
 
-/** Плашка конечной точки: ширина плавает, поэтому иконка нулевая, а плашка centered. */
+/** Пин конечной точки. Якорь — точно в кончик хвостика: им метка и указывает на место. */
 function destIcon(name: string) {
-  return L.divIcon({ className: '', html: destPinHtml(name), iconSize: [0, 0], iconAnchor: [0, 0] })
+  return L.divIcon({
+    className: '',
+    html: destPinHtml(name),
+    iconSize: [DEST_W, DEST_H],
+    iconAnchor: [DEST_W / 2, DEST_H],
+  })
 }
 
 export function OsmRouteMap({

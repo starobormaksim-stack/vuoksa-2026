@@ -1,68 +1,78 @@
 import { useState, type ReactNode } from 'react'
-import { Check, CircleHelp, Fuel, Route, Sailboat } from 'lucide-react'
+import { Check, CircleHelp, Fuel, MapPinned } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Idea, Rent, Transport } from '@/lib/types'
 import { useTrip, touch } from '@/store'
-import { scrollToSection } from '@/sections'
-import { calcAll, fuelCost, litres, money, rentSum } from '@/lib/calc'
+import { calcAll, litres, money, routeKm } from '@/lib/calc'
 import {
-  AddRow, EditNum, EmptyState, Group, ItemRow, NumberSheet, ResultNum,
-  SectionHead, SentenceCard, TextSheet,
+  AddRow, Btn, EmptyState, Group, ItemRow, NumberSheet, SectionHead, TextSheet, type NumKind,
 } from '@/components/flops'
-import { fmtNum, NBSP, plural } from '@/format'
+import { fmtNum, MDASH, NBSP, plural } from '@/format'
 import { cn } from '@/lib/utils'
-import { RoadCover } from './RoadCover'
+import { RouteBoard } from '@/components/map/RouteBoard'
+import { RoadInputs } from './RoadInputs'
+import { RoadCalc } from './RoadCalc'
 import { TransportSheet } from './TransportSheet'
 import { RentSheet } from './RentSheet'
 import { IdeaSheet } from './IdeaSheet'
+import { calcLegsByMap } from './legs'
 import {
-  canRowOf, kBackWord, kindIcon, kmLabel, litresLabel, litresTotal, litreWord, mapPoints,
-  refuelLitres, rentIcon, rentLine, transportLine, transportTitle,
+  canRowOf, fuelName, kBackWord, kmLabel, litresLabel, refuelLitres, rentPer, rentQtyLabel,
+  type NumField,
 } from './roadx'
 
+/** Во что разворачивается адрес правимого числа: готовые свойства для NumberSheet. */
+interface NumDef {
+  title: string
+  subtitle?: string
+  value: number
+  kind: NumKind
+  unit?: string
+  hint?: (v: number) => string
+  onChange: (v: number) => void
+}
+
 /**
- * Раздел «Дорога» (docs/v2-ux-redesign.md, раздел 10 + пожелания заказчика от 04.08.2026).
+ * Раздел «Дорога» — лист «Логистика» из таблицы заказчика, слово в слово.
  *
- * Порядок экрана задал заказчик: сверху два квадрата — заглавная картинка поездки
- * и лист маршрута с двумя вкладками («Тайминг» и «Маршрут»), и только ниже деньги:
- * техника, топливо, аренда, расчёт, канистры. Сначала «куда и когда едем»,
- * потом «во сколько это встаёт».
+ * Порядок экрана (заказчик, 04.08.2026):
+ *   маршрут — сам, а не ссылка на него: лента точек и карта двумя вкладками;
+ *   «Исходные данные (правим здесь)» — все числа, из которых собирается расчёт;
+ *   «Расчёт» — таблица со статьями, литрами, ценами и итогом;
+ *   канистры и вопросы.
  *
- * Карточка «Исходные данные» из пятнадцати полей не переехала: она разобрана
- * на живые фразы («Сколько едем», «Цены на топливо») и на карточки техники и аренды.
- * Ни одного поля ввода в списках, ни одного знака операции на экране.
+ * Чего здесь больше нет и почему:
+ *   обложки поездки (RoadCover) — она дублировала обложку в «Поездке», и поменять
+ *     на ней было нечего;
+ *   карточки-указателя «Маршрут и тайминг наверху» — вместо ссылки на маршрут
+ *     здесь теперь сам маршрут.
  *
- * Маршрут правят владелец и редактор. У участника кнопок правки просто нет
- * в разметке — не серых, а отсутствующих (правило 12.2 UX-проекта).
+ * Считает по-прежнему lib/calc.ts. Раздел только показывает и правит исходные
+ * числа: контрольные цифры (330 км · 21 385 ₽ · 47 390 ₽ · 11 848 ₽) обязаны
+ * сходиться с таблицей.
+ *
+ * Маршрут и деньги правят владелец и редактор. У участника кнопок правки просто
+ * нет в разметке — не серых, а отсутствующих (правило 12.2 UX-проекта).
  */
 export function RoadSection() {
   const { S, update, remove, perms } = useTrip()
   const canEdit = perms.isEditor()
 
-  const [open, setOpen] = useState<Record<string, boolean>>({
-    fuel: true, rent: true, cans: true, ideas: false,
-  })
+  const [open, setOpen] = useState<Record<string, boolean>>({ cans: true, ideas: false })
   const [trSheet, setTrSheet] = useState<string | null>(null)
   const [rnSheet, setRnSheet] = useState<string | null>(null)
   const [ideaSheet, setIdeaSheet] = useState<string | null>(null)
-  const [distSheet, setDistSheet] = useState<null | 'main' | 'back' | 'local'>(null)
-  const [priceSheet, setPriceSheet] = useState<string | null>(null)
+  /** какое число сейчас правится: шторка на все поля одна */
+  const [num, setNum] = useState<NumField | null>(null)
   const [adding, setAdding] = useState<null | 'transport' | 'rent' | 'idea'>(null)
+  /** идёт запрос к маршрутизатору */
+  const [mapBusy, setMapBusy] = useState(false)
 
   const c = calcAll(S)
   const dist = S.trip.dist
   const baseKm = dist.src === 'auto' ? dist.auto : dist.manual
   const ideas = S.ideas ?? []
-  const transport = [...S.transport].sort((a, b) => a.ord - b.ord)
-  const rent = [...S.rent].sort((a, b) => a.ord - b.ord)
-  const onMap = mapPoints(S)
   const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
-
-  /* Топлива показываем те, которыми реально кто-то заправляется: справочник
-     держит и дизель с нулём, но пустая строка в живой фразе только мешает. */
-  const fuels = [...S.fuelPrices]
-    .filter((f) => f.price > 0 || S.transport.some((t) => t.fuel === f.i))
-    .sort((a, b) => a.ord - b.ord)
 
   /* ─────────── правки ─────────── */
 
@@ -84,7 +94,7 @@ export function RoadSection() {
       }
     })
 
-  const patchIdea =(id: string, f: (i: Idea) => void) =>
+  const patchIdea = (id: string, f: (i: Idea) => void) =>
     update((s) => {
       const it = (s.ideas ?? []).find((x) => x.i === id)
       if (it) {
@@ -120,6 +130,52 @@ export function RoadSection() {
     })
   }
 
+  /* ─────────── километры по карте ─────────── */
+
+  /**
+   * Считать пробег по карте. Зовётся только руками человека — молча на карту
+   * расчёт не переключается никогда, иначе пробег схлопнулся бы до местных разъездов.
+   */
+  const setAuto = (km: number) => {
+    update((s) => {
+      s.trip.dist.src = 'auto'
+    })
+    toast(`В расчёт пошли километры с карты ${MDASH} ${kmLabel(km)}`, {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            s.trip.dist.src = 'manual'
+          }),
+      },
+    })
+  }
+
+  const useManual = () => {
+    update((s) => {
+      s.trip.dist.src = 'manual'
+    })
+    toast(`Вернули своё число ${MDASH} ${kmLabel(S.trip.dist.manual)}`)
+  }
+
+  const runMapCalc = async () => {
+    setMapBusy(true)
+    const r = await calcLegsByMap()
+    setMapBusy(false)
+    if (!r.ok) {
+      toast(
+        r.why === 'few'
+          ? 'На карте меньше двух точек — считать нечего. Поставьте точки на вкладке «На карте»'
+          : 'Карта не ответила: похоже, нет сети. Расстояние можно вписать руками',
+      )
+      return
+    }
+    toast(
+      `По дорогам вышло ${kmLabel(r.km)} ${MDASH} ${r.legs} ${plural(r.legs, 'участок', 'участка', 'участков')}`,
+      { action: { label: 'Считать по карте', onClick: () => setAuto(r.km) } },
+    )
+  }
+
   /* ─────────── добавление ─────────── */
 
   const addTransport = (n: string) => {
@@ -150,7 +206,7 @@ export function RoadSection() {
     setRnSheet(id)
   }
 
-  const addIdea =(n: string) => {
+  const addIdea = (n: string) => {
     const id = 'q' + Date.now().toString(36)
     update((s) => {
       if (!s.ideas) s.ideas = []
@@ -165,213 +221,220 @@ export function RoadSection() {
   const curTr = trSheet ? S.transport.find((t) => t.i === trSheet) : null
   const curRn = rnSheet ? S.rent.find((r) => r.i === rnSheet) : null
   const curIdea = ideaSheet ? ideas.find((i) => i.i === ideaSheet) : null
-  const curPrice = priceSheet ? S.fuelPrices.find((f) => f.i === priceSheet) : null
 
-  /* Заметка про концы пути («Оставляем 2.») сюда больше не идёт: во фразе это был
-     третий пересказ одного и того же факта. Она никуда не делась — переехала
-     в подпись шторки, где её и читают, когда это число правят. */
-  const distNote = [dist.nt?.manual?.c, dist.nt?.local?.c].filter(Boolean).join(' · ')
-  const fuelNote = fuels.map((f) => f.nt?.price?.c).filter(Boolean).join(' ')
+  /* ─────────── одна шторка на все числа ─────────── */
+
+  const numDef = (f: NumField): NumDef | null => {
+    if (f.k === 'dist') {
+      const nt = dist.nt ?? {}
+      if (f.f === 'kBack') {
+        return {
+          title: nt.kBack?.t || 'Сколько концов пути',
+          subtitle: nt.kBack?.c,
+          value: dist.kBack,
+          kind: 'coeff',
+          hint: (v) => `Считаем ${kBackWord(v)} — получается ${kmLabel(baseKm * v + dist.local)}`,
+          onChange: (v) =>
+            update((s) => {
+              s.trip.dist.kBack = v
+            }),
+        }
+      }
+      if (f.f === 'local') {
+        return {
+          title: nt.local?.t || 'Местные разъезды',
+          subtitle: 'Магазин, база, заправка — сколько накатаем на месте',
+          value: dist.local,
+          kind: 'km',
+          unit: nt.local?.u || 'км',
+          hint: (v) => `Получается ${kmLabel(baseKm * dist.kBack + v)}`,
+          onChange: (v) =>
+            update((s) => {
+              s.trip.dist.local = v
+            }),
+        }
+      }
+      return {
+        title: nt.manual?.t || 'Расстояние в одну сторону',
+        /* Правка руками всегда ложится поверх карты — и говорит об этом заранее. */
+        subtitle:
+          dist.src === 'auto'
+            ? 'Сейчас считаем по карте. Своё число встанет поверх'
+            : nt.manual?.c,
+        value: baseKm,
+        kind: 'km',
+        unit: nt.manual?.u || 'км',
+        hint: (v) => `Получается ${kmLabel(v * dist.kBack + dist.local)}`,
+        onChange: (v) =>
+          update((s) => {
+            s.trip.dist.manual = v
+            s.trip.dist.src = 'manual'
+          }),
+      }
+    }
+
+    if (f.k === 'fuel') {
+      const fu = S.fuelPrices.find((x) => x.i === f.id)
+      if (!fu) return null
+      return {
+        title: fu.nt?.price?.t || `Цена ${fu.n}`,
+        subtitle: fu.nt?.price?.c,
+        value: fu.price,
+        kind: 'fuelPrice',
+        unit: fu.nt?.price?.u || fu.u || '₽/л',
+        hint: (v) => {
+          const l = S.transport
+            .filter((t) => t.fuel === fu.i)
+            .reduce((sum, t) => sum + litres(t, S), 0)
+          return l > 0
+            ? `На ${litresLabel(l)} выйдет ${money(l * v, S.doc)}`
+            : 'На этом топливе пока никто не ездит'
+        },
+        onChange: (v) => setFuelPrice(fu.i, v),
+      }
+    }
+
+    if (f.k === 'tr') {
+      const t = S.transport.find((x) => x.i === f.id)
+      if (!t) return null
+      const nt = t.nt ?? {}
+      if (f.f === 'hours') {
+        return {
+          title: nt.hours?.t || 'Моточасы',
+          subtitle: t.n,
+          value: t.hours,
+          kind: 'hours',
+          unit: nt.hours?.u || 'ч',
+          hint: (v) => `Выйдет ${litresLabel(v * t.rate)}`,
+          onChange: (v) => patchTr(t.i, (x) => {
+            x.hours = v
+          }),
+        }
+      }
+      if (f.f === 'litres') {
+        return {
+          title: nt.litres?.t || 'Сколько литров',
+          subtitle: t.n,
+          value: t.litres,
+          kind: 'litres',
+          unit: nt.litres?.u || 'л',
+          hint: () => `Столько ${fuelName(S, t.fuel)} заливаем разом`,
+          onChange: (v) => patchTr(t.i, (x) => {
+            x.litres = v
+          }),
+        }
+      }
+      return {
+        title: nt.rate?.t || 'Расход',
+        subtitle: t.rateU === 'lh' ? `${t.n} — литров в час` : `${t.n} — литров на 100 км`,
+        value: t.rate,
+        kind: t.rateU === 'lh' ? 'lh' : 'l100',
+        unit: nt.rate?.u || (t.rateU === 'lh' ? 'л/ч' : 'л/100 км'),
+        hint: (v) =>
+          t.rateU === 'lh'
+            ? `Выйдет ${litresLabel(v * t.hours)}`
+            : `Выйдет ${litresLabel((routeKm(S) * v) / 100)}`,
+        onChange: (v) => patchTr(t.i, (x) => {
+          x.rate = v
+        }),
+      }
+    }
+
+    const r = S.rent.find((x) => x.i === f.id)
+    if (!r) return null
+    const nt = r.nt ?? {}
+    if (f.f === 'qty') {
+      return {
+        title: nt.qty?.t || 'Сколько берём',
+        subtitle: r.n,
+        value: r.qty,
+        kind: r.unit === 'сут.' ? 'days' : 'qty',
+        unit: nt.qty?.u || r.unit || 'шт.',
+        hint: (v) => `Выйдет ${money(r.price * v * r.count, S.doc)}`,
+        onChange: (v) => patchRn(r.i, (x) => {
+          x.qty = v
+        }),
+      }
+    }
+    if (f.f === 'count') {
+      return {
+        title: nt.count?.t || 'Сколько штук',
+        subtitle: r.n,
+        value: r.count,
+        kind: 'count',
+        unit: nt.count?.u || 'шт.',
+        hint: (v) => `Выйдет ${money(r.price * r.qty * v, S.doc)}`,
+        onChange: (v) => patchRn(r.i, (x) => {
+          x.count = v
+        }),
+      }
+    }
+    return {
+      title: nt.price?.t || 'Цена аренды',
+      subtitle: `${r.n}, ${rentPer(r)}`,
+      value: r.price,
+      kind: 'price',
+      unit: nt.price?.u || '₽',
+      hint: (v) => `За ${rentQtyLabel(r)} выйдет ${money(v * r.qty * r.count, S.doc)}`,
+      onChange: (v) => patchRn(r.i, (x) => {
+        x.price = v
+      }),
+    }
+  }
+
+  const nd = num ? numDef(num) : null
+
+  /* ─────────── полоса «посчитать по карте» ─────────── */
+
+  const mapStrip = (
+    <div className="border-b border-line/70 bg-zebra/30 px-4 py-3">
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Btn tone="secondary" disabled={mapBusy} onClick={() => void runMapCalc()}>
+            <MapPinned size={18} strokeWidth={1.5} aria-hidden />
+            {mapBusy ? 'Считаем по карте…' : 'Посчитать по карте'}
+          </Btn>
+          {dist.auto > 0 &&
+            (dist.src === 'auto' ? (
+              <Btn tone="ghost" onClick={useManual}>
+                Вернуть своё число
+              </Btn>
+            ) : (
+              <Btn tone="ghost" onClick={() => setAuto(dist.auto)}>
+                Считать по карте
+              </Btn>
+            ))}
+        </div>
+      )}
+      <p className={cn('text-[13px] leading-snug text-muted', canEdit && 'mt-2')}>
+        {dist.src === 'auto'
+          ? `Считается по карте: ${kmLabel(dist.auto)}. Своё число — ${kmLabel(dist.manual)}, оно ждёт наготове.`
+          : dist.auto > 0
+            ? `По карте выходит ${kmLabel(dist.auto)}. В расчёт это число пойдёт, только если его включить.`
+            : 'Расстояние можно посчитать по точкам маршрута — по дорогам, а не по прямой.'}
+      </p>
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-6">
       <SectionHead
         title="Дорога"
-        hint="Сверху — куда и когда едем, ниже — во сколько это встаёт"
+        secId="road"
+        hint="Синие числа правим руками, итоги считаются сами"
       />
 
-      {/* ─── два квадрата: картинка поездки и путь к маршруту ───
-          Лента тайминга отсюда уехала наверх, в «Поездку», и встала рядом с картой:
-          заказчик 04.08.2026 сказал, что тайминг и маршрут — одно и то же и должны
-          быть вместе. В двух местах ленте быть нельзя, поэтому здесь осталась
-          короткая карточка-указатель: маршрут никто не потеряет. */}
-      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-        <RoadCover
-          trip={S.trip}
-          points={S.route.length}
-          onMap={onMap.length}
-          km={c.km}
-          kBack={kBackWord(dist.kBack)}
-        />
+      <RouteBoard S={S} perms={perms} />
 
-        <section className="flex items-center justify-center rounded-2xl border border-line bg-surface shadow-sm">
-          <EmptyState
-            icon={Route}
-            title="Маршрут и тайминг наверху"
-            text="Точки, время и карта собраны в один блок — в «Поездке». Там видно и где мы будем, и во сколько"
-            action={{ label: 'Показать маршрут', onClick: () => scrollToSection('trip') }}
-          />
-        </section>
-      </div>
+      <RoadInputs
+        S={S}
+        canEdit={canEdit}
+        onNum={setNum}
+        onAdd={(what) => setAdding(what)}
+        mapStrip={mapStrip}
+      />
 
-      {/* ─── Техника ─── */}
-      <Group
-        title="Бензин"
-        open={!!open.fuel}
-        onToggle={() => setOpen((o) => ({ ...o, fuel: !o.fuel }))}
-        badge={<Sum>{money(c.fuel, S.doc)}</Sum>}
-      >
-        <p className="px-4 pb-2 text-[13px] text-muted">
-          Всего {fmtNum(litresTotal(S), 1)} {litreWord(litresTotal(S))} на {transport.length}{' '}
-          {plural(transport.length, 'мотор', 'мотора', 'моторов')} · пробег {kmLabel(c.km)}
-        </p>
-
-        {transport.length === 0 ? (
-          <EmptyState
-            icon={Fuel}
-            title="Техники пока нет"
-            text="Добавьте машину, мотор или бензопилу — бензин посчитается сам"
-            action={canEdit ? { label: 'Добавить технику', onClick: () => setAdding('transport') } : undefined}
-          />
-        ) : (
-          <div role="list">
-            {transport.map((t, idx) => {
-              const Icon = kindIcon(t, S)
-              return (
-                <ItemRow
-                  key={t.i}
-                  dataHit={t.i}
-                  zebra={idx % 2 === 1}
-                  onOpen={() => setTrSheet(t.i)}
-                  onDelete={perms.canDel(t) ? () => drop('transport', t, 'убрана') : undefined}
-                  lead={
-                    <span className="grid size-11 place-items-center rounded-xl bg-zebra text-accent-text">
-                      <Icon size={22} strokeWidth={1.5} aria-hidden />
-                    </span>
-                  }
-                  title={transportTitle(t, S)}
-                  line2={transportLine(t, S)}
-                  right={money(fuelCost(t, S), S.doc)}
-                />
-              )
-            })}
-            {canEdit && (
-              <AddRow label="Добавить технику" onClick={() => setAdding('transport')} />
-            )}
-          </div>
-        )}
-      </Group>
-
-      {/* ─── Топливо ─── */}
-      <SentenceCard
-        title="Цены на топливо"
-        onEdit={canEdit && fuels[0] ? () => setPriceSheet(fuels[0].i) : undefined}
-        note={fuelNote || undefined}
-      >
-        {fuels.length === 0 ? (
-          <span className="text-muted">Цены ещё не вписаны.</span>
-        ) : (
-          fuels.map((f, idx) => (
-            <span key={f.i}>
-              {idx > 0 ? ' · ' : ''}
-              {f.n} —{' '}
-              <EditNum
-                onClick={canEdit ? () => setPriceSheet(f.i) : undefined}
-                label={`Цена ${f.n}`}
-              >
-                {`${fmtNum(f.price, 1)}${NBSP}₽`}
-              </EditNum>{' '}
-              за литр
-            </span>
-          ))
-        )}
-      </SentenceCard>
-
-      {/* ─── Аренда ─── */}
-      <Group
-        title="Аренда"
-        open={!!open.rent}
-        onToggle={() => setOpen((o) => ({ ...o, rent: !o.rent }))}
-        badge={<Sum>{money(c.rent, S.doc)}</Sum>}
-      >
-        {rent.length === 0 ? (
-          <EmptyState
-            icon={Sailboat}
-            title="Ничего не арендуем"
-            text="Лодка, парковка, домик — всё, за что платим на месте"
-            action={canEdit ? { label: 'Добавить аренду', onClick: () => setAdding('rent') } : undefined}
-          />
-        ) : (
-          <div role="list">
-            {rent.map((r, idx) => {
-              const Icon = rentIcon(r, S)
-              return (
-                <ItemRow
-                  key={r.i}
-                  dataHit={r.i}
-                  zebra={idx % 2 === 1}
-                  onOpen={() => setRnSheet(r.i)}
-                  onDelete={perms.canDel(r) ? () => drop('rent', r, 'убрана') : undefined}
-                  lead={
-                    <span className="grid size-11 place-items-center rounded-xl bg-zebra text-accent-text">
-                      <Icon size={22} strokeWidth={1.5} aria-hidden />
-                    </span>
-                  }
-                  title={r.n}
-                  line2={rentLine(r, S)}
-                  line3={
-                    r.warn ? (
-                      <span className="text-[12px] leading-snug font-semibold text-accent-text">
-                        {r.warn}
-                      </span>
-                    ) : undefined
-                  }
-                  right={money(rentSum(r), S.doc)}
-                />
-              )
-            })}
-            {canEdit && <AddRow label="Добавить аренду" onClick={() => setAdding('rent')} />}
-          </div>
-        )}
-      </Group>
-
-      {/* ─── Расчёт ─── */}
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="flex items-end gap-3">
-          <h3 className="min-w-0 flex-1 text-[15px] font-[650] text-ink">Дорога и аренда</h3>
-          <span className="tnum text-[28px] leading-none font-bold text-ink">
-            {money(c.transport, S.doc)}
-          </span>
-        </div>
-        <p className="mt-1 text-[13px] text-muted">
-          Бензин {money(c.fuel, S.doc)} · аренда {money(c.rent, S.doc)}
-        </p>
-      </section>
-
-      <SentenceCard
-        title="Сколько едем"
-        onEdit={canEdit ? () => setDistSheet('main') : undefined}
-        note={distNote || undefined}
-      >
-        {/* Каждый факт сказан ровно один раз, и каждый — это то, что правится.
-            Слова «туда и обратно» больше не вшиты в текст: их говорит сам
-            коэффициент (kBackWord), поэтому при одном конце фраза не соврёт. */}
-        Едем{' '}
-        <EditNum
-          onClick={canEdit ? () => setDistSheet('main') : undefined}
-          label="Сколько километров в одну сторону"
-        >
-          {fmtNum(baseKm, 0)}
-        </EditNum>{' '}
-        км в одну сторону, плюс{' '}
-        <EditNum
-          onClick={canEdit ? () => setDistSheet('local') : undefined}
-          label="Местные разъезды"
-        >
-          {fmtNum(dist.local, 0)}
-        </EditNum>{' '}
-        км по месту. Дорогу считаем{' '}
-        <EditNum
-          onClick={canEdit ? () => setDistSheet('back') : undefined}
-          label="Сколько концов пути"
-        >
-          {kBackWord(dist.kBack)}
-        </EditNum>
-        .
-        <div className="mt-2">
-          Получается <ResultNum>{kmLabel(c.km)}</ResultNum>.
-        </div>
-      </SentenceCard>
+      <RoadCalc S={S} onOpenTransport={setTrSheet} onOpenRent={setRnSheet} />
 
       {/* ─── Канистры ─── */}
       <Group
@@ -530,70 +593,17 @@ export function RoadSection() {
 
       {/* ─────────── правка чисел ─────────── */}
 
-      <NumberSheet
-        open={distSheet === 'main'}
-        onOpenChange={(v) => !v && setDistSheet(null)}
-        title={dist.nt?.manual?.t || 'Сколько километров в одну сторону'}
-        subtitle={dist.src === 'auto' ? 'Считаем по карте' : undefined}
-        value={baseKm}
-        kind="km"
-        unit={dist.nt?.manual?.u || 'км'}
-        hint={(v) => `Получается ${kmLabel(v * dist.kBack + dist.local)}`}
-        onChange={(v) =>
-          update((s) => {
-            if (s.trip.dist.src === 'auto') s.trip.dist.auto = v
-            else s.trip.dist.manual = v
-          })
-        }
-      />
-      <NumberSheet
-        open={distSheet === 'back'}
-        onOpenChange={(v) => !v && setDistSheet(null)}
-        title="Сколько концов пути"
-        subtitle={[dist.nt?.kBack?.t, dist.nt?.kBack?.c].filter(Boolean).join(' · ') || undefined}
-        value={dist.kBack}
-        kind="coeff"
-        hint={(v) => `Считаем ${kBackWord(v)} — получается ${kmLabel(baseKm * v + dist.local)}`}
-        onChange={(v) =>
-          update((s) => {
-            s.trip.dist.kBack = v
-          })
-        }
-      />
-      <NumberSheet
-        open={distSheet === 'local'}
-        onOpenChange={(v) => !v && setDistSheet(null)}
-        title={dist.nt?.local?.t || 'Местные разъезды'}
-        subtitle="Магазин, база, заправка — сколько накатаем на месте"
-        value={dist.local}
-        kind="km"
-        unit={dist.nt?.local?.u || 'км'}
-        hint={(v) => `Получается ${kmLabel(baseKm * dist.kBack + v)}`}
-        onChange={(v) =>
-          update((s) => {
-            s.trip.dist.local = v
-          })
-        }
-      />
-
-      {curPrice && (
+      {nd && (
         <NumberSheet
           open
-          onOpenChange={(v) => !v && setPriceSheet(null)}
-          title={curPrice.nt?.price?.t || `Цена ${curPrice.n}`}
-          subtitle={curPrice.nt?.price?.c}
-          value={curPrice.price}
-          kind="fuelPrice"
-          unit={curPrice.nt?.price?.u || curPrice.u || '₽/л'}
-          hint={(v) => {
-            const l = S.transport
-              .filter((t) => t.fuel === curPrice.i)
-              .reduce((sum, t) => sum + litres(t, S), 0)
-            return l > 0
-              ? `На ${litresLabel(l)} выйдет ${money(l * v, S.doc)}`
-              : 'На этом топливе пока никто не ездит'
-          }}
-          onChange={(v) => setFuelPrice(curPrice.i, v)}
+          onOpenChange={(v) => !v && setNum(null)}
+          title={nd.title}
+          subtitle={nd.subtitle}
+          value={nd.value}
+          kind={nd.kind}
+          unit={nd.unit}
+          hint={nd.hint}
+          onChange={nd.onChange}
         />
       )}
 

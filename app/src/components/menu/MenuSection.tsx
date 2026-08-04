@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 import type { MenuDay, MenuDish } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import {
-  AddRow, EmptyState, Group, ItemRow, SectionHead, TextSheet, useIsDesktop,
+  AddRow, Btn, EmptyState, Group, ItemRow, ResponsiveSheet, SectionHead, SheetRow,
+  TextSheet, useIsDesktop,
 } from '@/components/flops'
 import { DishSheet } from './DishSheet'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,9 @@ export function MenuSection() {
   const [sheet, setSheet] = useState<{ day: string; dish: string } | null>(null)
   const [addTo, setAddTo] = useState<string | null>(null)
   const [addDay, setAddDay] = useState(false)
+  /** день, у которого открыты «действия дня», и какая его строка правится */
+  const [dayMenu, setDayMenu] = useState<string | null>(null)
+  const [dayEdit, setDayEdit] = useState<null | 't' | 'sub'>(null)
 
   /**
    * Разовая миграция при первом чтении раздела, без потери данных:
@@ -112,12 +116,14 @@ export function MenuSection() {
 
   const curDay = sheet ? days.find((d) => d.i === sheet.day) : null
   const curDish = curDay?.dishes?.find((x) => x.i === sheet?.dish)
+  const curMenuDay = dayMenu ? days.find((d) => d.i === dayMenu) : null
 
   return (
     <div className="flex flex-col gap-4">
       <SectionHead
         title="Меню"
-        hint="Тап по строке открывает блюдо, тап по галочке отмечает приготовленное"
+        secId="menu"
+        hint="День готов, когда приготовлены все его блюда"
         action={canEdit ? { label: 'Добавить день', onClick: () => setAddDay(true) } : undefined}
       />
 
@@ -144,6 +150,7 @@ export function MenuSection() {
                 total={dishes.length}
                 open={isOpen(day, idx)}
                 onToggle={() => setOpen((o) => ({ ...o, [day.i]: !isOpen(day, idx) }))}
+                onMenu={canEdit ? () => setDayMenu(day.i) : undefined}
               >
                 {dishes.length === 0 ? (
                   <EmptyState
@@ -232,6 +239,55 @@ export function MenuSection() {
           setAddTo(null)
         }}
       />
+
+      {/* Заголовок дня показывается — значит, правится: «как вижу, так и редактирую».
+          Раньше день был единственным заголовком без действий, в отличие от разделов
+          «Сборов» и «Закупки». Удаление дня сюда не выносим — блюда ушли бы с ним. */}
+      {canEdit && curMenuDay && (
+        <ResponsiveSheet
+          open={dayEdit === null}
+          onOpenChange={(v) => !v && setDayMenu(null)}
+          title="День раскладки"
+          subtitle={curMenuDay.t}
+          footer={
+            <Btn className="w-full" onClick={() => setDayMenu(null)}>
+              Готово
+            </Btn>
+          }
+        >
+          <SheetRow label="Название" value={curMenuDay.t} onClick={() => setDayEdit('t')} />
+          <SheetRow
+            label="Подпись"
+            value={curMenuDay.sub || 'не вписана'}
+            onClick={() => setDayEdit('sub')}
+          />
+        </ResponsiveSheet>
+      )}
+
+      {canEdit && curMenuDay && (
+        <>
+          <TextSheet
+            open={dayEdit === 't'}
+            onOpenChange={(v) => !v && setDayEdit(null)}
+            onBack={() => setDayEdit(null)}
+            title="Название дня"
+            subtitle="Как он подписан в раскладке"
+            value={curMenuDay.t}
+            placeholder="13 августа · день 4"
+            onDone={(v) => v && patchDay(curMenuDay.i, (d) => { d.t = v })}
+          />
+          <TextSheet
+            open={dayEdit === 'sub'}
+            onOpenChange={(v) => !v && setDayEdit(null)}
+            onBack={() => setDayEdit(null)}
+            title="Подпись дня"
+            subtitle={curMenuDay.t}
+            value={curMenuDay.sub ?? ''}
+            placeholder="Например, сборы и переправа"
+            onDone={(v) => patchDay(curMenuDay.i, (d) => { d.sub = v })}
+          />
+        </>
+      )}
 
       <TextSheet
         open={addDay}
