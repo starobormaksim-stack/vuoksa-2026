@@ -5,6 +5,7 @@ import { useTrip } from './store'
 import { useTheme } from './theme'
 import { TopNav } from './components/TopNav'
 import { MobileHeader } from './components/MobileHeader'
+import { NetNotice } from './components/NetNotice'
 import { BottomNav } from './components/BottomNav'
 import { Placeholder } from './components/Placeholder'
 import { SearchCommand } from './components/SearchCommand'
@@ -131,6 +132,7 @@ function App() {
 
       <BottomNav sections={SECTIONS} active={active} onSelect={goTo} />
       <SearchCommand S={S} open={search} onOpenChange={setSearch} onJump={jump} />
+      <NetNotice />
       <Toaster />
     </div>
   )
