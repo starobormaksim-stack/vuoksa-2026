@@ -60,6 +60,12 @@ export interface NumberSheetProps {
   onChange: (v: number) => void
   onBack?: () => void
   /**
+   * Шаг внутри мастера, где сущность ещё не заведена: свой тост об изменении
+   * числа не показывать — иначе человек видит «готово» на середине пути.
+   * По умолчанию выключено: обычная правка тост показывает.
+   */
+  quiet?: boolean
+  /**
    * Числo назначил другой человек: вместо −/+ показывается «Попросить изменить»
    * (docs/v2-ux-redesign.md, 12.3).
    */
@@ -67,7 +73,7 @@ export interface NumberSheetProps {
 }
 
 export function NumberSheet(props: NumberSheetProps) {
-  const { open, onOpenChange, title, subtitle, value, kind, unit, hint, onChange, onBack, ask } = props
+  const { open, onOpenChange, title, subtitle, value, kind, unit, hint, quiet, onChange, onBack, ask } = props
   const def = STEPS[kind]
   const initial = useRef(value)
   const [exact, setExact] = useState(false)
@@ -134,7 +140,7 @@ export function NumberSheet(props: NumberSheetProps) {
     const was = initial.current
     const now = valueRef.current
     onOpenChange(false)
-    if (was !== now) {
+    if (!quiet && was !== now) {
       toast(`${title} ${MDASH} ${fmtNum(now, def.frac)}${unit ? NBSP + unit : ''}`, {
         action: { label: 'Отменить', onClick: () => onChange(was) },
       })

@@ -263,6 +263,9 @@ function startSync(): void {
       return doc
     },
     getAuthor: authorName,
+    /* Ключ отдаём только подтверждённый: checkAuth() сверил его с карточкой человека.
+       Нет ключа — база правку не примет, и это правильно (docs/rls-apply-b.sql). */
+    getKey: () => (auth ? auth.key : ''),
     getMe: () => {
       const me = perms.mePerson
       return me ? { id: me.id, name: me.name } : null

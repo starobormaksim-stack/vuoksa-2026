@@ -18,9 +18,12 @@ import {
   SB,
   fetchTrip,
   insertTrip,
+  KeyRejected,
   patchTrip,
   pingTrip,
   realtimeUrl,
+  RpcMissing,
+  rpcTripWrite,
   TRIP_ID,
 } from './supabase.ts'
 
@@ -40,6 +43,12 @@ export interface SyncHooks {
   stampDoc(stamp: string, author: string): unknown
   /** имя того, кто сейчас за документом (уходит в колонку author и в пинг) */
   getAuthor(): string
+  /**
+   * Личный ключ из ссылки (`?k=…`), уже подтверждённый по карточке человека.
+   * По нему база разрешает запись — см. docs/rls-apply-b.sql. Пусто значит
+   * «ключа нет»: такой человек читает, но не пишет.
+   */
+  getKey(): string
   /** себя для присутствия */
   getMe(): Presence | null
   /** индикатор состояния */
@@ -61,6 +70,8 @@ export class Sync {
   private pushing = false
   private pushAgain = false
   private pushT: ReturnType<typeof setTimeout> | null = null
+  /** Функции `trip_write` в базе нет — один раз выяснили и больше не стучимся. */
+  private rpcGone = false
   private tickT: ReturnType<typeof setInterval> | null = null
   private started = false
 
@@ -185,8 +196,12 @@ export class Sync {
     this.h.onNet('work')
     try {
       await this.pushTry(0)
-    } catch {
-      this.h.onNet('err', 'правки не ушли на сервер')
+    } catch (e) {
+      /* Отдельно — самый частый и самый непонятный человеку случай: он открыл сайт
+         без своей ссылки, и база честно отказалась принимать правки. */
+      if (e instanceof KeyRejected)
+        this.h.onNet('err', 'правки не сохраняются — откройте свою личную ссылку')
+      else this.h.onNet('err', 'правки не ушли на сервер')
     }
     this.pushing = false
     if (this.pushAgain) {
@@ -197,21 +212,30 @@ export class Sync {
 
   private async pushTry(attempt: number): Promise<void> {
     const author = this.h.getAuthor()
+    const key = this.h.getKey()
     const rows = await fetchTrip()
-    if (!rows.length) {
-      const stamp0 = new Date().toISOString()
-      const out = await insertTrip(this.h.stampDoc(stamp0, author), stamp0, author)
-      if (out && out[0]) this.lastPull = out[0].updated_at
-      this.h.onNet('ok')
-      await this.ping(author)
-      return
-    }
-    const row = rows[0]
+    const row = rows.length ? rows[0] : null
     /* вобрали чужие правки — иначе условная запись затрёт их нашей копией */
-    if (row.updated_at !== this.lastPull) this.h.applyRemote(row.data)
+    if (row && row.updated_at !== this.lastPull) this.h.applyRemote(row.data)
     const stamp = new Date().toISOString()
     const body = this.h.stampDoc(stamp, author)
-    const out = await patchTrip(row.updated_at, body, stamp, author)
+
+    let out: { updated_at: string }[]
+    if (this.rpcGone) {
+      /* Переходный период: функции в базе ещё нет, значит и RLS не включён —
+         пишем прямо, как писали всегда. */
+      out = row
+        ? await patchTrip(row.updated_at, body, stamp, author)
+        : await insertTrip(body, stamp, author)
+    } else {
+      try {
+        out = await rpcTripWrite(row ? row.updated_at : null, body, stamp, author, key)
+      } catch (e) {
+        if (!(e instanceof RpcMissing)) throw e
+        this.rpcGone = true
+        return this.pushTry(attempt)
+      }
+    }
     if (!out.length) {
       /* кто-то записал раньше нас */
       if (attempt < MAX_ATTEMPTS - 1) {

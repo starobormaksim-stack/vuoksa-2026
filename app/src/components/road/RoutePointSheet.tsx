@@ -103,7 +103,6 @@ export function RoutePointSheet({
         {canEdit && coord && (
           <Btn
             tone="ghost"
-            scale="sm"
             className="mt-2 -ml-3"
             onClick={() => {
               const lat = item.lat

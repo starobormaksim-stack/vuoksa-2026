@@ -15,6 +15,7 @@ export function TextSheet({
   value,
   placeholder,
   multiline,
+  quiet,
   onDone,
   onBack,
 }: {
@@ -25,6 +26,12 @@ export function TextSheet({
   value: string
   placeholder?: string
   multiline?: boolean
+  /**
+   * Шаг внутри мастера, где сущность ещё не заведена: свой тост «сохранено»
+   * не показывать — иначе человек видит «готово» на середине пути.
+   * По умолчанию выключено: обычная правка тост показывает.
+   */
+  quiet?: boolean
   onDone: (v: string) => void
   onBack?: () => void
 }) {
@@ -39,6 +46,7 @@ export function TextSheet({
     onOpenChange(false)
     if (next === value) return
     onDone(next)
+    if (quiet) return
     toast(`${title} сохранено`, {
       action: { label: 'Отменить', onClick: () => onDone(value) },
     })

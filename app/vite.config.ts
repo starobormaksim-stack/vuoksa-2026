@@ -62,5 +62,34 @@ export default defineConfig(({ mode }) => ({
     tailwindcss(),
     ...(mode === 'offline' ? [viteSingleFile(), stripOnlineLinks()] : []),
   ],
-  build: mode === 'offline' ? { outDir: 'dist-offline' } : { outDir: 'dist' },
+  build:
+    mode === 'offline'
+      ? { outDir: 'dist-offline' }
+      : {
+          outDir: 'dist',
+          /**
+           * Разрезаем сборку по библиотекам. Раньше всё ехало одним куском в 1,19 МБ,
+           * и при каждом обновлении сайта человек перекачивал его целиком.
+           *
+           * Смысл именно в кеше: библиотеки меняются раз в полгода, а наш код — каждый
+           * этап. Разрезанные, они остаются в браузере между версиями, и обновление
+           * весит не мегабайт, а свои полторы сотни килобайт.
+           *
+           * Офлайн-копию это не касается: там viteSingleFile сливает всё обратно
+           * в один файл, и разрезание только мешало бы.
+           */
+          rolldownOptions: {
+            output: {
+              advancedChunks: {
+                groups: [
+                  { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+                  { name: 'radix', test: /node_modules[\\/]@radix-ui[\\/]/ },
+                  { name: 'motion', test: /node_modules[\\/]motion/ },
+                  { name: 'leaflet', test: /node_modules[\\/].*leaflet/ },
+                  { name: 'cmdk', test: /node_modules[\\/](cmdk|command-score)[\\/]/ },
+                ],
+              },
+            },
+          },
+        },
 }))

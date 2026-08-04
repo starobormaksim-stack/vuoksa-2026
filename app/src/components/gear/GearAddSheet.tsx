@@ -170,6 +170,7 @@ export function GearAddSheet({
       </ResponsiveSheet>
 
       {/* ─── второй уровень ─── */}
+      {/* quiet: вещь ещё не заведена, промежуточный тост «сохранено» соврал бы */}
       <TextSheet
         open={open && lvl === 'name'}
         onOpenChange={(v) => !v && back()}
@@ -178,6 +179,7 @@ export function GearAddSheet({
         subtitle={sectionName}
         value={name}
         placeholder="Например, спальник"
+        quiet
         onDone={(v) => setName(v)}
       />
 
@@ -191,6 +193,7 @@ export function GearAddSheet({
           value={qty[whoPerson.id] || 0}
           kind="qty"
           unit="шт."
+          quiet
           hint={(v) =>
             v <= 0
               ? `Ноль ${MDASH} ${whoPerson.name} эту вещь не везёт`

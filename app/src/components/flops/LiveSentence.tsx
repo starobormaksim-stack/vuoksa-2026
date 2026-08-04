@@ -19,12 +19,14 @@ export function EditNum({
   label?: string
 }) {
   if (!onClick) return <span className="font-semibold text-ink">{children}</span>
+  // Видимая высота прежняя (32), цель касания 44 — её даёт невидимый слой ::after.
+  // Так строки абзаца не разъезжаются: слой лежит поверх и в поток не входит.
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="editable tnum inline-flex min-h-8 items-center px-1 align-baseline font-semibold text-ink"
+      className="editable tnum relative inline-flex min-h-8 items-center px-1 align-baseline font-semibold text-ink after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
     >
       {children}
     </button>

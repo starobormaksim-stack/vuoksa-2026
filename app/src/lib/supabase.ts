@@ -23,9 +23,19 @@ function search(): string {
   return typeof location === 'undefined' ? '' : location.search || ''
 }
 
-/** true — открыта песочница (`?sandbox=1`). */
+/**
+ * true — открыта песочница.
+ *
+ * Два случая. Первый — явный `?sandbox=1`. Второй — любой запуск с локальной машины:
+ * 4 августа 2026 боевую строку пять раз затирали вкладки, открытые на `localhost`
+ * по «голому» адресу без `?u=`, — такой адрес даёт права владельца и пишет в боевой
+ * документ. Проверять на своей машине боевые данные незачем никогда, поэтому
+ * localhost теперь песочница безусловно, забыть про `?sandbox=1` больше нельзя.
+ */
 export function isSandbox(): boolean {
-  return /[?&]sandbox=1/.test(search())
+  if (/[?&]sandbox=1/.test(search())) return true
+  const host = typeof location === 'undefined' ? '' : location.hostname || ''
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
 }
 
 /** id строки в таблице `trips`. */
@@ -109,8 +119,68 @@ export function insertTrip(data: unknown, stamp: string, author: string): Promis
 }
 
 /**
+ * Ключ не подошёл: функция базы отказала в записи. Отдельный класс нужен, чтобы
+ * показать человеку понятное «откройте свою личную ссылку», а не общее «не ушло».
+ */
+export class KeyRejected extends Error {}
+
+/**
+ * Функции `trip_write` в базе ещё нет. Бывает в переходный период: код уже выложен,
+ * а SQL из `docs/rls-apply-b.sql` ещё не применён. Тогда работаем как раньше, прямой
+ * записью — она в этот момент ещё разрешена, потому что RLS тоже не включён.
+ */
+export class RpcMissing extends Error {}
+
+/**
+ * Запись через функцию базы `trip_write` — единственный путь, когда включён RLS
+ * (см. docs/rls-apply-b.sql). Функция сама сверяет личный ключ человека со списком
+ * людей в документе НА СЕРВЕРЕ, поэтому подделать своего человека нельзя.
+ *
+ * `seenAt` — метка, которую мы видели: условная запись, как и раньше. `null` значит
+ * «строки на сервере ещё нет», и функция её создаёт.
+ *
+ * Просим вернуть только `updated_at`: документ весит под мегабайт, и гонять его
+ * обратно на каждой записи незачем (прежний PATCH это делал).
+ */
+export async function rpcTripWrite(
+  seenAt: string | null,
+  data: unknown,
+  stamp: string,
+  author: string,
+  key: string,
+): Promise<TripRow[]> {
+  const r = await sbFetch('rpc/trip_write?select=updated_at', {
+    method: 'POST',
+    body: {
+      p_trip: TRIP_ID,
+      p_key: key,
+      p_data: data,
+      p_seen: seenAt,
+      p_stamp: stamp,
+      p_author: author,
+    },
+  })
+  /* PostgREST отвечает 404 с кодом PGRST202, когда такой функции в схеме нет */
+  if (r.status === 404) throw new RpcMissing('функции trip_write в базе нет')
+  if (!r.ok) {
+    let text = ''
+    try {
+      text = await r.text()
+    } catch {
+      /* тела нет — обойдёмся кодом ответа */
+    }
+    if (text.includes('ключ не подходит')) throw new KeyRejected('ключ не подходит')
+    throw new Error('HTTP ' + r.status)
+  }
+  return (await r.json()) as TripRow[]
+}
+
+/**
  * Условная запись: пишем, только если на сервере всё ещё та метка, которую мы видели.
  * Пустой ответ — кто-то записал раньше нас, цикл надо повторить.
+ *
+ * Прямой путь. После включения RLS он закрыт для всех — остаётся только на время,
+ * пока функция `trip_write` в базе не заведена.
  */
 export function patchTrip(
   seenAt: string,

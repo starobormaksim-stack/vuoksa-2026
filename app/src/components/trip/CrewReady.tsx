@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
 import type { State } from '@/lib/types'
 import { breakdownOf, rankedPeople, restLineOf } from '@/lib/gearx'
 import { toneOf } from '@/lib/people'
@@ -15,9 +16,15 @@ import { ReadySheet } from './ReadySheet'
  * поэтому несобравшиеся оказываются наверху. Личный цвет участника — насыщенность
  * янтаря и форма метки (lib/people.ts): новых оттенков бренд не допускает.
  * Тап по строке открывает разбор: что осталось именно у этого человека.
+ *
+ * Порядок меняется на ходу — когда кто-то отмечает вещь, его строка уезжает вниз.
+ * Мгновенный скачок терял строку из виду, поэтому перестановка едет: key по id
+ * человека держит строку той же самой, а layout="position" двигает только
+ * положение, не растягивая текст и полоску внутри.
  */
 export function CrewReady({ S }: { S: State }) {
   const [who, setWho] = useState('')
+  const reduce = useReducedMotion()
   if (S.people.length === 0) return null
 
   return (
@@ -29,7 +36,11 @@ export function CrewReady({ S }: { S: State }) {
           const b = breakdownOf(S, p.id)
           const tone = toneOf(S.people, p.id)
           return (
-            <li key={p.id}>
+            <motion.li
+              key={p.id}
+              layout={reduce ? false : 'position'}
+              transition={{ duration: reduce ? 0 : 0.24, ease: [0.2, 0.8, 0.2, 1] }}
+            >
               <button
                 type="button"
                 onClick={() => setWho(p.id)}
@@ -68,7 +79,7 @@ export function CrewReady({ S }: { S: State }) {
                 </span>
                 <ChevronRight size={18} strokeWidth={1.5} aria-hidden className="shrink-0 text-muted" />
               </button>
-            </li>
+            </motion.li>
           )
         })}
       </ul>
