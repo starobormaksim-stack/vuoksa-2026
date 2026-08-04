@@ -12,13 +12,16 @@
 html,body{margin:0;padding:0}
 /* палитра FLOPS по брендбуку: светлая тема — песочный пергамент логотипа,
    тёмная — хвойная зелень логотипа; акценты — янтарно-ржавые #BC6C25 / #A74612 */
+/* Бренд — ровно четыре цвета (решение заказчика 04.08.2026):
+   графит #161C10 · хвоя #2B391B · крем #FEFAE0 · янтарь #BC6C25.
+   Всё прочее — их производные; песочный #E4D0A5 и водный синий #3E6B7A выведены. */
 :root{
---night:#222B15;--night2:#161C10;--pine:#3D5226;--amber:#BC6C25;--amberDeep:#A74612;--amberLt:#EBD9AE;
---water:#3E6B7A;--bark:#7C5433;--moss:#5E7A5A;--dang:#A74612;
---cream:#E4D0A5;--zebra:#DBC993;--line:#C2AC72;--ink:#20261A;--muted:#585A42;
---bg:var(--cream);--card:#F3EAD0;--head:rgba(228,208,165,.86);
---shadow:0 1px 2px rgba(43,57,27,.06),0 10px 30px rgba(43,57,27,.09);
---shadowUp:0 2px 4px rgba(43,57,27,.08),0 18px 44px rgba(43,57,27,.13);
+--night:#2B391B;--night2:#161C10;--pine:#3A4D24;--amber:#BC6C25;--amberDeep:#A74612;--amberLt:#F4E5C4;
+--water:#161C10;--bark:#8E5A2A;--moss:#4C6234;--dang:#A74612;
+--cream:#FEFAE0;--zebra:#E7E1C2;--line:#D5CEAC;--ink:#161C10;--muted:#636555;
+--bg:#F1EDD6;--card:var(--cream);--head:rgba(241,237,214,.88);
+--shadow:0 1px 2px rgba(22,28,16,.06),0 10px 30px rgba(22,28,16,.09);
+--shadowUp:0 2px 4px rgba(22,28,16,.08),0 18px 44px rgba(22,28,16,.14);
 --serif:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
 --sans:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 --ease:cubic-bezier(.2,.8,.2,1);
@@ -26,9 +29,9 @@ html,body{margin:0;padding:0}
 }
 /* тёмная тема — хвоя логотипа: фон #161C10, поверхности к #2B391B, текст пергаментный */
 html[data-theme="dark"]{
---bg:#2B391B;--card:#364A20;--zebra:#243014;--line:#4E6329;--ink:#F0E8CB;--muted:#B6B698;
---pine:#A6C287;--water:#6FA0B0;--bark:#C89A5E;--moss:#8AA486;--amber:#DD9A4E;--amberDeep:#C0762A;
---amberLt:#403A1C;--cream:#303F1C;--head:rgba(43,57,27,.87);--dang:#E9A288;
+--bg:#2B391B;--card:#3C482B;--zebra:#222E15;--line:#4A5A35;--ink:#FEFAE0;--muted:#B4B79B;
+--pine:#A6C287;--water:#FEFAE0;--bark:#D9A96A;--moss:#8FA97B;--amber:#DD9A4E;--amberDeep:#C0762A;
+--amberLt:#3E3A20;--cream:#2F3D1F;--head:rgba(43,57,27,.88);--dang:#E9A288;
 --shadow:0 1px 2px rgba(0,0,0,.34),0 10px 30px rgba(0,0,0,.36);
 --shadowUp:0 2px 6px rgba(0,0,0,.38),0 18px 44px rgba(0,0,0,.44);
 }

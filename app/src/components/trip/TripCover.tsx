@@ -27,7 +27,7 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces }: Props) {
           className="absolute inset-0 grid place-items-center"
           style={{ background: 'linear-gradient(160deg, #3D5226 0%, #223012 70%, #161C10 100%)' }}
         >
-          <TentTree size={96} strokeWidth={1} aria-hidden className="opacity-25 text-brand-parchment" />
+          <TentTree size={96} strokeWidth={1} aria-hidden className="opacity-25 text-brand-cream" />
         </div>
       )}
 
