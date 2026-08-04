@@ -105,23 +105,46 @@ grant execute on function public.trip_write(text, text, jsonb, timestamptz, time
 
 -- ───────────────────────────────────────────────────────────────────────────
 --  2. RLS: читать может любой, писать напрямую — НИКТО.
---     Политик на insert/update/delete нет вовсе, и это не забывчивость:
+--     Политик на insert/update нет вовсе, и это не забывчивость:
 --     единственный путь записи — функция выше.
+--
+--  ⚠️ Снести ВСЕ прежние политики обязательно. 04.08.2026 первое применение
+--  этого файла защиту не дало: RLS включился, функция заработала, а прямая
+--  запись осталась открытой — на таблице висела старая разрешающая политика
+--  (такие Supabase заводит сам, когда RLS включают кнопкой в интерфейсе).
+--  Одна такая политика сводит всю защиту на нет, поэтому список чистится
+--  целиком, а не по именам.
 -- ───────────────────────────────────────────────────────────────────────────
 
 alter table public.trips enable row level security;
 
-drop policy if exists "читать может любой" on public.trips;
+do $$
+declare прежняя record;
+begin
+  for прежняя in
+    select policyname from pg_policies where schemaname = 'public' and tablename = 'trips'
+  loop
+    execute format('drop policy %I on public.trips', прежняя.policyname);
+  end loop;
+end $$;
+
 create policy "читать может любой"
   on public.trips for select
   using (true);
 
+/* Строку песочницы надо уметь убирать после проверок, иначе она копится.
+   Боевую строку это не затрагивает: условие ловит только имена на «-test». */
+create policy "песочницу можно убирать"
+  on public.trips for delete
+  using (id like '%-test');
+
 -- ───────────────────────────────────────────────────────────────────────────
---  3. Проверка: должна вернуть одну строку с politikой select и ни одной
---     политики на запись.
+--  3. Проверка. Должно быть: «защита включена» = true, и ровно две политики —
+--     SELECT и DELETE. Ни одной политики на INSERT или UPDATE быть не должно.
 -- ───────────────────────────────────────────────────────────────────────────
 
--- select policyname, cmd from pg_policies where tablename = 'trips';
+select relrowsecurity as "защита включена" from pg_class where relname = 'trips';
+select policyname as "политика", cmd as "на что" from pg_policies where tablename = 'trips';
 
 -- ───────────────────────────────────────────────────────────────────────────
 --  ЧЕГО ЭТОТ ФАЙЛ НЕ ДЕЛАЕТ
