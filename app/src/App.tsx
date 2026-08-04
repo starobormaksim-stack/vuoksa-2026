@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
-import { Luggage } from 'lucide-react'
 import { SECTIONS, anchorOf, scrollToSection, type SectionDef } from './sections'
 import { useTrip } from './store'
 import { useTheme } from './theme'
@@ -14,8 +13,6 @@ import { MobileHeader } from './components/MobileHeader'
 import { NetNotice } from './components/NetNotice'
 import { PermNotice } from './components/PermNotice'
 import { BottomNav } from './components/BottomNav'
-import { WhoAmI } from './components/WhoAmI'
-import { PresenceStack } from './components/PresenceStack'
 import { Placeholder } from './components/Placeholder'
 import { SearchCommand } from './components/SearchCommand'
 import { TripSection } from './components/trip/TripSection'
@@ -138,6 +135,7 @@ function App() {
         onHome={goHome}
       />
       <MobileHeader
+        people={S.people}
         dark={dark}
         onToggleTheme={toggle}
         onSearch={() => setSearch(true)}
@@ -145,30 +143,15 @@ function App() {
       />
 
       <main className="mx-auto w-full max-w-[1280px] px-4 py-6 pb-28 lg:px-6 lg:py-8 lg:pb-12">
-        {/* Кто ты и кто ещё сейчас на листе — строкой над разделами, на всех ширинах.
-            ⚠️ В полосе меню этой строке не место: она съедала ширину у названий
-            разделов, и на десктопе они превращались в «Поез…», «Кома…», «Сб…»
-            (заказчик 04.08.2026: «пункты меню не видны»). */}
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <WhoAmI />
-          <PresenceStack people={S.people} variant="strip" />
-        </div>
-
-        {/* Выход к списку поездок. Поездок у заказчика будет много, и попасть
-            из одной в другую надо с любой страницы, не разыскивая меню.
-            В офлайн-копии этого выхода нет: она про одну поездку и только. */}
-        {!офлайн && (
-          <div className="mb-4 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setTrips(true)}
-              className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-note text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
-            >
-              <Luggage size={18} strokeWidth={1.75} aria-hidden />
-              Мои поездки
-            </button>
-          </div>
-        )}
+        {/* ⚠️ Здесь стояли две строки над разделами — «Вы — Макс · владелец» с рядом
+            присутствия и кнопка «Мои поездки». Обе убраны 05.08.2026.
+            · Личность и присутствие переехали ЗНАКОМ в саму шапку (`PresenceStack`
+              variant="chip"): заказчик просил, чтобы это было видно постоянно.
+              Словами в полосу меню писать по-прежнему нельзя — урок У-11.
+            · «Мои поездки» дословно тем же пунктом уже есть в меню «⋯» — строка
+              была вторым органом того же действия и занимала 44 px пустой высоты
+              перед обложкой. Заказчик 05.08.2026: «нет никакой лишней информации,
+              пустого скроллинга нету».  */}
 
         {/* Все разделы на странице сразу, каждый — своя секция с якорем.
             `scroll-margin-top` уводит заголовок из-под прилипающей шапки. */}
@@ -178,7 +161,10 @@ function App() {
               key={s.id}
               id={anchorOf(s.id)}
               aria-label={s.title}
-              className="scroll-mt-20 lg:scroll-mt-24"
+              /* Отступ ровно в высоту шапки — то же число, на котором стоит липкая
+                 полоса раздела (--header-h в index.css). Прежние 80/96 px оставляли
+                 над полосой пустой зазор при переходе из меню. */
+              style={{ scrollMarginTop: 'var(--header-h)' }}
             >
               {s.id === 'trip' ? (
                 <TripSection S={S} perms={perms} />

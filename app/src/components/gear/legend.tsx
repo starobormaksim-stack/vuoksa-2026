@@ -1,0 +1,24 @@
+import { StatusDial } from '@/components/flops'
+import type { LegendItem } from '@/components/flops/SectionHead'
+import { ST_NAME } from '@/lib/gearx'
+
+/**
+ * Условные обозначения «Сборов» — то, что раньше пряталось в шторке
+ * `GearLegendSheet` за кнопкой «что означают значки».
+ *
+ * Заказчик 05.08.2026: «я нажимаю — галочка возникает, какие-то часики, потом
+ * машина, потом какой-то треугольник; человек должен понимать, что это такое,
+ * а для этого нужны условные обозначения». Значки стоят в полосе раздела,
+ * рядом с таблицей, которую они объясняют, — а не за нажатием (постулат 2).
+ *
+ * Подписи короткие намеренно: длинные объяснения из прежней шторки («часть лежит,
+ * часть ищется…») в строку не помещаются и полосу раздела не украсят. Полное
+ * название состояния читает скринридер у самого кружка в ячейке (`StatusDial`).
+ */
+export const GEAR_LEGEND: LegendItem[] = [
+  { mark: <StatusDial value={0} size={32} />, label: ST_NAME[0] },
+  { mark: <StatusDial value={1} size={32} />, label: ST_NAME[1] },
+  { mark: <StatusDial value={2} size={32} />, label: ST_NAME[2] },
+  { mark: <StatusDial value={3} size={32} />, label: ST_NAME[3] },
+  { mark: <StatusDial value={0} cant size={32} />, label: 'не могу взять' },
+]

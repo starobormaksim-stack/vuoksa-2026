@@ -197,6 +197,37 @@
   --radius-4xl: 9999px;
 }
 
+/* ── Высота шапки: одно число на весь проект ──
+   От него зависят три вещи, и раньше каждая знала его по-своему:
+   1) `top` липкой полосы раздела (flops/SectionHead.tsx),
+   2) `scroll-margin-top` секций, чтобы переход из меню не прятал полосу под шапку,
+   3) распорка под `fixed`-шапку на мобильном (MobileHeader.tsx, константа BAR).
+   Полоса кнопок — 56 px на мобильном плюс безопасная зона, 64 px на десктопе
+   (`h-16` у TopNav). Меняется здесь и больше нигде. */
+:root { --header-h: calc(56px + env(safe-area-inset-top)); }
+@media (min-width: 1024px) { :root { --header-h: 64px; } }
+
+/* ── Полосы прокрутки: тонкие и одного вида ──
+   Заказчик 05.08.2026: «изобилия скроллбаров нету… у тебя же с правой стороны
+   уже есть один скролл». Убрать внутренние прокрутки нельзя — на них держится
+   матрица вещь × люди на телефоне, — но выглядеть они обязаны одинаково и тихо.
+   Полоса страницы остаётся системной: по ней человек понимает, где он в листе. */
+:where([class*="overflow-x-auto"], [class*="overflow-y-auto"], [class*="overflow-auto"]) {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line-strong) 70%, transparent) transparent;
+}
+:where([class*="overflow-x-auto"], [class*="overflow-y-auto"], [class*="overflow-auto"])::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+:where([class*="overflow-x-auto"], [class*="overflow-y-auto"], [class*="overflow-auto"])::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line-strong) 70%, transparent);
+  border-radius: 9999px;
+}
+:where([class*="overflow-x-auto"], [class*="overflow-y-auto"], [class*="overflow-auto"])::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* ── База ── */
 html {
   background: var(--bg);

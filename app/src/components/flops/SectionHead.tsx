@@ -1,23 +1,53 @@
 import { useState, type ReactNode } from 'react'
-import { CircleHelp, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useTrip, update } from '@/store'
 import { hintOf, setSectionTitle, titleOf } from '@/lib/sectitles'
-import { TextSheet } from './TextSheet'
+import { InlineText } from './Inline'
 
 /**
- * Заголовок раздела: название, кнопка «что означают значки» и главное действие.
- * Легенда значков живёт здесь, а не карточкой над списком (раздел 4.5 UX-проекта) —
- * это освобождает 120 px экрана.
+ * Полоса раздела: крупное название слева, условные обозначения справа.
  *
- * С `secId` название и подпись берутся из документа (`S.secTitles`) и правятся тапом
- * у владельца и редактора: раздел, переименованный человеком, должен так и называться.
- * Без `secId` заголовок остаётся обычным текстом — так его зовут неразделочные блоки.
+ * ─── Почему полоса липкая (заказчик, 05.08.2026) ───
+ * Дословно: «полоска раздела остаётся липкой, она прилипает к верхней полоске меню;
+ * как только я заканчиваю этот раздел, следующий тоже прилипает на время, пока
+ * я иду по разделу». `position: sticky` внутри своей `<section>` даёт ровно это
+ * поведение бесплатно: полоса держится под шапкой, пока секция на экране, и
+ * уезжает вместе с её низом, уступая место полосе следующего раздела.
+ *
+ * `top` берётся из `--header-h` (index.css) — одного числа на весь проект:
+ * 56 px плюс безопасная зона на мобильном, 64 px на десктопе. Фон непрозрачный:
+ * содержимое обязано уезжать ПОД полосу и там пропадать, а не просвечивать
+ * сквозь неё (урок У-20).
+ * ⚠️ Липкость может отвалиться, если какой-нибудь слой поставит `overflow`
+ * на `<html>` (шторки, встроенный браузер Телеграма) — урок У-18. Тогда полоса
+ * просто перестанет прилипать и поедет вместе со страницей: раздел от этого
+ * не ломается, читаться хуже не станет.
+ *
+ * ─── Чего здесь больше нет ───
+ * 1. **Подписи под названием.** Заказчик 05.08.2026: «должно быть написано крупно
+ *    „Сборы“, а вот это „общая база вещей, личные списки“ — вообще убирай, такой
+ *    информации не нужно, лишнее». Своё значение подписи из `S.secTitles` при этом
+ *    НЕ трогается и лежит в документе как лежало (постулат «ничего из данных
+ *    не выбрасывать», урок У-04 про форму хранения).
+ * 2. **Шторки переименования.** Название правится на месте, `InlineText` —
+ *    попапов нет (постулат 2, урок У-43).
+ * 3. **Кнопки «что означают значки» со шторкой.** Условные обозначения теперь
+ *    стоят прямо в полосе, по правому краю контента: «человек должен понимать,
+ *    что это такое, а для этого нужны условные обозначения». На телефоне ширины
+ *    под подписи нет, поэтому там они раскрываются на месте, под полосой.
  */
+
+/** Один значок условных обозначений: сам знак и что он значит. */
+export interface LegendItem {
+  mark: ReactNode
+  label: string
+}
+
 export function SectionHead({
   title,
   hint,
   secId,
-  onHelp,
+  legend,
   action,
   children,
 }: {
@@ -25,48 +55,74 @@ export function SectionHead({
   hint?: string
   /** идентификатор раздела из sections.ts — включает своё название и правку */
   secId?: string
-  onHelp?: () => void
+  /** условные обозначения раздела; нет значков — нет и полосы обозначений */
+  legend?: LegendItem[]
   action?: { label: string; onClick: () => void }
   children?: ReactNode
 }) {
   const { S, perms } = useTrip()
-  const [edit, setEdit] = useState<null | 'h' | 'sub'>(null)
+  const [openLegend, setOpenLegend] = useState(false)
   const canEdit = !!secId && perms.isEditor()
   const шапка = secId ? titleOf(S, secId, title) : title
+
+  /* Подпись раздела с экрана убрана, но из документа не выброшена: читаем её,
+     чтобы при переименовании положить обратно нетронутой. */
   const подпись = secId ? hintOf(S, secId, hint) : hint
 
-  const save = (h: string, sub: string) =>
+  const saveTitle = (h: string) =>
     update((s) => {
-      setSectionTitle(s, secId!, h, sub)
+      setSectionTitle(s, secId!, h, подпись ?? '')
     })
 
+  const есть = !!legend?.length
+
   return (
-    <div className="mb-3">
-      <div className="flex min-h-11 items-center gap-2">
-        {canEdit ? (
-          <h2 className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={() => setEdit('h')}
-              aria-label={`Раздел «${шапка}». Переименовать`}
-              className="editable -mx-2 flex min-h-11 max-w-full items-center rounded-md px-2 text-left text-title font-[700] text-ink transition-colors hover:bg-zebra"
-            >
-              <span className="truncate">{шапка}</span>
-            </button>
-          </h2>
-        ) : (
-          <h2 className="min-w-0 flex-1 text-title font-[700] text-ink">{шапка}</h2>
+    <div
+      /* Полоса тянется до краёв контейнера контента: под ней не должно
+         просвечивать содержимое по бокам от текста. */
+      className="sticky z-30 -mx-4 mb-4 border-b border-line/70 bg-bg px-4 lg:-mx-6 lg:px-6"
+      style={{ top: 'var(--header-h)' }}
+    >
+      <div className="flex min-h-14 items-center gap-3">
+        <h2 className="min-w-0 flex-1 text-title font-[700] text-ink">
+          <InlineText
+            value={шапка}
+            onSave={saveTitle}
+            can={canEdit}
+            required
+            label="Название раздела"
+            className="text-title font-[700] text-ink"
+          />
+        </h2>
+
+        {/* Обозначения по правому краю контента — на десктопе прямо в строке. */}
+        {есть && (
+          <ul className="hidden shrink-0 items-center gap-4 lg:flex" aria-label="Условные обозначения">
+            {legend!.map((l) => (
+              <li key={l.label} className="flex items-center gap-1.5">
+                <span className="grid shrink-0 place-items-center" aria-hidden>
+                  {l.mark}
+                </span>
+                <span className="text-micro whitespace-nowrap text-muted">{l.label}</span>
+              </li>
+            ))}
+          </ul>
         )}
-        {onHelp && (
+
+        {/* На телефоне подписи в строку не помещаются: пять значков со словами —
+            это около 470 px при 358 доступных. Поэтому там они раскрываются
+            на месте, под полосой, а не шторкой поверх экрана. */}
+        {есть && (
           <button
             type="button"
-            onClick={onHelp}
-            aria-label="Что означают значки"
-            className="grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
+            onClick={() => setOpenLegend((v) => !v)}
+            aria-expanded={openLegend}
+            className="grid size-11 shrink-0 place-items-center rounded-md text-micro font-semibold text-muted transition-colors hover:bg-zebra hover:text-ink lg:hidden"
           >
-            <CircleHelp size={20} strokeWidth={1.75} aria-hidden />
+            {openLegend ? 'скрыть' : 'знаки'}
           </button>
         )}
+
         {action && (
           <button
             type="button"
@@ -74,45 +130,25 @@ export function SectionHead({
             className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-4 text-body font-semibold text-on-accent transition-opacity hover:opacity-90"
           >
             <Plus size={18} strokeWidth={1.75} aria-hidden />
-            {action.label}
+            <span className="hidden sm:inline">{action.label}</span>
           </button>
         )}
       </div>
-      {canEdit ? (
-        <button
-          type="button"
-          onClick={() => setEdit('sub')}
-          className="editable -mx-2 mt-0.5 block min-h-8 max-w-full rounded-md px-2 text-left text-note text-muted transition-colors hover:bg-zebra"
-        >
-          {подпись || <span className="opacity-70">Подпись раздела</span>}
-        </button>
-      ) : подпись ? (
-        <p className="mt-0.5 text-note text-muted">{подпись}</p>
-      ) : null}
-      {children}
 
-      {canEdit && (
-        <>
-          <TextSheet
-            open={edit === 'h'}
-            onOpenChange={(v) => !v && setEdit(null)}
-            title="Название раздела"
-            subtitle={`Заводское — «${title}»`}
-            value={шапка}
-            placeholder={title}
-            onDone={(v) => v && save(v, подпись ?? '')}
-          />
-          <TextSheet
-            open={edit === 'sub'}
-            onOpenChange={(v) => !v && setEdit(null)}
-            title="Подпись раздела"
-            subtitle={шапка}
-            value={подпись ?? ''}
-            placeholder={hint ?? 'Короткая строка под названием'}
-            onDone={(v) => save(шапка, v)}
-          />
-        </>
+      {есть && openLegend && (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 pb-3 lg:hidden" aria-label="Условные обозначения">
+          {legend!.map((l) => (
+            <li key={l.label} className="flex items-center gap-1.5">
+              <span className="grid shrink-0 place-items-center" aria-hidden>
+                {l.mark}
+              </span>
+              <span className="text-micro text-muted">{l.label}</span>
+            </li>
+          ))}
+        </ul>
       )}
+
+      {children}
     </div>
   )
 }

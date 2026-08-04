@@ -3,8 +3,8 @@ import type { State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { fmtRange, withDate } from '@/format'
+import { SectionHead } from '@/components/flops'
 import { TripCover } from './TripCover'
-import { ReadyLeft } from './ReadyLeft'
 import { DateRangePicker } from './DateRangePicker'
 
 /**
@@ -14,8 +14,14 @@ import { DateRangePicker } from './DateRangePicker'
  * он не нужен») — сразу за обложкой на странице идёт раздел «Команда».
  * Разбор «Как это считается» с обложки тоже убран: расчёты живут в «Дороге».
  *
- * На десктопе это не растянутый мобильный: обложка-квадрат слева, список
- * несобранного — колонкой рядом, вровень с ней по высоте.
+ * ⛔ 05.08.2026 отсюда убран и `ReadyLeft` — колонка несобранного справа от обложки.
+ * Дословно: «у тебя дублируется список товаров на всём протяжении… больше нигде
+ * не повторяться списками оборудования, инвентаря, вещей или продуктов» (урок У-53).
+ * Он перечислял позиции `S.gear` чужого раздела, да ещё и печатал названия его
+ * групп. Сводка о сборах осталась там, где ей и место, — числом «собрано X из Y»
+ * в шапке самих «Сборов». Обложка теперь занимает всю ширину контейнера на всех
+ * ширинах: делить её было не с кем.
+ *
  * Даты меняют только владелец и редактор.
  */
 export function TripSection({ S, perms }: { S: State; perms: Perms }) {
@@ -37,9 +43,14 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,1fr)] lg:items-start lg:gap-6">
+    <div className="flex flex-col gap-4 lg:gap-6">
+      {/* Своя полоса есть у каждого раздела — иначе при прокрутке непонятно, где ты,
+          и единообразия, которого просил заказчик, не получается. Названия из
+          `S.secTitles` у «Поездки» нет (ключи первой версии — buy, log, crew, gear,
+          menu), поэтому `secId` не передаём: форму хранения трогать нельзя (У-04).
+          Название поездки живёт на самой обложке и правится там же. */}
+      <SectionHead title="Поездка" />
       <TripCover S={S} perms={perms} onEditDates={() => setCalOpen(true)} />
-      <ReadyLeft S={S} perms={perms} />
 
       {calOpen && canEdit && (
         <DateRangePicker

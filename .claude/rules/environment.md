@@ -62,6 +62,12 @@ http://localhost:5199/?u=Maks&k=zdzua343&sandbox=1
 * Элемент с недоигранным входом Motion навсегда стоит на смещении; `getAnimations()`
   при этом **пуст** (Motion гонит инлайн-стиль по кадрам, не через WAAPI). Геометрию
   покоя читать как `rect − new DOMMatrixReadOnly(cs.transform).f`.
+* **CSS-переходы тоже не доигрывают.** Элемент с `transition-colors` после смены темы
+  навсегда остаётся на СТАРТОВОМ цвете, и `getAnimations()` возвращает 0 — прибор молчит,
+  а `getComputedStyle().color` врёт. Замер контраста в этой среде получался 1,56 : 1
+  там, где на самом деле 5,79 : 1 (урок У-55). Перед замером цвета снимать переходы:
+  `document.querySelectorAll('*').forEach(e => e.style.transition = 'none')`
+  плюс `void document.body.offsetWidth`.
 * Результат `setState` в том же вызове не прочитать — React флашит асинхронно.
   Нажатие и чтение разметки — два разных вызова инструмента.
 

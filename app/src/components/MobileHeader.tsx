@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react'
+import type { Person } from '../lib/types'
 import { Logo } from './Logo'
-
+import { PresenceStack } from './PresenceStack'
 import { ThemeToggle } from './ThemeToggle'
 import { MoreMenu } from './MoreMenu'
 
@@ -37,11 +38,13 @@ const BAR = 56
  * рисует шапку ниже безопасной зоны.
  */
 export function MobileHeader({
+  people,
   dark,
   onToggleTheme,
   onSearch,
   onHome,
 }: {
+  people: Person[]
   dark: boolean
   onToggleTheme: () => void
   onSearch: () => void
@@ -70,12 +73,21 @@ export function MobileHeader({
             onClick={onHome}
             aria-label="Pine-to-Pine — наверх"
             /* Знак 26 px, но нажимать надо по 44 px: высоту добирает сама кнопка,
-               не трогая размер логотипа (заказчик отдельно просил его не растить). */
-            className="-mx-2 flex min-h-11 items-center rounded-md px-2 transition-colors hover:bg-zebra/70 active:scale-[0.98]"
+               не трогая размер логотипа (заказчик отдельно просил его не растить).
+               ⚠️ Подложки под знаком быть не должно. Знак с эмблемой высокий, и
+               прямоугольник `hover:bg-zebra` вырастал под ним в плашку во весь
+               угол шапки — заказчик 05.08.2026: «выглядит убого… какая-то
+               гигантская плашка под ним». Наведение показываем самим знаком. */
+            className="flex min-h-11 items-center rounded-md transition-opacity hover:opacity-75"
           >
             <Logo height={26} />
           </button>
           <div className="flex items-center gap-1">
+            {/* Тот же знак присутствия, что и на десктопе: своё лицо и лица тех,
+                кто сейчас на листе. Лица занимают 24…72 px и не растут дальше. */}
+            <span className="mr-1 inline-flex">
+              <PresenceStack people={people} variant="chip" compact />
+            </span>
             <button
               type="button"
               aria-label="Поиск по листу"

@@ -41,7 +41,9 @@ export function TopNav({
           type="button"
           onClick={onHome}
           aria-label="Pine-to-Pine — наверх"
-          className="-mx-2 flex shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-zebra/70 active:scale-[0.98]"
+          /* Без подложки: см. тот же комментарий в MobileHeader.tsx. Эмблема 47 px,
+             и прямоугольник подсветки вырастал под знаком в плашку 55 × 190 px. */
+          className="flex shrink-0 items-center rounded-md transition-opacity hover:opacity-75"
         >
           <Logo height={28} />
         </button>
@@ -82,8 +84,10 @@ export function TopNav({
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
-          <span className="mr-1 hidden xl:inline-flex">
-            <PresenceStack people={people} />
+          {/* Знак «я вошёл, и вот кто ещё здесь» — виден всегда, на всех ширинах.
+              Только лица: словами в эту полосу писать нельзя, см. урок У-11. */}
+          <span className="mr-2 inline-flex">
+            <PresenceStack people={people} variant="chip" />
           </span>
           <button
             type="button"

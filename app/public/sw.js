@@ -112,6 +112,14 @@ self.addEventListener('activate', function (e) {
   )
 })
 
+/* Подстраховка поверх собственного skipWaiting() из install. Свой вызов должен
+   срабатывать всегда, но страница (src/main.tsx) на всякий случай умеет
+   попросить об этом ещё раз явным сообщением — так работник не должен
+   остаться висеть в состоянии «жду», пока никто не закрыл все вкладки. */
+self.addEventListener('message', function (e) {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting()
+})
+
 self.addEventListener('fetch', function (e) {
   var req = e.request
   if (req.method !== 'GET') return

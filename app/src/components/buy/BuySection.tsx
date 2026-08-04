@@ -7,6 +7,7 @@ import { orderedPeople } from '@/lib/people'
 import {
   Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll,
 } from '@/components/flops'
+import { BUY_LEGEND } from './legend'
 import { BuyTotals } from './BuyTotals'
 import { BuyTable } from './BuyTable'
 import { byOrd, type BuyItem } from './buylocal'
@@ -137,6 +138,7 @@ export function BuySection() {
         title="Закупка"
         secId="buy"
         hint="Галочка слева — куплено. Без галочки «Берём» позиция в сумму не идёт"
+        legend={BUY_LEGEND}
       />
 
       <BuyTotals S={S} />

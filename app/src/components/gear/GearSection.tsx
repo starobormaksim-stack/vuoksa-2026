@@ -9,7 +9,7 @@ import {
   AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
   newTableScroll, type TableScroll,
 } from '@/components/flops'
-import { GearLegendSheet } from './GearLegendSheet'
+import { GEAR_LEGEND } from './legend'
 import { GearMatrix } from './GearMatrix'
 
 /**
@@ -33,7 +33,6 @@ export function GearSection() {
   /* один общий сдвиг вбок на все блоки: лист в таблице заказчика один */
   const scroll = useRef<TableScroll>(newTableScroll())
   const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [S.gearSections[0]?.i]: true }))
-  const [legend, setLegend] = useState(false)
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
@@ -157,7 +156,7 @@ export function GearSection() {
         title="Сборы"
         secId="gear"
         hint="Цифра — сколько штук везёт человек. «Всего» считается само"
-        onHelp={() => setLegend(true)}
+        legend={GEAR_LEGEND}
       >
         {/* Кружок в чужой ячейке участнику не кнопка, а значок — и это надо
             прочитать словами, иначе тап «просто не работает» (постулаты 4 и 5). */}
@@ -217,8 +216,6 @@ export function GearSection() {
           </Group>
         )
       })}
-
-      <GearLegendSheet open={legend} onOpenChange={setLegend} />
 
       {menuSec && (
         <ResponsiveSheet

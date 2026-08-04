@@ -533,13 +533,14 @@ export function TripMap({ S, perms, className }: Props) {
               </>
             )}
 
-            {/* Карта молча подменилась на другую — человек имеет право знать, почему.
-                Номер сборки рядом: без него по рассказу не понять, ту ли версию видят. */}
-            {osmWhy && (
-              <p className="w-full text-micro leading-snug text-muted">
-                Карта OpenStreetMap · {osmWhy} · сборка {__BUILD__}
-              </p>
-            )}
+            {/* Заказчик: «пиши под картой всегда, какая карта нарисована и какая
+                сборка». Строка не пропадает никогда, а не только при откате —
+                иначе следующий спор про карту снова требует сессию переписки
+                вместо одного снимка экрана (уроки У-30, У-31, У-32). */}
+            <p className="w-full text-micro leading-snug text-muted">
+              {useGoogle ? 'Карта Google' : 'Карта OpenStreetMap'}
+              {osmWhy ? ` · ${osmWhy}` : ''} · сборка {__BUILD__}
+            </p>
           </div>
         </div>
       </Card>
