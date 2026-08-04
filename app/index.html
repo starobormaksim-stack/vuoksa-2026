@@ -3,8 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PackFlow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Вуокса-2026 · сборный лист</title>
+    <script>
+      // Тема — личная настройка браузера ('flops.theme': light|dark|null=система).
+      // Ставим класс до отрисовки, чтобы не мигал фон.
+      try {
+        var t = localStorage.getItem('flops.theme')
+        var d = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.toggle('dark', d)
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

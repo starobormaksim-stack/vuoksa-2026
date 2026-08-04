@@ -1,16 +1,137 @@
+@import "./fonts-manrope.css";
 @import "tailwindcss";
 
-/* Предварительные фирменные токены PackFlow.
-   Окончательная дизайн-система — docs/v2-design-system.md, после неё этот блок пересобирается. */
+/* Тёмная тема — класс .dark на <html> (личная настройка браузера, см. src/theme.ts). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Семантические токены FLOPS (утверждённые значения, светлая/тёмная) ── */
 :root {
-  --brand-amber: #BC6C25;
-  --brand-amber-deep: #A74612;
-  --brand-ink-dark: #161C10;
-  --brand-pine: #2B391B;
-  --brand-parchment: #E4D0A5;
-  --bg: #FCF9F3;
-  --ink: #1E2723;
+  --bg: #E4D0A5;
+  --card: #F3EAD0;
+  --zebra: #DBC993;
+  --line: #C2AC72;
+  --ink: #20261A;
+  --muted: #585A42;
+  --accent: #BC6C25;
+  --accent-deep: #A74612;
+  --accent-soft: #EBD9AE;
+  --pine: #3D5226;
+  --water: #3E6B7A;
+  --danger: #A74612;
+  /* Текст поверх акцентной заливки (кнопки): контраст ≥ 4.5:1 в обеих темах. */
+  --on-accent: #FEFAE0;
+  /* Мелкий акцентный текст на фоне страницы: #A74612 даёт лишь 3.9:1 на песочном. */
+  --accent-text: #8E3A0F;
+  /* Заливка кнопок: под кремовым текстом светлый янтарь даёт лишь 3.8:1. */
+  --accent-fill: #A74612;
+
+  --sh-sm: 0 1px 2px rgba(43, 57, 27, .06);
+  --sh-md: 0 1px 2px rgba(43, 57, 27, .06), 0 10px 30px rgba(43, 57, 27, .09);
+  --sh-lg: 0 18px 44px rgba(43, 57, 27, .13);
 }
 
-html { background: var(--bg); color: var(--ink); }
-body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.dark {
+  --bg: #2B391B;
+  --card: #364A20;
+  --zebra: #243014;
+  --line: #4E6329;
+  --ink: #F0E8CB;
+  --muted: #B6B698;
+  --accent: #DD9A4E;
+  --accent-deep: #C0762A;
+  --accent-soft: #403A1C;
+  --pine: #A6C287;
+  --water: #6FA0B0;
+  --danger: #E9A288;
+  --on-accent: #161C10;
+  --accent-text: #DD9A4E;
+  --accent-fill: #DD9A4E;
+
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, .28);
+  --sh-md: 0 1px 2px rgba(0, 0, 0, .28), 0 10px 30px rgba(0, 0, 0, .36);
+  --sh-lg: 0 18px 44px rgba(0, 0, 0, .46);
+}
+
+/* ── Маппинг токенов в утилиты Tailwind v4 ── */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-zebra: var(--zebra);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-text: var(--accent-text);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-soft: var(--accent-soft);
+  --color-pine: var(--pine);
+  --color-water: var(--water);
+  --color-danger: var(--danger);
+  --color-on-accent: var(--on-accent);
+
+  /* Бренд-константы (не темизируются). Инверсные плашки: фон cream, текст dark. */
+  --color-brand-dark: #161C10;
+  --color-brand-cream: #FEFAE0;
+  --color-brand-pine: #2B391B;
+  --color-brand-parchment: #E4D0A5;
+
+  --shadow-sm: var(--sh-sm);
+  --shadow-md: var(--sh-md);
+  --shadow-lg: var(--sh-lg);
+
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ── База ── */
+html {
+  background: var(--bg);
+  color: var(--ink);
+  color-scheme: light;
+}
+html.dark { color-scheme: dark; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Табличные цифры для сумм и дат. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Фирменное пунктирное подчёркивание редактируемого по месту. */
+.editable {
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+/* Видимый фокус (WCAG): кольцо акцентом на любом интерактиве. */
+:where(button, a, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ── Логотип: песочные/хвойные элементы эмблемы заливаются цветом фона,
+     логотип «прозрачен» к заднику. Светлый — на светлой теме, тёмный — на тёмной. ── */
+.logo svg { display: block; height: 100%; width: auto; }
+.logo-light svg [fill="#E4D0A5"] { fill: var(--bg); }
+.logo-dark svg [fill="#2B391B"] { fill: var(--bg); }
+.logo-dark { display: none; }
+.dark .logo-light { display: none; }
+.dark .logo-dark { display: block; }
+
+/* ── Уважение к prefers-reduced-motion (Motion отключается в коде через useReducedMotion) ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
