@@ -13,7 +13,8 @@ import { initialOf, newKey, slugify } from './ids'
 import { cn } from '@/lib/utils'
 
 /**
- * Раздел «Экипаж» (docs/v2-ux-redesign.md, раздел 7).
+ * Раздел «Команда» (docs/v2-ux-redesign.md, раздел 7 — там он ещё назван «Экипаж»:
+ * заказчик переименовал раздел 04.08.2026, название живёт только в src/sections.ts).
  *
  * Карточка-фотография вместо строки: человека узнают в лицо, а не по имени в списке.
  * Имя, роль и описание перестали быть contenteditable (в v1 промах по фото давал
@@ -53,7 +54,7 @@ export function CrewSection() {
         ua: Date.now(),
       })
     })
-    toast(`${name} в экипаже`)
+    toast(`${name} в команде`)
     setSheet(id)
   }
 
@@ -67,7 +68,7 @@ export function CrewSection() {
       s.people = s.people.filter((x) => x.id !== p.id)
       s.del = { ...(s.del || {}), ['people:' + p.id]: Date.now() }
     })
-    toast(`${p.name} убран из экипажа`, {
+    toast(`${p.name} убран из команды`, {
       action: { label: 'Отменить', onClick: () => undo(p) },
     })
   }
@@ -77,7 +78,7 @@ export function CrewSection() {
   return (
     <div className="flex flex-col gap-4">
       <SectionHead
-        title="Экипаж"
+        title="Команда"
         hint="Тап по карточке открывает участника: права, роль и личную ссылку"
       />
 
@@ -85,7 +86,7 @@ export function CrewSection() {
         <div className="rounded-2xl border border-line bg-surface shadow-sm">
           <EmptyState
             icon={Users}
-            title="В экипаже пусто"
+            title="В команде пусто"
             text="Добавьте тех, кто едет — у каждого появится своя ссылка"
             action={
               perms.isEditor()

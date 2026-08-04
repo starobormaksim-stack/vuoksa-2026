@@ -17,7 +17,7 @@ export interface SectionDef {
 
 export const SECTIONS: SectionDef[] = [
   { id: 'trip', title: 'Поездка', icon: House },
-  { id: 'crew', title: 'Экипаж', icon: Users },
+  { id: 'crew', title: 'Команда', icon: Users },
   { id: 'gear', title: 'Сборы', icon: Backpack },
   { id: 'buy', title: 'Закупка', icon: ShoppingCart },
   { id: 'road', title: 'Дорога', icon: Route },

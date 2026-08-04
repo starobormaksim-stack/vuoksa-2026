@@ -14,7 +14,7 @@ import { saveOfflineCopy } from '@/lib/offline'
 import { BRAND } from './Logo'
 
 /**
- * Меню «⋯» в шапке. Ссылки экипажа и офлайн-копию видит только владелец —
+ * Меню «⋯» в шапке. Ссылки команды и офлайн-копию видит только владелец —
  * это его полномочия по модели прав, и у остальных пунктов просто нет в разметке.
  */
 export function MoreMenu() {
@@ -48,7 +48,7 @@ export function MoreMenu() {
           {chief && (
             <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setLinks(true)}>
               <Link2 size={18} strokeWidth={1.5} aria-hidden />
-              Ссылки экипажа
+              Ссылки команды
             </DropdownMenuItem>
           )}
           {chief && (
@@ -72,7 +72,7 @@ export function MoreMenu() {
       <ResponsiveSheet
         open={links}
         onOpenChange={setLinks}
-        title="Ссылки экипажа"
+        title="Ссылки команды"
         subtitle="В ссылке зашиты права. Меняются права — старая ссылка гаснет"
         footer={
           <Btn scale="lg" className="w-full" onClick={() => setLinks(false)}>

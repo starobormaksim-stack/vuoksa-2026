@@ -28,10 +28,10 @@ type Level2 = null | 'name' | 'car' | 'desc' | 'perm'
  */
 const CANT: Record<Perm, string[]> = {
   chief: [],
-  editor: ['Видит и раздаёт личные ссылки экипажа', 'Меняет карточку и права владельца'],
+  editor: ['Видит и раздаёт личные ссылки команды', 'Меняет карточку и права владельца'],
   member: [
     'Меняет цены, количества и общие параметры',
-    'Меняет права и состав экипажа',
+    'Меняет права и состав команды',
     'Скачивает офлайн-копию и раздаёт ссылки',
   ],
 }
@@ -217,7 +217,7 @@ export function PersonSheet({ person, perms, ready, onPatch, onDelete, onClose }
               }}
             >
               <UserMinus size={18} strokeWidth={1.5} aria-hidden />
-              Убрать из экипажа
+              Убрать из команды
             </Btn>
           )}
         </div>

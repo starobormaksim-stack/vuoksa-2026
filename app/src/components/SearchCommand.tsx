@@ -69,7 +69,7 @@ export function buildHits(S: State): Hit[] {
       })
   for (const p of S.people)
     out.push({
-      key: 'person:' + p.id, section: 'crew', sectionTitle: 'Экипаж',
+      key: 'person:' + p.id, section: 'crew', sectionTitle: 'Команда',
       title: p.name, note: p.role, itemId: p.id,
     })
   return out
