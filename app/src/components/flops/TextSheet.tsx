@@ -54,7 +54,7 @@ export function TextSheet({
 
   /* 16 px — не из шкалы: на меньшем размере iOS зумит страницу при фокусе в поле. */
   const cls =
-    'w-full rounded-lg border border-line-strong bg-surface px-3 py-3 text-[16px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
+    'w-full rounded-lg border border-line-strong bg-surface px-3 py-3 text-field text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
 
   return (
     <ResponsiveSheet

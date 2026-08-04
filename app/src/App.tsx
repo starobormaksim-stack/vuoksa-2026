@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
+import { Luggage } from 'lucide-react'
 import { SECTIONS, anchorOf, scrollToSection, type SectionDef } from './sections'
 import { useTrip } from './store'
 import { useTheme } from './theme'
+import { currentSession, onAuthChange, type Session } from './lib/auth'
+import { isOfflineCopy } from './lib/offline'
+import { closeTripsList, firstStepPerson } from './lib/trips'
+import { FirstStep } from './components/trips/FirstStep'
+import { TripsScreen } from './components/trips/TripsScreen'
 import { TopNav } from './components/TopNav'
 import { MobileHeader } from './components/MobileHeader'
 import { NetNotice } from './components/NetNotice'
@@ -38,6 +44,24 @@ function App() {
   const [search, setSearch] = useState(false)
   const reduce = useReducedMotion()
   const { active, goTo } = useSectionNav(SECTIONS)
+
+  /* Кто вошёл по почте. От этого зависят два экрана: первый шаг новичка
+     и список поездок — оба про личность, а не про содержимое поездки. */
+  const [sess, setSess] = useState<Session | null>(currentSession)
+  useEffect(() => {
+    const off = onAuthChange(setSess)
+    return () => {
+      off()
+    }
+  }, [])
+
+  /* Список поездок открывается и адресом `?trips=1`: так на него можно дать ссылку
+     и так он остаётся доступен, даже если кнопка не попалась на глаза.
+     В офлайн-копии поездок нет вовсе: файл самодостаточен и в сеть не ходит. */
+  const офлайн = isOfflineCopy()
+  const [trips, setTrips] = useState(
+    () => typeof location !== 'undefined' && /[?&]trips=1/.test(location.search),
+  )
 
   /* Переход из поиска: прокрутить к разделу, дождаться строки и подсветить её.
      Строка может быть внутри свёрнутой группы или ещё не отрисованной вкладки,
@@ -81,6 +105,24 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  /* Пока владелец не назвал себя, показывать поездку рано: лист не смог бы честно
+     назвать его ни в одном списке. Участник по личной ссылке сюда не попадает —
+     решает firstStepPerson() в lib/trips.ts. */
+  const новичок = firstStepPerson(S, perms.mePerson, !!sess)
+  if (новичок) return <FirstStep person={новичок} />
+
+  if (trips && !офлайн)
+    return (
+      <TripsScreen
+        onClose={() => {
+          /* Метку убираем и из адреса: иначе обновление страницы снова
+             вернуло бы человека в список, из которого он только что вышел. */
+          closeTripsList()
+          setTrips(false)
+        }}
+      />
+    )
+
   return (
     <div className="min-h-svh">
       <TopNav
@@ -101,6 +143,22 @@ function App() {
       />
 
       <main className="mx-auto w-full max-w-[1280px] px-4 py-6 pb-28 lg:px-6 lg:py-8 lg:pb-12">
+        {/* Выход к списку поездок. Поездок у заказчика будет много, и попасть
+            из одной в другую надо с любой страницы, не разыскивая меню.
+            В офлайн-копии этого выхода нет: она про одну поездку и только. */}
+        {!офлайн && (
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setTrips(true)}
+              className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-note text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
+            >
+              <Luggage size={18} strokeWidth={1.75} aria-hidden />
+              Мои поездки
+            </button>
+          </div>
+        )}
+
         {/* Все разделы на странице сразу, каждый — своя секция с якорем.
             `scroll-margin-top` уводит заголовок из-под прилипающей шапки. */}
         <div className="flex flex-col gap-10 lg:gap-14">

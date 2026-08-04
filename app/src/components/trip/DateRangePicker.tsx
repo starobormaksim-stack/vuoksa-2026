@@ -73,32 +73,32 @@ export function DateRangePicker({ start, end, onCancel, onDone }: Props) {
         onClick={onCancel}
         className="absolute inset-0 cursor-default bg-brand-dark/40"
       />
-      <div className="relative w-full max-w-[340px] rounded-2xl border border-line bg-surface p-4 shadow-lg">
+      <div className="relative w-full max-w-[356px] rounded-xl border border-line bg-surface p-4 shadow-lg">
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => shift(-1)}
             aria-label="Предыдущий месяц"
-            className="grid size-11 place-items-center rounded-xl text-muted hover:bg-zebra hover:text-ink"
+            className="grid size-11 place-items-center rounded-lg text-muted hover:bg-zebra hover:text-ink"
           >
-            <ChevronLeft size={20} strokeWidth={1.5} aria-hidden />
+            <ChevronLeft size={20} strokeWidth={1.75} aria-hidden />
           </button>
-          <div className="text-base font-bold" aria-live="polite">
+          <div className="text-head font-bold" aria-live="polite">
             {MONTHS_NOM[view.m]} <span className="tnum">{view.y}</span>
           </div>
           <button
             type="button"
             onClick={() => shift(1)}
             aria-label="Следующий месяц"
-            className="grid size-11 place-items-center rounded-xl text-muted hover:bg-zebra hover:text-ink"
+            className="grid size-11 place-items-center rounded-lg text-muted hover:bg-zebra hover:text-ink"
           >
-            <ChevronRight size={20} strokeWidth={1.5} aria-hidden />
+            <ChevronRight size={20} strokeWidth={1.75} aria-hidden />
           </button>
         </div>
 
         <div className="mt-2 grid grid-cols-7 text-center">
           {WEEKDAYS.map((w) => (
-            <div key={w} className="py-1 text-[11px] font-semibold tracking-wider text-muted uppercase">
+            <div key={w} className="py-1 text-micro font-semibold text-muted">
               {w}
             </div>
           ))}
@@ -124,7 +124,7 @@ export function DateRangePicker({ start, end, onCancel, onDone }: Props) {
                 onClick={() => pick(d)}
                 aria-pressed={isStart || isEnd}
                 aria-label={`${idx + 1} ${MONTHS_NOM[view.m]} ${view.y}`}
-                className={`tnum mx-auto grid size-10 place-items-center rounded-xl text-[15px] transition-colors ${cls} ${
+                className={`tnum mx-auto grid size-11 place-items-center rounded-lg text-body transition-colors ${cls} ${
                   isToday && !isStart && !isEnd ? 'ring-1 ring-accent ring-inset' : ''
                 }`}
               >
@@ -134,7 +134,7 @@ export function DateRangePicker({ start, end, onCancel, onDone }: Props) {
           })}
         </div>
 
-        <p className="mt-2 min-h-5 text-center text-sm text-muted" aria-live="polite">
+        <p className="mt-2 min-h-5 text-center text-note text-muted" aria-live="polite">
           {!selStart && 'Выберите день выезда'}
           {selStart && !selEnd && 'Теперь — день возвращения'}
         </p>
@@ -143,7 +143,7 @@ export function DateRangePicker({ start, end, onCancel, onDone }: Props) {
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-11 rounded-xl px-4 font-semibold text-muted hover:bg-zebra hover:text-ink"
+            className="min-h-11 rounded-lg px-4 font-semibold text-muted hover:bg-zebra hover:text-ink"
           >
             Отмена
           </button>
@@ -151,7 +151,7 @@ export function DateRangePicker({ start, end, onCancel, onDone }: Props) {
             type="button"
             disabled={!selStart || !selEnd}
             onClick={() => selStart && selEnd && onDone(selStart, selEnd)}
-            className="min-h-11 rounded-xl bg-accent-fill px-5 font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-accent-fill px-5 font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Готово
           </button>

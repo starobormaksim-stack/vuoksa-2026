@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import type { RoutePoint } from '@/lib/types'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { RoutePoint, Transport } from '@/lib/types'
 import { GOOGLE_MAP_ID, googleFailCode, loadGoogleMaps } from '@/lib/gmaps'
 import { cn } from '@/lib/utils'
-import { destPinEl, pointPinEl } from './marks'
+import {
+  destPinEl, googleDash, markStyles, pointPinEl, threads, type MapTone,
+} from './marks'
 
 /**
  * Карта маршрута на Google Maps.
@@ -12,8 +14,9 @@ import { destPinEl, pointPinEl } from './marks'
  * обработчиков правки ему не выдаём вовсе (правило 12.2: кнопки нет, а не «серая»).
  *
  * Метки — свои (см. marks.ts): кружок с номером у точки маршрута и подписанная
- * плашка у конечной точки. Стандартная «капля» Google на шести точках подряд
- * читается хуже, чем порядковый номер, а цель поездки обязана отличаться от остановок.
+ * плашка у конечной точки. Ниток столько, сколько единиц техники: у каждой свой
+ * тон и свой рисунок линии (заказчик 04.08.2026: «ты должен разным цветом условно
+ * указать маршрутные точки»).
  *
  * ⚠️ Маркеры — google.maps.marker.AdvancedMarkerElement, а не устаревший
  * google.maps.Marker. Отсюда два следствия, которые легко забыть:
@@ -34,9 +37,34 @@ export interface MapDest {
   n: string
 }
 
+/**
+ * Карточка метки — та самая правка «прямо на карте».
+ *
+ * Разметку карточки собирает вызывающий (см. MapPointCard.tsx), а карта только
+ * держит её у нужной метки. Карточка живёт СЛОЕМ НАД картой, а не внутри метки,
+ * и это принципиально: узлы меток принадлежат Google, и поля ввода внутри них
+ * теряли бы нажатия — карта забирает их себе как жест перетаскивания.
+ */
+export interface MapCard {
+  /** id точки: по его смене карта решает, надо ли подвести вид заново */
+  id: string
+  lat: number
+  lon: number
+  /**
+   * Подвести вид к метке. Только для карточки, открытой насовсем (тап по метке,
+   * только что поставленная точка): карточка стоит над меткой, и у самого края
+   * её было бы не прочесть. На простое наведение курсора карту не двигаем —
+   * иначе она уезжала бы из-под руки от каждого случайного касания мышью.
+   */
+  pan?: boolean
+  node: ReactNode
+}
+
 interface Props {
   /** только точки с координатами */
   points: RoutePoint[]
+  /** техника поездки — по ней раскладываются нитки и тона */
+  transports: Transport[]
   /** куда смотреть, если точек на карте ещё нет */
   centerLat: number
   centerLon: number
@@ -47,6 +75,8 @@ interface Props {
   onMove: (id: string, lat: number, lon: number) => void
   /** тап по метке — показать эту точку в ленте рядом */
   onSelect: (id: string) => void
+  /** курсор над меткой (десктоп): null — ушёл */
+  onHover?: (id: string | null) => void
   /** конечная точка поездки (trip.places, main) */
   dest?: MapDest | null
   /** метку конечной перетащили */
@@ -59,6 +89,8 @@ interface Props {
   fitAt?: number
   /** навестись на произвольное место (находка строки поиска над картой) */
   lookAt?: { lat: number; lon: number; at: number } | null
+  /** карточка открытой метки */
+  card?: MapCard | null
   /**
    * Google не поднялся — вызывающий откатится на OpenStreetMap. Код причины
    * (см. GoogleFailCode в lib/gmaps.ts) нужен, чтобы человеку под картой
@@ -80,6 +112,20 @@ function worthRetry(code: string): boolean {
   return code === 'script-error' || code === 'timeout' || code.startsWith('import-failed:')
 }
 
+/**
+ * Где рисовать карточку метки.
+ * `under` — метка в верхней половине карты, и карточку надо повесить ПОД ней:
+ * над меткой у края экрана её было бы просто не видно.
+ */
+export interface Spot {
+  x: number
+  y: number
+  under: boolean
+}
+
+/** Насколько ниже середины сажаем метку, когда подводим к ней вид: доля высоты. */
+export const PAN_DOWN = 0.18
+
 /** Метка на карте: сам маркер и его узел — узел нужен, чтобы качнуть метку. */
 interface Mark {
   mk: google.maps.marker.AdvancedMarkerElement
@@ -92,21 +138,24 @@ function gmaps(): typeof google.maps {
 }
 
 export function GoogleRouteMap({
-  points, centerLat, centerLon, canEdit, onAdd, onMove, onSelect,
-  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, onFail, className,
+  points, transports, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
+  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, card, onFail, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<google.maps.Map | null>(null)
   const markers = useRef<Map<string, Mark>>(new Map())
   const destMark = useRef<google.maps.marker.AdvancedMarkerElement | null>(null)
-  const line = useRef<google.maps.Polyline | null>(null)
+  const lines = useRef<google.maps.Polyline[]>([])
+  const spy = useRef<google.maps.OverlayView | null>(null)
   const fitted = useRef(false)
   const [ready, setReady] = useState(false)
+  /** где сейчас метка открытой карточки, в пикселях внутри карты */
+  const [at, setAt] = useState<Spot | null>(null)
 
   /* Обработчики меняются на каждой перерисовке, а карта создаётся один раз —
      держим свежие ссылки в ref, иначе Google позовёт устаревшее замыкание. */
-  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onMoveDest, onFail })
-  cb.current = { canEdit, onAdd, onMove, onSelect, onMoveDest, onFail }
+  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onHover, onMoveDest, onFail })
+  cb.current = { canEdit, onAdd, onMove, onSelect, onHover, onMoveDest, onFail }
 
   /* ── создание карты ──
      Одна повторная попытка на сетевые причины и обязательный доклад наверх на всех
@@ -140,6 +189,15 @@ export function GoogleRouteMap({
             if (!cb.current.canEdit || !e.latLng) return
             cb.current.onAdd(e.latLng.lat(), e.latLng.lng())
           })
+          /* Пустой слой поверх карты нужен ровно за одним: у него можно спросить
+             перевод координат в пиксели. Другого способа узнать, где сейчас метка,
+             у Google нет, а без него карточку метки не к чему привязать. */
+          const ov = new maps.OverlayView()
+          ov.onAdd = () => {}
+          ov.onRemove = () => {}
+          ov.draw = () => {}
+          ov.setMap(m)
+          spy.current = ov
           map.current = m
           fitted.current = false
           setReady(true)
@@ -166,10 +224,13 @@ export function GoogleRouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* ── метки маршрута ──
+  /* ── метки маршрута и нитки ──
      Зависимость — строка-слепок: пересобирать слой на каждой перерисовке нельзя,
      иначе маркер выпрыгивает из-под пальца прямо во время перетаскивания. */
-  const sig = points.map((p) => `${p.i}:${p.lat}:${p.lon}:${p.done ? 1 : 0}:${p.n}`).join('|')
+  const sig =
+    points.map((p) => `${p.i}:${p.lat}:${p.lon}:${p.done ? 1 : 0}:${p.n}:${p.tr ?? ''}`).join('|') +
+    '#' +
+    transports.map((t) => `${t.i}:${t.leg}`).join(',')
   useEffect(() => {
     const m = map.current
     if (!m || !ready) return
@@ -180,8 +241,12 @@ export function GoogleRouteMap({
     })
     markers.current.clear()
 
+    const list = threads(points, transports)
+    const styles = markStyles(list)
+
     points.forEach((p, idx) => {
-      const el = pointPinEl(idx + 1, p.done)
+      const st = styles.get(p.i)
+      const el = pointPinEl(idx + 1, p.done, st?.tone ?? list[0].tone, st?.leg)
       const mk = new maps.marker.AdvancedMarkerElement({
         position: { lat: p.lat as number, lng: p.lon as number },
         map: m,
@@ -196,21 +261,25 @@ export function GoogleRouteMap({
       mk.addListener('dragend', (e: google.maps.MapMouseEvent) => {
         if (e.latLng) cb.current.onMove(p.i, e.latLng.lat(), e.latLng.lng())
       })
+      /* Наведение — это подсказка, а не выбор: слушаем сам узел метки.
+         На телефоне наведения нет, там ту же карточку открывает тап. */
+      el.addEventListener('pointerenter', () => cb.current.onHover?.(p.i))
+      el.addEventListener('pointerleave', () => cb.current.onHover?.(null))
       markers.current.set(p.i, { mk, el })
     })
 
-    /* Нитка маршрута: точки идут по порядку, и линия между ними читается сразу. */
-    line.current?.setMap(null)
-    line.current =
-      points.length > 1
-        ? new maps.Polyline({
-            path: points.map((p) => ({ lat: p.lat as number, lng: p.lon as number })),
-            map: m,
-            strokeColor: '#A74612',
-            strokeOpacity: 0.85,
-            strokeWeight: 3,
-          })
-        : null
+    /* Нитки: своя на каждую технику. Тон и рисунок линии идут парой — по одному
+       цвету маршруты не различить (WCAG 1.4.1). */
+    lines.current.forEach((l) => l.setMap(null))
+    lines.current = list
+      .filter((t) => t.points.length > 1)
+      .map((t) =>
+        new maps.Polyline({
+          path: t.points.map((p) => ({ lat: p.lat as number, lng: p.lon as number })),
+          map: m,
+          ...strokeOf(maps, t.tone),
+        }),
+      )
 
     /* Подгоняем вид один раз: дальше человек сам решает, куда смотреть. */
     if (!fitted.current) {
@@ -296,7 +365,107 @@ export function GoogleRouteMap({
     return () => a.cancel()
   }, [focusId, focusAt, ready, sig])
 
-  return <div ref={box} className={cn('isolate bg-zebra', className)} />
+  /* ── карточка метки едет вместе с картой ──
+     Пиксели пересчитываются на каждый сдвиг вида, но не чаще кадра: без этого
+     карточка отставала бы от метки на добрую половину экрана. */
+  const cardLat = card?.lat
+  const cardLon = card?.lon
+  useEffect(() => {
+    const m = map.current
+    if (!m || !ready || cardLat == null || cardLon == null) {
+      setAt(null)
+      return
+    }
+    let frame = 0
+    const put = () => {
+      frame = 0
+      const proj = spy.current?.getProjection()
+      if (!proj) {
+        /* Слой ещё не встал на карту — переспросим на следующем кадре.
+           Иначе карточка так и не появилась бы, пока карту не тронут. */
+        frame = window.requestAnimationFrame(put)
+        return
+      }
+      const p = proj.fromLatLngToContainerPixel(new (gmaps().LatLng)(cardLat, cardLon))
+      const h = box.current?.clientHeight ?? 0
+      setAt(p ? { x: p.x, y: p.y, under: p.y < h / 2 } : null)
+    }
+    const soon = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(put)
+    }
+    put()
+    const subs = (['bounds_changed', 'idle', 'projection_changed'] as const).map((ev) =>
+      m.addListener(ev, soon),
+    )
+    return () => {
+      window.cancelAnimationFrame(frame)
+      subs.forEach((s) => s.remove())
+    }
+  }, [cardLat, cardLon, ready])
+
+  /* ── открылась новая карточка — подводим к ней вид ── */
+  const cardId = card?.pan ? card.id : ''
+  useEffect(() => {
+    const m = map.current
+    if (!m || !ready || !cardId || cardLat == null || cardLon == null) return
+    m.panTo({ lat: cardLat, lng: cardLon })
+    /* Не ровно в середину, а чуть ниже: карточка висит НАД меткой, и ей нужно
+       место сверху. Иначе она упирается в край карты и обрезается. */
+    const h = box.current?.clientHeight ?? 0
+    if (h > 0) m.panBy(0, -Math.round(h * PAN_DOWN))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, ready])
+
+  return (
+    <div className={cn('relative isolate', className)}>
+      {/* z-0 у полотна обязателен: карта раскладывает свои слои собственными
+          z-index, и без отдельного слоя они перекрыли бы карточку метки. */}
+      <div ref={box} className="absolute inset-0 z-0 bg-zebra" />
+      {card && at && (
+        <div
+          className={cn('absolute z-10 -translate-x-1/2', !at.under && '-translate-y-full')}
+          style={{ left: at.x, top: at.y + (at.under ? 22 : -22) }}
+        >
+          {card.node}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Как рисовать нитку этого тона: сплошной линией или повторяющимися значками. */
+function strokeOf(maps: typeof google.maps, tone: MapTone): google.maps.PolylineOptions {
+  const parts = googleDash(tone.dash)
+  if (!parts) {
+    return { strokeColor: tone.fill, strokeOpacity: 0.85, strokeWeight: 3 }
+  }
+  return {
+    /* Прерывистой линии у Google нет: сплошную гасят и выкладывают значками. */
+    strokeColor: tone.fill,
+    strokeOpacity: 0,
+    strokeWeight: 3,
+    icons: parts.map((part) => ({
+      icon:
+        part.shape === 'dot'
+          ? {
+              path: maps.SymbolPath.CIRCLE,
+              scale: part.scale,
+              fillColor: tone.fill,
+              fillOpacity: 0.9,
+              strokeOpacity: 0,
+            }
+          : {
+              path: 'M 0,-1 0,1',
+              scale: part.scale,
+              strokeColor: tone.fill,
+              strokeOpacity: 0.9,
+              strokeWeight: 3,
+            },
+      offset: part.offset,
+      repeat: part.repeat,
+    })),
+  }
 }
 
 /**

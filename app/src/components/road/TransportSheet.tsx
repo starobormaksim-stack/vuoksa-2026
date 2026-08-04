@@ -1,150 +1,47 @@
-import { useState, type ReactNode } from 'react'
-import { Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from 'sonner'
-import type { LegMode, RateUnitId, State, Transport } from '@/lib/types'
-import { fuelPriceOf, litres, money, routeKm } from '@/lib/calc'
+import type { LegMode, Notes, RateUnitId, State, Transport } from '@/lib/types'
+import { litres } from '@/lib/calc'
 import {
-  Btn, EditNum, NumberSheet, PickSheet, ResponsiveSheet, ResultNum, SheetRow, TextSheet,
-  type PickOption,
+  Btn, InlineText, PickSheet, ResponsiveSheet, SheetRow, type PickOption,
 } from '@/components/flops'
 import { Switch } from '@/components/ui/switch'
-import { fmtNum, NBSP } from '@/format'
+import { fmtNum, MDASH, NBSP } from '@/format'
 import {
-  fuelName, kindName, kmLabel, legName, litreWord, litresLabel,
-  RATE_HINTS, RATE_TITLES, transportSub,
+  fuelName, kindName, legName, litresLabel, RATE_HINTS, RATE_TITLES, transportSub,
 } from './roadx'
 
 /**
- * Карточка единицы техники (docs/v2-ux-redesign.md, 10.4).
+ * Карточка техники — только выбор из списков и подписи.
  *
- * Формула бензина разобрана на нумерованные ступени: человек читает сверху вниз
- * как рассказ и видит, где вмешаться. Ни одного знака операции на экране,
- * ни одного поля ввода в самой карточке — числа правит NumberSheet.
+ * ⚠️ Числа отсюда ушли: расход, моточасы, литры и цена топлива правятся прямо
+ * в строке таблицы «Расчёт дороги» (заказчик 04.08.2026: «мне не нужен поп-ап,
+ * в котором всё написано; это прямо вот здесь, в этой таблице уже должно быть»).
+ * Ушёл и разбор формулы живой фразой: он пересказывал то же самое третий раз.
  *
- * Подписи из данных (nt.<поле>.t / .u / .c) не теряются: `.t` становится
- * заголовком экрана правки, `.u` — единицей у числа, `.c` — пояснением под ступенью.
+ * Осталось то, что выбирается из готового списка и в узкую ячейку таблицы
+ * не помещается: вид техники, топливо, хозяин, способ считать расход, участок
+ * пути. Плюс подписи чисел из документа заказчика (nt.<поле>) — их видно
+ * и правится всё, что видно.
  */
 
 /** Что открыто вторым уровнем. */
-type Level2 =
-  | null | 'rate' | 'hours' | 'litres' | 'price'
-  | 'name' | 'kind' | 'kindT' | 'fuel' | 'owner' | 'rateU' | 'leg' | 'calcT' | 'note'
+type Level2 = null | 'kind' | 'fuel' | 'owner' | 'rateU' | 'leg'
 
 interface Props {
   item: Transport
   S: State
   /** правка разрешена: владелец и редактор */
   canEdit: boolean
-  canDelete: boolean
   onPatch: (f: (t: Transport) => void) => void
-  /** цена топлива живёт в справочнике, а не в технике */
-  onFuelPrice: (fuelId: string, v: number) => void
-  onDelete: () => void
   onClose: () => void
 }
 
-/** Одна ступень разбора: номер, о чём она и что в ней стоит. */
-interface StepDef {
-  title: string
-  body: ReactNode
-  note?: string
-}
-
-export function TransportSheet({
-  item, S, canEdit, canDelete, onPatch, onFuelPrice, onDelete, onClose,
-}: Props) {
+export function TransportSheet({ item, S, canEdit, onPatch, onClose }: Props) {
   const [lvl, setLvl] = useState<Level2>(null)
   const back = () => setLvl(null)
   const go = (l: Level2) => (canEdit ? () => setLvl(l) : undefined)
-
-  const nt = (k: string) => item.nt?.[k]
-  const fuel = S.fuelPrices.find((f) => f.i === item.fuel)
-  const price = fuelPriceOf(S, item.fuel)
   const vol = litres(item, S)
-  const sum = vol * price
-  const fuelNt = fuel?.nt?.price
-
-  /* ── ступени: их состав зависит от того, как считается расход ── */
-  const steps: StepDef[] = []
-  if (item.rateU === 'lh') {
-    steps.push({
-      title: 'Работает',
-      body: (
-        <Line>
-          <EditNum onClick={go('hours')} label="Сколько часов работает">
-            {fmtNum(item.hours, 1)}
-          </EditNum>{' '}
-          часов
-        </Line>
-      ),
-      note: nt('hours')?.c,
-    })
-    steps.push({
-      title: 'Тратит',
-      body: (
-        <Line>
-          <EditNum onClick={go('rate')} label="Расход в час">
-            {fmtNum(item.rate, 1)}
-          </EditNum>{' '}
-          л в час
-        </Line>
-      ),
-      note: nt('rate')?.c,
-    })
-    steps.push({
-      title: 'Значит уйдёт',
-      body: <ResultNum>{`${fmtNum(vol, 1)}${NBSP}${litreWord(vol)}`}</ResultNum>,
-    })
-  } else if (item.rateU === 'fix') {
-    steps.push({
-      title: 'Заливаем разом',
-      body: (
-        <Line>
-          <EditNum onClick={go('litres')} label="Сколько литров заливаем">
-            {fmtNum(item.litres, 1)}
-          </EditNum>{' '}
-          {litreWord(item.litres)}
-        </Line>
-      ),
-      note: nt('litres')?.c,
-    })
-  } else {
-    steps.push({
-      title: 'Проезжаем',
-      body: <ResultNum>{kmLabel(routeKm(S))}</ResultNum>,
-      note: 'Пробег общий на всю поездку — он правится в блоке «Сколько едем».',
-    })
-    steps.push({
-      title: 'Тратит',
-      body: (
-        <Line>
-          <EditNum onClick={go('rate')} label="Расход на 100 км">
-            {fmtNum(item.rate, 1)}
-          </EditNum>{' '}
-          л на каждые 100 км
-        </Line>
-      ),
-      note: nt('rate')?.c,
-    })
-    steps.push({
-      title: 'Значит уйдёт',
-      body: <ResultNum>{`${fmtNum(vol, 1)}${NBSP}${litreWord(vol)}`}</ResultNum>,
-    })
-  }
-  steps.push({
-    title: `По цене ${fuelName(S, item.fuel)}`,
-    body: (
-      <Line>
-        <EditNum onClick={go('price')} label={`Цена ${fuelName(S, item.fuel)}`}>
-          {`${fmtNum(price, 1)}${NBSP}₽`}
-        </EditNum>{' '}
-        за литр
-      </Line>
-    ),
-    note: fuelNt?.c,
-  })
-
-  const ntList = Object.entries(item.nt ?? {}).filter(([, n]) => n && n.t)
 
   const peopleOptions: PickOption[] = [
     { id: '', title: 'Ничья', hint: 'техника общая — хозяин не назначен' },
@@ -156,7 +53,7 @@ export function TransportSheet({
       <ResponsiveSheet
         open={lvl === null}
         onOpenChange={(v) => !v && onClose()}
-        title={item.n}
+        title={item.n || 'Техника'}
         subtitle={transportSub(item, S)}
         footer={
           <Btn scale="lg" className="w-full" onClick={onClose}>
@@ -164,39 +61,25 @@ export function TransportSheet({
           </Btn>
         }
       >
-        <div className="rounded-2xl border border-line bg-bg p-3">
-          {steps.map((s, idx) => (
-            <div key={s.title} className="flex gap-3 py-1.5">
-              <span
-                aria-hidden
-                className="tnum mt-1 grid size-6 shrink-0 place-items-center rounded-full border border-accent text-[13px] font-bold text-accent-text"
-              >
-                {idx + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-semibold text-muted">{s.title}</div>
-                <div className="mt-0.5">{s.body}</div>
-                {s.note ? (
-                  <p className="mt-1 text-[13px] leading-snug text-muted">{s.note}</p>
-                ) : null}
-              </div>
-            </div>
-          ))}
-
-          <div className="mt-2 flex items-center gap-3 rounded-xl bg-accent-soft px-3 py-3">
-            <span className="flex-1 text-[15px] font-[650] text-ink">Итого</span>
-            <span className="tnum text-2xl font-bold text-ink">{money(sum, S.doc)}</span>
-          </div>
+        <div className="border-b border-line pb-3">
+          <div className="text-note font-semibold text-muted">Название техники</div>
+          <InlineText
+            value={item.n}
+            onSave={(v) =>
+              onPatch((t) => {
+                t.n = v
+              })
+            }
+            can={canEdit}
+            required
+            label="Название техники"
+            placeholder="Например, Chevrolet Aveo"
+            className="text-body font-[650] text-ink"
+          />
         </div>
 
-        {item.c ? <p className="mt-3 text-sm leading-snug text-muted">{item.c}</p> : null}
-
-        <div className="mt-3">
-          <SheetRow label="Название" value={item.n} onClick={go('name')} />
+        <div className="mt-1">
           <SheetRow label="Вид" value={kindName(item, S)} onClick={go('kind')} />
-          {item.kindT ? (
-            <SheetRow label="Свой вид" value={item.kindT} onClick={go('kindT')} />
-          ) : null}
           <SheetRow label="Топливо" value={fuelName(S, item.fuel)} onClick={go('fuel')} />
           <SheetRow
             label="Чья"
@@ -210,18 +93,13 @@ export function TransportSheet({
             hint={RATE_HINTS[item.rateU]}
             onClick={go('rateU')}
           />
-          <SheetRow
-            label="Как идёт"
-            value={legName(item.leg)}
-            empty={!item.leg}
-            onClick={go('leg')}
-          />
+          <SheetRow label="Как идёт" value={legName(item.leg)} empty={!item.leg} onClick={go('leg')} />
 
           {canEdit ? (
-            <div className="flex min-h-14 items-center gap-3 border-b border-line/70 px-1">
+            <div className="flex min-h-14 items-center gap-3 border-b border-line px-1">
               <label
                 htmlFor={`carry-${item.i}`}
-                className="min-w-0 flex-1 py-2 text-[15px] font-medium text-muted"
+                className="min-w-0 flex-1 py-2 text-body font-medium text-muted"
               >
                 Везём в канистрах
               </label>
@@ -243,134 +121,57 @@ export function TransportSheet({
           ) : (
             <SheetRow label="Везём в канистрах" value={item.carry ? 'да' : 'нет'} />
           )}
+        </div>
 
-          <SheetRow
-            label="Подпись в расчёте"
-            value={item.calcT || 'собирается сама'}
-            empty={!item.calcT}
-            onClick={go('calcT')}
-          />
-          <SheetRow
+        {item.kindT || !kindOfKnown(item, S) ? (
+          <div className="mt-3">
+            <div className="text-note font-semibold text-muted">Свой вид техники</div>
+            <InlineText
+              value={item.kindT}
+              onSave={(v) =>
+                onPatch((t) => {
+                  t.kindT = v
+                })
+              }
+              can={canEdit}
+              label="Свой вид техники"
+              placeholder="Например, снегоход"
+              className="text-body text-ink"
+            />
+          </div>
+        ) : null}
+
+        <div className="mt-3">
+          <div className="text-note font-semibold text-muted">Примечание</div>
+          <InlineText
+            value={item.c}
+            onSave={(v) =>
+              onPatch((t) => {
+                t.c = v
+              })
+            }
+            can={canEdit}
+            multiline
             label="Примечание"
-            value={item.c || 'нет'}
-            empty={!item.c}
-            onClick={go('note')}
+            placeholder="Что важно помнить про эту технику"
+            className="text-body leading-snug text-ink"
           />
         </div>
 
-        {/* Подписи полей из документа: заголовок и единица каждого числа.
-            Экраны правки видит только редактор — здесь они остаются на виду у всех. */}
-        {ntList.length > 0 && (
-          <div className="mt-4 rounded-xl border border-line bg-bg p-3">
-            <div className="text-[13px] font-semibold text-muted">Как подписано в документе</div>
-            <ul className="mt-1">
-              {ntList.map(([key, note]) => (
-                <li key={key} className="text-[13px] leading-snug text-muted">
-                  {note.t}
-                  {note.u ? ` · ${note.u}` : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {canDelete && (
-          <div className="mt-6 border-t border-line pt-4">
-            <Btn
-              tone="danger"
-              className="w-full"
-              onClick={() => {
-                onDelete()
-                onClose()
-              }}
-            >
-              <Trash2 size={18} strokeWidth={1.5} aria-hidden />
-              Убрать технику
-            </Btn>
-          </div>
-        )}
+        <DocNotes
+          nt={item.nt}
+          can={canEdit}
+          onSave={(key, part, v) =>
+            onPatch((t) => {
+              if (!t.nt) t.nt = {}
+              if (!t.nt[key]) t.nt[key] = { t: '' }
+              t.nt[key][part] = v
+            })
+          }
+        />
       </ResponsiveSheet>
 
-      {/* ─── второй уровень ─── */}
-      <NumberSheet
-        open={lvl === 'rate'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title={nt('rate')?.t || 'Расход'}
-        subtitle={item.rateU === 'lh' ? 'Литров в час' : 'Литров на 100 км'}
-        value={item.rate}
-        kind={item.rateU === 'lh' ? 'lh' : 'l100'}
-        unit={nt('rate')?.u || (item.rateU === 'lh' ? 'л/ч' : 'л/100 км')}
-        hint={(v) =>
-          item.rateU === 'lh'
-            ? `Выйдет ${litresLabel(v * item.hours)}`
-            : `Выйдет ${litresLabel((routeKm(S) * v) / 100)}`
-        }
-        onChange={(v) =>
-          onPatch((t) => {
-            t.rate = v
-          })
-        }
-      />
-      <NumberSheet
-        open={lvl === 'hours'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title={nt('hours')?.t || 'Моточасы'}
-        subtitle={item.n}
-        value={item.hours}
-        kind="hours"
-        unit={nt('hours')?.u || 'ч'}
-        hint={(v) => `Выйдет ${litresLabel(v * item.rate)}`}
-        onChange={(v) =>
-          onPatch((t) => {
-            t.hours = v
-          })
-        }
-      />
-      <NumberSheet
-        open={lvl === 'litres'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title={nt('litres')?.t || 'Сколько литров'}
-        subtitle={item.n}
-        value={item.litres}
-        kind="litres"
-        unit={nt('litres')?.u || 'л'}
-        hint={(v) => `Выйдет ${money(v * price, S.doc)}`}
-        onChange={(v) =>
-          onPatch((t) => {
-            t.litres = v
-          })
-        }
-      />
-      <NumberSheet
-        open={lvl === 'price'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title={fuelNt?.t || `Цена ${fuelName(S, item.fuel)}`}
-        subtitle={fuelNt?.c}
-        value={price}
-        kind="fuelPrice"
-        unit={fuelNt?.u || fuel?.u || '₽/л'}
-        hint={(v) => `За ${litresLabel(vol)} выйдет ${money(vol * v, S.doc)}`}
-        onChange={(v) => onFuelPrice(item.fuel, v)}
-      />
-
-      <TextSheet
-        open={lvl === 'name'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Название"
-        subtitle={kindName(item, S)}
-        value={item.n}
-        onDone={(v) =>
-          v &&
-          onPatch((t) => {
-            t.n = v
-          })
-        }
-      />
+      {/* ─── второй уровень: выбор из списка ─── */}
       <PickSheet
         open={lvl === 'kind'}
         onOpenChange={(v) => !v && back()}
@@ -391,20 +192,6 @@ export function TransportSheet({
             const k = S.kinds.find((x) => x.i === id)
             /* Вид задаёт и то, как считается расход: у мотора это часы, у пилы — объём. */
             if (k) t.rateU = k.rateU
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'kindT'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Свой вид"
-        subtitle={item.n}
-        value={item.kindT}
-        placeholder="Например, снегоход"
-        onDone={(v) =>
-          onPatch((t) => {
-            t.kindT = v
           })
         }
       />
@@ -452,7 +239,7 @@ export function TransportSheet({
         options={S.rateUnits.map((u) => ({
           id: u.i,
           title: RATE_TITLES[u.i] ?? u.t,
-          hint: `${u.t} — ${RATE_HINTS[u.i] ?? ''}`,
+          hint: `${u.t} ${MDASH} ${RATE_HINTS[u.i] ?? ''}`,
         }))}
         onPick={(id) =>
           onPatch((t) => {
@@ -478,40 +265,61 @@ export function TransportSheet({
           })
         }
       />
-      <TextSheet
-        open={lvl === 'calcT'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Подпись в расчёте"
-        subtitle="Так строка называется в общем расчёте"
-        value={item.calcT}
-        placeholder={`Бензин ${fuelName(S, item.fuel)} — ${item.n}`}
-        onDone={(v) =>
-          onPatch((t) => {
-            t.calcT = v
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'note'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Примечание"
-        subtitle={item.n}
-        value={item.c}
-        multiline
-        placeholder="Что важно помнить про эту технику"
-        onDone={(v) =>
-          onPatch((t) => {
-            t.c = v
-          })
-        }
-      />
     </>
   )
 }
 
-/** Строка живой фразы внутри ступени: 17 px, число внутри — кнопка. */
-function Line({ children }: { children: ReactNode }) {
-  return <span className="text-[17px] leading-snug text-ink">{children}</span>
+/** Есть ли этот вид в справочнике: своё название нужно только тогда, когда нет. */
+function kindOfKnown(t: Transport, S: State): boolean {
+  return S.kinds.some((k) => k.i === t.kind)
+}
+
+/**
+ * Подписи чисел из документа заказчика: заголовок, единица и пояснение.
+ * В таблице у числа стоит имя столбца, а своя подпись строки живёт здесь —
+ * и правится, как всё остальное.
+ */
+export function DocNotes({
+  nt, can, onSave,
+}: {
+  nt: Notes | undefined
+  can: boolean
+  onSave: (key: string, part: 't' | 'u' | 'c', v: string) => void
+}) {
+  const list = Object.entries(nt ?? {})
+  if (list.length === 0) return null
+  return (
+    <div className="mt-4 rounded-xl border border-line bg-bg p-3">
+      <div className="text-note font-semibold text-muted">Как подписано в документе</div>
+      {list.map(([key, n]) => (
+        <div key={key} className="mt-2">
+          <InlineText
+            value={n.t}
+            onSave={(v) => onSave(key, 't', v)}
+            can={can}
+            label="Подпись числа"
+            placeholder="Подпись"
+            className="text-body leading-snug text-ink"
+          />
+          <InlineText
+            value={n.u ?? ''}
+            onSave={(v) => onSave(key, 'u', v)}
+            can={can}
+            label="Единица измерения"
+            placeholder="Единица"
+            className="text-note text-muted"
+          />
+          <InlineText
+            value={n.c ?? ''}
+            onSave={(v) => onSave(key, 'c', v)}
+            can={can}
+            multiline
+            label="Пояснение"
+            placeholder="Пояснение"
+            className="text-note leading-snug text-muted"
+          />
+        </div>
+      ))}
+    </div>
+  )
 }

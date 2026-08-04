@@ -1,98 +1,64 @@
-import { useState, type ReactNode } from 'react'
-import { Check, CircleHelp, Fuel, MapPinned } from 'lucide-react'
+import { useState } from 'react'
+import { Check, CircleHelp, MapPinned, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Idea, Rent, Transport } from '@/lib/types'
 import { useTrip, touch } from '@/store'
-import { calcAll, litres, money, routeKm } from '@/lib/calc'
 import {
-  AddRow, Btn, EmptyState, Group, ItemRow, NumberSheet, SectionHead, TextSheet, type NumKind,
+  AddRow, Btn, DataCell, DataRow, DataTable, EmptyState, Group, InlineText,
+  RowAction, RowActions, SectionHead,
 } from '@/components/flops'
-import { fmtNum, MDASH, NBSP, plural } from '@/format'
+import { MDASH, plural } from '@/format'
 import { cn } from '@/lib/utils'
 import { RouteBoard } from '@/components/map/RouteBoard'
-import { RoadInputs } from './RoadInputs'
 import { RoadCalc } from './RoadCalc'
 import { TransportSheet } from './TransportSheet'
 import { RentSheet } from './RentSheet'
-import { IdeaSheet } from './IdeaSheet'
 import { calcLegsByMap } from './legs'
-import {
-  canRowOf, fuelName, kBackWord, kmLabel, litresLabel, refuelLitres, rentPer, rentQtyLabel,
-  type NumField,
-} from './roadx'
-
-/** Во что разворачивается адрес правимого числа: готовые свойства для NumberSheet. */
-interface NumDef {
-  title: string
-  subtitle?: string
-  value: number
-  kind: NumKind
-  unit?: string
-  hint?: (v: number) => string
-  onChange: (v: number) => void
-}
+import { kmLabel } from './roadx'
 
 /**
- * Раздел «Дорога» — лист «Логистика» из таблицы заказчика, слово в слово.
+ * Раздел «Дорога» — лист «Логистика» из таблицы заказчика.
  *
- * Порядок экрана (заказчик, 04.08.2026):
- *   маршрут — сам, а не ссылка на него: лента точек и карта двумя вкладками;
- *   «Исходные данные (правим здесь)» — все числа, из которых собирается расчёт;
- *   «Расчёт» — таблица со статьями, литрами, ценами и итогом;
- *   канистры и вопросы.
+ * Что здесь есть и в каком порядке:
+ *   маршрут — сам, а не ссылка на него (RouteBoard: лента точек и карта);
+ *   «Расчёт дороги» — ОДНА таблица: пробег, топливо и техника, аренда,
+ *     канистры и итоги поездки;
+ *   «Вопросы» — что уточнить до выезда.
  *
- * Чего здесь больше нет и почему:
- *   обложки поездки (RoadCover) — она дублировала обложку в «Поездке», и поменять
- *     на ней было нечего;
- *   карточки-указателя «Маршрут и тайминг наверху» — вместо ссылки на маршрут
- *     здесь теперь сам маршрут.
+ * Чего здесь больше нет и почему (заказчик, 04.08.2026):
+ *   карточки «Исходные данные» — «очень сложно, очень много лишнего,
+ *     повторяющаяся информация»: одно и то же число стояло и там, и в расчёте.
+ *     Теперь оно одно, в своей строке расчёта, и правится прямо в ней;
+ *   отдельного блока «Канистры» — он свернулся в ту же таблицу;
+ *   шторок с числами (NumberSheet) — «мне не нужен поп-ап, в котором всё
+ *     написано; это прямо вот здесь, в этой таблице уже должно быть».
  *
- * Считает по-прежнему lib/calc.ts. Раздел только показывает и правит исходные
- * числа: контрольные цифры (330 км · 21 385 ₽ · 47 390 ₽ · 11 848 ₽) обязаны
- * сходиться с таблицей.
+ * Сюда же переехали расчёты с обложки поездки: транспорт, продукты, общий
+ * бюджет и «с каждого» стоят последней группой таблицы — «сами расчёты должны
+ * быть внизу, в разделе другом».
  *
- * Маршрут и деньги правят владелец и редактор. У участника кнопок правки просто
- * нет в разметке — не серых, а отсутствующих (правило 12.2 UX-проекта).
+ * Считает по-прежнему lib/calc.ts. Контрольные цифры (330 км · 21 385 / 26 005 /
+ * 47 390 / 11 848 ₽ · 2 канистры) обязаны сходиться с таблицей заказчика.
  */
 export function RoadSection() {
   const { S, update, remove, perms } = useTrip()
   const canEdit = perms.isEditor()
+  /** вопросы заводит и правит каждый, кто в поездке, — не только редактор */
+  const canAsk = canEdit || !!perms.me
 
-  const [open, setOpen] = useState<Record<string, boolean>>({ cans: true, ideas: false })
+  const [open, setOpen] = useState<Record<string, boolean>>({ ideas: false })
+  /** карточка выбора: вид, топливо, чья техника */
   const [trSheet, setTrSheet] = useState<string | null>(null)
   const [rnSheet, setRnSheet] = useState<string | null>(null)
-  const [ideaSheet, setIdeaSheet] = useState<string | null>(null)
-  /** какое число сейчас правится: шторка на все поля одна */
-  const [num, setNum] = useState<NumField | null>(null)
-  const [adding, setAdding] = useState<null | 'transport' | 'rent' | 'idea'>(null)
+  /** id только что добавленной строки — она открывается сразу в правке названия */
+  const [fresh, setFresh] = useState<string | null>(null)
   /** идёт запрос к маршрутизатору */
   const [mapBusy, setMapBusy] = useState(false)
 
-  const c = calcAll(S)
   const dist = S.trip.dist
-  const baseKm = dist.src === 'auto' ? dist.auto : dist.manual
   const ideas = S.ideas ?? []
-  const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
 
   /* ─────────── правки ─────────── */
-
-  const patchTr = (id: string, f: (t: Transport) => void) =>
-    update((s) => {
-      const t = s.transport.find((x) => x.i === id)
-      if (t) {
-        f(t)
-        touch(t)
-      }
-    })
-
-  const patchRn = (id: string, f: (r: Rent) => void) =>
-    update((s) => {
-      const r = s.rent.find((x) => x.i === id)
-      if (r) {
-        f(r)
-        touch(r)
-      }
-    })
 
   const patchIdea = (id: string, f: (i: Idea) => void) =>
     update((s) => {
@@ -100,15 +66,6 @@ export function RoadSection() {
       if (it) {
         f(it)
         touch(it)
-      }
-    })
-
-  const setFuelPrice = (fuelId: string, v: number) =>
-    update((s) => {
-      const f = s.fuelPrices.find((x) => x.i === fuelId)
-      if (f) {
-        f.price = v
-        touch(f)
       }
     })
 
@@ -122,11 +79,11 @@ export function RoadSection() {
       }
     })
 
-  /** Удалить с тостом «Отменить» — подтверждений в интерфейсе нет (правило 9). */
+  /** Убрать с возможностью вернуть — подтверждений в интерфейсе нет (правило 9). */
   const drop = (kind: string, item: { i: string; n: string }, word: string) => {
     remove(kind, item.i)
-    toast(`«${item.n}» ${word}`, {
-      action: { label: 'Отменить', onClick: () => restore(kind, item) },
+    toast(`«${item.n || 'Без названия'}» ${word}`, {
+      action: { label: 'Вернуть', onClick: () => restore(kind, item) },
     })
   }
 
@@ -134,7 +91,8 @@ export function RoadSection() {
 
   /**
    * Считать пробег по карте. Зовётся только руками человека — молча на карту
-   * расчёт не переключается никогда, иначе пробег схлопнулся бы до местных разъездов.
+   * расчёт не переключается никогда, иначе пробег схлопнулся бы до тех
+   * километров, которые успели посчитаться.
    */
   const setAuto = (km: number) => {
     update((s) => {
@@ -165,7 +123,7 @@ export function RoadSection() {
     if (!r.ok) {
       toast(
         r.why === 'few'
-          ? 'На карте меньше двух точек — считать нечего. Поставьте точки на вкладке «На карте»'
+          ? 'На карте меньше двух точек — считать нечего. Поставьте точки на карте маршрута'
           : 'Карта не ответила: похоже, нет сети. Расстояние можно вписать руками',
       )
       return
@@ -178,220 +136,52 @@ export function RoadSection() {
 
   /* ─────────── добавление ─────────── */
 
-  const addTransport = (n: string) => {
+  const addTransport = () => {
     const id = 'tr' + Date.now().toString(36)
     update((s) => {
       const kind = s.kinds.find((k) => k.i === 'car') ?? s.kinds[0]
       s.transport.push({
-        i: id, n, kind: kind?.i ?? '', kindT: '', fuel: s.fuelPrices[0]?.i ?? '',
+        i: id, n: '', kind: kind?.i ?? '', kindT: '', fuel: s.fuelPrices[0]?.i ?? '',
         rate: 0, rateU: kind?.rateU ?? 'l100km', hours: 0, litres: 0, carry: false,
         owner: perms.me || '', leg: 'road', calcT: '', c: '', nt: {},
         ord: (s.transport.length + 1) * 10, by: perms.me || '', as: '', ua: Date.now(),
       })
     })
-    toast(`«${n}» в списке`)
-    setTrSheet(id)
+    setFresh(id)
   }
 
-  const addRent = (n: string) => {
+  const addRent = () => {
     const id = 'rn' + Date.now().toString(36)
     update((s) => {
       s.rent.push({
-        i: id, n, cat: s.rentCats[0]?.i ?? 'other', price: 0, unit: 'сут.', qty: 1, count: 1,
+        i: id, n: '', cat: s.rentCats[0]?.i ?? 'other', price: 0, unit: 'сут.', qty: 1, count: 1,
         calcT: '', c: '', blocks: [], warn: '', nt: {},
         ord: (s.rent.length + 1) * 10, by: perms.me || '', as: '', ua: Date.now(),
       })
     })
-    toast(`«${n}» в списке`)
-    setRnSheet(id)
+    setFresh(id)
   }
 
-  const addIdea = (n: string) => {
+  const addIdea = () => {
     const id = 'q' + Date.now().toString(36)
     update((s) => {
       if (!s.ideas) s.ideas = []
-      s.ideas.push({ i: id, n, why: '', who: '', done: false, ua: Date.now() })
+      s.ideas.push({ i: id, n: '', why: '', who: '', done: false, ua: Date.now() })
     })
-    toast('Вопрос записан')
-    setIdeaSheet(id)
+    setFresh(id)
   }
-
-  /* ─────────── открытые карточки ─────────── */
 
   const curTr = trSheet ? S.transport.find((t) => t.i === trSheet) : null
   const curRn = rnSheet ? S.rent.find((r) => r.i === rnSheet) : null
-  const curIdea = ideaSheet ? ideas.find((i) => i.i === ideaSheet) : null
-
-  /* ─────────── одна шторка на все числа ─────────── */
-
-  const numDef = (f: NumField): NumDef | null => {
-    if (f.k === 'dist') {
-      const nt = dist.nt ?? {}
-      if (f.f === 'kBack') {
-        return {
-          title: nt.kBack?.t || 'Сколько концов пути',
-          subtitle: nt.kBack?.c,
-          value: dist.kBack,
-          kind: 'coeff',
-          hint: (v) => `Считаем ${kBackWord(v)} — получается ${kmLabel(baseKm * v + dist.local)}`,
-          onChange: (v) =>
-            update((s) => {
-              s.trip.dist.kBack = v
-            }),
-        }
-      }
-      if (f.f === 'local') {
-        return {
-          title: nt.local?.t || 'Местные разъезды',
-          subtitle: 'Магазин, база, заправка — сколько накатаем на месте',
-          value: dist.local,
-          kind: 'km',
-          unit: nt.local?.u || 'км',
-          hint: (v) => `Получается ${kmLabel(baseKm * dist.kBack + v)}`,
-          onChange: (v) =>
-            update((s) => {
-              s.trip.dist.local = v
-            }),
-        }
-      }
-      return {
-        title: nt.manual?.t || 'Расстояние в одну сторону',
-        /* Правка руками всегда ложится поверх карты — и говорит об этом заранее. */
-        subtitle:
-          dist.src === 'auto'
-            ? 'Сейчас считаем по карте. Своё число встанет поверх'
-            : nt.manual?.c,
-        value: baseKm,
-        kind: 'km',
-        unit: nt.manual?.u || 'км',
-        hint: (v) => `Получается ${kmLabel(v * dist.kBack + dist.local)}`,
-        onChange: (v) =>
-          update((s) => {
-            s.trip.dist.manual = v
-            s.trip.dist.src = 'manual'
-          }),
-      }
-    }
-
-    if (f.k === 'fuel') {
-      const fu = S.fuelPrices.find((x) => x.i === f.id)
-      if (!fu) return null
-      return {
-        title: fu.nt?.price?.t || `Цена ${fu.n}`,
-        subtitle: fu.nt?.price?.c,
-        value: fu.price,
-        kind: 'fuelPrice',
-        unit: fu.nt?.price?.u || fu.u || '₽/л',
-        hint: (v) => {
-          const l = S.transport
-            .filter((t) => t.fuel === fu.i)
-            .reduce((sum, t) => sum + litres(t, S), 0)
-          return l > 0
-            ? `На ${litresLabel(l)} выйдет ${money(l * v, S.doc)}`
-            : 'На этом топливе пока никто не ездит'
-        },
-        onChange: (v) => setFuelPrice(fu.i, v),
-      }
-    }
-
-    if (f.k === 'tr') {
-      const t = S.transport.find((x) => x.i === f.id)
-      if (!t) return null
-      const nt = t.nt ?? {}
-      if (f.f === 'hours') {
-        return {
-          title: nt.hours?.t || 'Моточасы',
-          subtitle: t.n,
-          value: t.hours,
-          kind: 'hours',
-          unit: nt.hours?.u || 'ч',
-          hint: (v) => `Выйдет ${litresLabel(v * t.rate)}`,
-          onChange: (v) => patchTr(t.i, (x) => {
-            x.hours = v
-          }),
-        }
-      }
-      if (f.f === 'litres') {
-        return {
-          title: nt.litres?.t || 'Сколько литров',
-          subtitle: t.n,
-          value: t.litres,
-          kind: 'litres',
-          unit: nt.litres?.u || 'л',
-          hint: () => `Столько ${fuelName(S, t.fuel)} заливаем разом`,
-          onChange: (v) => patchTr(t.i, (x) => {
-            x.litres = v
-          }),
-        }
-      }
-      return {
-        title: nt.rate?.t || 'Расход',
-        subtitle: t.rateU === 'lh' ? `${t.n} — литров в час` : `${t.n} — литров на 100 км`,
-        value: t.rate,
-        kind: t.rateU === 'lh' ? 'lh' : 'l100',
-        unit: nt.rate?.u || (t.rateU === 'lh' ? 'л/ч' : 'л/100 км'),
-        hint: (v) =>
-          t.rateU === 'lh'
-            ? `Выйдет ${litresLabel(v * t.hours)}`
-            : `Выйдет ${litresLabel((routeKm(S) * v) / 100)}`,
-        onChange: (v) => patchTr(t.i, (x) => {
-          x.rate = v
-        }),
-      }
-    }
-
-    const r = S.rent.find((x) => x.i === f.id)
-    if (!r) return null
-    const nt = r.nt ?? {}
-    if (f.f === 'qty') {
-      return {
-        title: nt.qty?.t || 'Сколько берём',
-        subtitle: r.n,
-        value: r.qty,
-        kind: r.unit === 'сут.' ? 'days' : 'qty',
-        unit: nt.qty?.u || r.unit || 'шт.',
-        hint: (v) => `Выйдет ${money(r.price * v * r.count, S.doc)}`,
-        onChange: (v) => patchRn(r.i, (x) => {
-          x.qty = v
-        }),
-      }
-    }
-    if (f.f === 'count') {
-      return {
-        title: nt.count?.t || 'Сколько штук',
-        subtitle: r.n,
-        value: r.count,
-        kind: 'count',
-        unit: nt.count?.u || 'шт.',
-        hint: (v) => `Выйдет ${money(r.price * r.qty * v, S.doc)}`,
-        onChange: (v) => patchRn(r.i, (x) => {
-          x.count = v
-        }),
-      }
-    }
-    return {
-      title: nt.price?.t || 'Цена аренды',
-      subtitle: `${r.n}, ${rentPer(r)}`,
-      value: r.price,
-      kind: 'price',
-      unit: nt.price?.u || '₽',
-      hint: (v) => `За ${rentQtyLabel(r)} выйдет ${money(v * r.qty * r.count, S.doc)}`,
-      onChange: (v) => patchRn(r.i, (x) => {
-        x.price = v
-      }),
-    }
-  }
-
-  const nd = num ? numDef(num) : null
 
   /* ─────────── полоса «посчитать по карте» ─────────── */
 
   const mapStrip = (
-    <div className="border-b border-line/70 bg-zebra/30 px-4 py-3">
+    <div className="border-b border-line bg-zebra/40 px-4 py-3">
       {canEdit && (
         <div className="flex flex-wrap items-center gap-2">
           <Btn tone="secondary" disabled={mapBusy} onClick={() => void runMapCalc()}>
-            <MapPinned size={18} strokeWidth={1.5} aria-hidden />
+            <MapPinned size={18} strokeWidth={1.75} aria-hidden />
             {mapBusy ? 'Считаем по карте…' : 'Посчитать по карте'}
           </Btn>
           {dist.auto > 0 &&
@@ -406,7 +196,7 @@ export function RoadSection() {
             ))}
         </div>
       )}
-      <p className={cn('text-[13px] leading-snug text-muted', canEdit && 'mt-2')}>
+      <p className={cn('text-note leading-snug text-muted', canEdit && 'mt-2')}>
         {dist.src === 'auto'
           ? `Считается по карте: ${kmLabel(dist.auto)}. Своё число — ${kmLabel(dist.manual)}, оно ждёт наготове.`
           : dist.auto > 0
@@ -421,82 +211,25 @@ export function RoadSection() {
       <SectionHead
         title="Дорога"
         secId="road"
-        hint="Синие числа правим руками, итоги считаются сами"
+        hint="Итоги справа считаются сами — правятся только исходные числа"
       />
 
       <RouteBoard S={S} perms={perms} />
 
-      <RoadInputs
+      <RoadCalc
         S={S}
         canEdit={canEdit}
-        onNum={setNum}
-        onAdd={(what) => setAdding(what)}
+        canDel={perms.canDel}
+        onAddTransport={addTransport}
+        onAddRent={addRent}
+        onDelTransport={(t: Transport) => drop('transport', t, 'убрана')}
+        onDelRent={(r: Rent) => drop('rent', r, 'убрана')}
+        onSetupTransport={setTrSheet}
+        onSetupRent={setRnSheet}
+        fresh={fresh}
+        onFreshEnd={() => setFresh(null)}
         mapStrip={mapStrip}
       />
-
-      <RoadCalc S={S} onOpenTransport={setTrSheet} onOpenRent={setRnSheet} />
-
-      {/* ─── Канистры ─── */}
-      <Group
-        title="Канистры"
-        open={!!open.cans}
-        onToggle={() => setOpen((o) => ({ ...o, cans: !o.cans }))}
-        badge={
-          c.cans.length > 0 ? (
-            <Sum>
-              {c.cans.reduce((n, x) => n + x.cans, 0)}{' '}
-              {plural(c.cans.reduce((n, x) => n + x.cans, 0), 'канистра', 'канистры', 'канистр')}
-            </Sum>
-          ) : undefined
-        }
-      >
-        {c.cans.length === 0 ? (
-          <p className="px-4 pb-3 text-[15px] leading-snug text-muted">
-            С собой ничего не везём: всё топливо заливаем на заправках. Канистры появятся,
-            как только у техники включить «Везём в канистрах».
-          </p>
-        ) : (
-          c.cans.map((ci) => {
-            const row = canRowOf(S, ci.fuel)
-            return (
-              <div key={ci.fuel} className="border-t border-line/70 px-4 py-3 first:border-t-0">
-                <p className="text-[16px] leading-snug text-ink">
-                  С собой везём {litresLabel(ci.litres)} {ci.name} — это {ci.cans}{' '}
-                  {plural(ci.cans, 'канистра', 'канистры', 'канистр')} по{' '}
-                  {fmtNum(canVol, 0)}
-                  {NBSP}л
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-accent-text" aria-hidden>
-                  {Array.from({ length: Math.min(ci.cans, 12) }, (_, k) => (
-                    <Fuel key={k} size={28} strokeWidth={1.5} />
-                  ))}
-                </div>
-                {row?.t ? <p className="mt-2 text-[15px] font-[650] text-ink">{row.t}</p> : null}
-                {row?.c ? <p className="mt-0.5 text-[13px] text-muted">{row.c}</p> : null}
-              </div>
-            )
-          })
-        )}
-
-        {/* Топлива, которые с собой не везём: их строки из документа тоже нужны. */}
-        {[...S.canRows]
-          .filter((r) => !c.cans.some((x) => x.fuel === r.fuel))
-          .sort((a, b) => a.ord - b.ord)
-          .map((r) => {
-            const l = refuelLitres(S, r.fuel)
-            return (
-              <div key={r.i} className="border-t border-line/70 px-4 py-3">
-                <p className="text-[15px] font-[650] text-ink">{r.t}</p>
-                {l > 0 ? (
-                  <p className="mt-0.5 text-[15px] leading-snug text-ink">
-                    На заправках берём {litresLabel(l)}.
-                  </p>
-                ) : null}
-                {r.c ? <p className="mt-0.5 text-[13px] text-muted">{r.c}</p> : null}
-              </div>
-            )
-          })}
-      </Group>
 
       {/* ─── Вопросы ─── */}
       <Group
@@ -510,61 +243,135 @@ export function RoadSection() {
           <EmptyState
             icon={CircleHelp}
             title="Вопросов нет"
-            text="Запишите то, что нужно уточнить до выезда"
-            action={{ label: 'Добавить вопрос', onClick: () => setAdding('idea') }}
+            text="Здесь живёт то, что нужно уточнить до выезда"
+            action={canAsk ? { label: 'Добавить вопрос', onClick: addIdea } : undefined}
           />
         ) : (
-          <div role="list">
-            {ideas.map((q, idx) => (
-              <ItemRow
-                key={q.i}
-                dataHit={q.i}
-                zebra={idx % 2 === 1}
-                done={q.done}
-                onOpen={() => setIdeaSheet(q.i)}
-                onDelete={perms.isEditor() ? () => drop('ideas', q, 'убран') : undefined}
-                lead={
-                  <button
-                    type="button"
-                    aria-label={`${q.n}: ${q.done ? 'решено' : 'не решено'}. Отметить`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      patchIdea(q.i, (x) => {
-                        x.done = !x.done
-                      })
-                    }}
-                    className="grid size-11 place-items-center rounded-xl transition-colors hover:bg-zebra"
-                  >
-                    <span
-                      className={cn(
-                        'grid size-6 place-items-center rounded-lg border-[1.5px]',
-                        q.done ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
+          <>
+            <DataTable cols={IDEA_COLS} label="Вопросы: что уточнить до выезда">
+              {/* Полоса строк шириной со свои колонки, а не с экран (см. «Расчёт дороги»). */}
+              <div role="rowgroup" className="w-max min-w-full">
+                <DataRow zebra>
+                  <DataCell sticky bg="zebra" align="left" head>
+                    Вопрос
+                  </DataCell>
+                  <DataCell head align="left">
+                    На ком
+                  </DataCell>
+                  <DataCell head>Решён</DataCell>
+                </DataRow>
+
+                {ideas.map((q, idx) => (
+                  <DataRow key={q.i} zebra={idx % 2 === 1} dataHit={q.i} fresh={fresh === q.i}>
+                    <DataCell sticky bg={idx % 2 === 1 ? 'zebra' : 'surface'} align="left">
+                      <span className="flex w-full items-start gap-1">
+                        <span className="min-w-0 flex-1">
+                          <InlineText
+                            value={q.n}
+                            onSave={(v) =>
+                              patchIdea(q.i, (x) => {
+                                x.n = v
+                              })
+                            }
+                            can={canAsk}
+                            required
+                            autoEdit={fresh === q.i}
+                            onEditEnd={() => setFresh(null)}
+                            label="Вопрос"
+                            placeholder="Что уточнить"
+                            className={cn(
+                              'text-body leading-snug font-medium text-ink',
+                              q.done && 'line-through',
+                            )}
+                          />
+                          {canAsk || q.why ? (
+                            <InlineText
+                              value={q.why}
+                              onSave={(v) =>
+                                patchIdea(q.i, (x) => {
+                                  x.why = v
+                                })
+                              }
+                              can={canAsk}
+                              multiline
+                              label="Почему это важно"
+                              placeholder="Почему важно"
+                              className="text-note leading-snug text-muted"
+                            />
+                          ) : null}
+                        </span>
+                        <RowActions>
+                          {canEdit ? (
+                            <RowAction
+                              icon={Trash2}
+                              tone="danger"
+                              label={`Убрать вопрос «${q.n}»`}
+                              onClick={() => drop('ideas', q, 'убран')}
+                            />
+                          ) : null}
+                        </RowActions>
+                      </span>
+                    </DataCell>
+
+                    <DataCell align="left">
+                      <InlineText
+                        value={q.who}
+                        onSave={(v) =>
+                          patchIdea(q.i, (x) => {
+                            x.who = v
+                          })
+                        }
+                        can={canAsk}
+                        label="На ком вопрос"
+                        placeholder="Ни на ком"
+                        className="text-note text-muted"
+                      />
+                    </DataCell>
+
+                    <DataCell>
+                      {canAsk ? (
+                        <button
+                          type="button"
+                          aria-label={`${q.n}: ${q.done ? 'решён' : 'не решён'}. Отметить`}
+                          aria-pressed={q.done}
+                          onClick={() =>
+                            patchIdea(q.i, (x) => {
+                              x.done = !x.done
+                            })
+                          }
+                          className="grid size-11 place-items-center rounded-md transition-colors hover:bg-zebra active:scale-95"
+                        >
+                          <Dot done={q.done} />
+                        </button>
+                      ) : (
+                        <Dot done={q.done} />
                       )}
-                    >
-                      {q.done && <Check size={16} strokeWidth={3} aria-hidden />}
-                    </span>
-                  </button>
-                }
-                title={q.n}
-                line2={[q.who, q.why].filter(Boolean).join(' · ')}
-              />
-            ))}
-            <AddRow label="Добавить вопрос" onClick={() => setAdding('idea')} />
-          </div>
+                    </DataCell>
+                  </DataRow>
+                ))}
+              </div>
+            </DataTable>
+            {canAsk && <AddRow label="Добавить вопрос" onClick={addIdea} />}
+          </>
         )}
       </Group>
 
-      {/* ─────────── карточки позиций ─────────── */}
+      {/* ─────────── карточки выбора ─────────── */}
 
       {curTr && (
         <TransportSheet
           item={curTr}
           S={S}
           canEdit={canEdit}
-          canDelete={perms.canDel(curTr)}
-          onPatch={(f) => patchTr(curTr.i, f)}
-          onFuelPrice={setFuelPrice}
-          onDelete={() => drop('transport', curTr, 'убрана')}
+          onPatch={(f) =>
+            update((s) => {
+              const t = s.transport.find((x) => x.i === curTr.i)
+              if (t) {
+                f(t)
+                touch(t)
+              }
+            })
+          }
           onClose={() => setTrSheet(null)}
         />
       )}
@@ -574,82 +381,36 @@ export function RoadSection() {
           item={curRn}
           S={S}
           canEdit={canEdit}
-          canDelete={perms.canDel(curRn)}
-          onPatch={(f) => patchRn(curRn.i, f)}
-          onDelete={() => drop('rent', curRn, 'убрана')}
+          onPatch={(f) =>
+            update((s) => {
+              const r = s.rent.find((x) => x.i === curRn.i)
+              if (r) {
+                f(r)
+                touch(r)
+              }
+            })
+          }
           onClose={() => setRnSheet(null)}
         />
       )}
-
-      {curIdea && (
-        <IdeaSheet
-          item={curIdea}
-          canDelete={perms.isEditor()}
-          onPatch={(f) => patchIdea(curIdea.i, f)}
-          onDelete={() => drop('ideas', curIdea, 'убран')}
-          onClose={() => setIdeaSheet(null)}
-        />
-      )}
-
-      {/* ─────────── правка чисел ─────────── */}
-
-      {nd && (
-        <NumberSheet
-          open
-          onOpenChange={(v) => !v && setNum(null)}
-          title={nd.title}
-          subtitle={nd.subtitle}
-          value={nd.value}
-          kind={nd.kind}
-          unit={nd.unit}
-          hint={nd.hint}
-          onChange={nd.onChange}
-        />
-      )}
-
-      {/* ─────────── добавление ─────────── */}
-
-      <TextSheet
-        open={adding === 'transport'}
-        onOpenChange={(v) => !v && setAdding(null)}
-        title="Что за техника"
-        subtitle="Машина, лодочный мотор, генератор, бензопила"
-        value=""
-        placeholder="Например, Chevrolet Aveo"
-        onDone={(v) => {
-          if (v) addTransport(v)
-          setAdding(null)
-        }}
-      />
-      <TextSheet
-        open={adding === 'rent'}
-        onOpenChange={(v) => !v && setAdding(null)}
-        title="Что арендуем"
-        subtitle="Лодка, парковка, домик, снаряжение"
-        value=""
-        placeholder="Например, Лодка «Ладога»"
-        onDone={(v) => {
-          if (v) addRent(v)
-          setAdding(null)
-        }}
-      />
-      <TextSheet
-        open={adding === 'idea'}
-        onOpenChange={(v) => !v && setAdding(null)}
-        title="Что уточнить"
-        subtitle="Вопрос, ответ на который нужен до выезда"
-        value=""
-        placeholder="Например, даёт ли база жилеты"
-        onDone={(v) => {
-          if (v) addIdea(v)
-          setAdding(null)
-        }}
-      />
     </div>
   )
 }
 
-/** Сумма в заголовке блока. */
-function Sum({ children }: { children: ReactNode }) {
-  return <span className="tnum shrink-0 text-[17px] font-bold text-ink">{children}</span>
+/** Вопрос · на ком · решён. Первая колонка липкая, как и в расчёте. */
+const IDEA_COLS = 'minmax(12rem,1fr) 8rem 4rem'
+
+/** Кружок «вопрос решён»: 24 px внутри цели касания 44 px. */
+function Dot({ done }: { done: boolean }) {
+  return (
+    <span
+      className={cn(
+        'grid size-6 place-items-center rounded-full border-[1.5px]',
+        done ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
+      )}
+      aria-hidden
+    >
+      {done && <Check size={16} strokeWidth={1.75} />}
+    </span>
+  )
 }

@@ -3,7 +3,9 @@
  *
  * Пять состояний (docs/v2-ux-redesign.md, 4.5) — те же, что в v1 (ST_NAME/ST_ICON):
  *   0 не взято · 1 в процессе · 2 упаковано · 3 в машине
- * «Не могу взять» в круг не входит: это отдельная отметка gear.q[personId].
+ * «Не могу взять» хранится отдельно — в gear.q[personId], — но по кругу ячейки
+ * идёт наравне с остальными (см. MarkValue ниже): другого места, где её поставить,
+ * в таблице нет, а шторки заказчик отменил 04.08.2026.
  * В готовность идут только «упаковано» и «в машине».
  */
 
@@ -56,10 +58,14 @@ export function qtyAskOf(g: Gear, personId: string): QtyAsk | null {
 }
 
 /**
- * Переключить состояние по кругу 0 → 1 → 2 → 3 → 0.
- * Отметка «не могу взять» в круг не входит (4.5), поэтому тап по кружку её снимает:
- * иначе поверх круга навсегда остаётся треугольник и человек не может двинуться дальше.
- * Возвращает снятую отметку — вызывающий покажет тост с «Отменить».
+ * Переключить состояние по кругу 0 → 1 → 2 → 3 → 0 без отказа.
+ * Такой круг нужен там, где отметке «не могу взять» взяться неоткуда и негде
+ * показать причину, — например в списке «что осталось» на обложке. Отказ при
+ * этом снимается: иначе поверх круга навсегда остаётся треугольник и человек
+ * не может двинуться дальше. Возвращает снятую отметку — вызывающий покажет
+ * тост с «Отменить».
+ *
+ * В самой таблице «Сборов» круг другой, с отказом: см. cycleMark.
  */
 export function cycleStatus(g: Gear, personId: string): QtyAsk | null {
   const cant = cantOf(g, personId)
@@ -69,9 +75,87 @@ export function cycleStatus(g: Gear, personId: string): QtyAsk | null {
   return cant
 }
 
-/** «2 шт.» — число и единица склеены неразрывным пробелом. */
-export function qtyLabel(n: number): string {
-  return `${n}${NBSP}шт.`
+/* ─── Отметка в ячейке: круг состояний и «не могу взять» ──────────────────── */
+
+/**
+ * Что стоит в ячейке человека: одно из четырёх состояний круга или отказ.
+ * Отказ хранится в другом поле (`q`), но для человека это такая же отметка,
+ * как остальные, и ставится там же — кружком в ячейке.
+ */
+export type MarkValue = StatusValue | 'cant'
+
+/** Название отметки словами — теми же, что в легенде. */
+export function markName(v: MarkValue): string {
+  return v === 'cant' ? 'не могу взять' : ST_NAME[v]
+}
+
+/** Отметка человека по позиции. Отказ старше состояния: он перекрывает круг. */
+export function markOf(g: Gear, personId: string): MarkValue {
+  return cantOf(g, personId) ? 'cant' : statusOf(g, personId)
+}
+
+/** Следующая по кругу: 0 → 1 → 2 → 3 → не могу взять → 0. */
+export function nextMark(v: MarkValue): MarkValue {
+  if (v === 'cant') return 0
+  return v === 3 ? 'cant' : nextStatus(v)
+}
+
+/**
+ * Поставить отметку. Причина отказа, если она была записана, сохраняется:
+ * человек мог снять отметку случайно, а объяснение — его слова, не наши.
+ * Просьбу изменить количество (`q` вида 'qty') не трогаем — это не отказ.
+ */
+export function setMark(g: Gear, personId: string, v: MarkValue): void {
+  const cant = cantOf(g, personId)
+  if (v === 'cant') {
+    g.q = g.q || {}
+    g.q[personId] = { kind: 'cant', why: cant?.why ?? '', ua: Date.now() }
+    return
+  }
+  if (cant && g.q) delete g.q[personId]
+  g.s = g.s || {}
+  g.s[personId] = v
+}
+
+/** Перевести ячейку на следующую отметку по кругу и вернуть новую. */
+export function cycleMark(g: Gear, personId: string): MarkValue {
+  const next = nextMark(markOf(g, personId))
+  setMark(g, personId, next)
+  return next
+}
+
+/** Записать причину отказа, не трогая саму отметку. */
+export function setCantWhy(g: Gear, personId: string, why: string): void {
+  if (!cantOf(g, personId)) return
+  g.q = g.q || {}
+  g.q[personId] = { kind: 'cant', why, ua: Date.now() }
+}
+
+/* ─── Единица измерения позиции ───────────────────────────────────────────── */
+
+/**
+ * Единица измерения вещи: «пара», «шт.», «компл.». Справочник — `S.units[]`,
+ * но вписать свою тоже можно: в таблице заказчика единица — просто слово.
+ *
+ * ⚠️ Поле `u` в `lib/types.ts` пока не объявлено (файл вне этой правки), поэтому
+ * читаем и пишем его расширением типа. Данные при этом целы: слияние отдаёт
+ * незнакомые поля позиции целиком, а форма хранения не меняется.
+ */
+export type GearUnit = Gear & { u?: string }
+
+/** Единица позиции; не записана — считаем штуками, как в таблице заказчика. */
+export function unitOf(g: Gear): string {
+  return ((g as GearUnit).u || '').trim() || 'шт.'
+}
+
+/** Записать единицу. Пустая строка возвращает позицию к штукам. */
+export function setUnitOf(g: Gear, u: string): void {
+  ;(g as GearUnit).u = u.trim()
+}
+
+/** «2 шт.», «2 пары» — число и единица склеены неразрывным пробелом. */
+export function qtyLabel(n: number, unit = 'шт.'): string {
+  return `${n}${NBSP}${unit}`
 }
 
 /** Кто везёт позицию: люди с ненулевым количеством, в порядке S.people. */
@@ -336,7 +420,7 @@ export function holdersLine(g: Gear, people: Person[]): string {
   const hs = holders(g, people)
   if (hs.length === 0) return 'пока никто не везёт'
   const head = hs.length === 1 ? `везёт ${hs[0].name}` : `везут ${collective(hs.length)}`
-  return `${head}, всего ${qtyLabel(totalQty(g))}`
+  return `${head}, всего ${qtyLabel(totalQty(g), unitOf(g))}`
 }
 
 /**

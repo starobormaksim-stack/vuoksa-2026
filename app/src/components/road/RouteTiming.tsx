@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { Check, MapPin, MapPinPlus, Route } from 'lucide-react'
+import { Check, MapPin, MapPinPlus, Route, Settings2, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { RoutePoint } from '@/lib/types'
-import { AddRow, EmptyState } from '@/components/flops'
+import { AddRow, EmptyState, InlineText, RowAction, RowActions } from '@/components/flops'
 import { askMap, type MapMode } from '@/lib/mapfocus'
+import { remove, touch, update } from '@/store'
 import { scrollToSection } from '@/sections'
 import { cn } from '@/lib/utils'
 import { coordLabel, pointMeta } from './roadx'
@@ -20,24 +22,27 @@ function askHere(pointId: string, mode: MapMode): void {
 }
 
 /**
- * Тайминг поездки (docs/v2-ux-redesign.md, 10.6) — вертикальная лента точек:
- * кружок «этап пройден», время, название, заметка и третья строка с меткой и расстоянием.
+ * Тайминг поездки — вертикальная лента точек: кружок «этап пройден», время,
+ * название, описание и адрес.
  *
- * Лента и карта — одна вещь, а не две (заказчик 04.08.2026: «тайминг и маршрут
- * вместе»), поэтому они стоят двумя вкладками одного блока «Маршрут» в «Дороге».
- * Связь двусторонняя и идёт через посредник lib/mapfocus.ts: тап по строке адреса
- * открывает вкладку с картой и наводит её, а тап по метке на карте подсвечивает
- * здесь нужную точку (activeId).
+ * ⚠️ Правится всё прямо в строке (заказчик 04.08.2026: «это прямо вот здесь,
+ * в этой таблице уже должно быть»). Карточка точки осталась только ради того,
+ * что выбирается из списка, — метка этапа, чем добираемся, расстояние по дороге.
  *
- * Участнику лента показывается целиком, но без единой кнопки правки: ни кружка,
- * ни «добавить» — их просто нет в разметке (правило 12.2). Строка «показать на карте»
- * при этом остаётся: смотреть можно всем, это не правка.
+ * Лента и карта — одна вещь, а не две, и связь у них двусторонняя через
+ * lib/mapfocus.ts: строка адреса наводит карту, а тап по метке на карте
+ * подсвечивает здесь нужную точку (activeId).
+ *
+ * Участнику лента показывается целиком, но без единой кнопки правки: их просто
+ * нет в разметке (постулат 5). Строка «показать на карте» остаётся: смотреть
+ * можно всем, это не правка.
  */
 interface Props {
   points: RoutePoint[]
   canEdit: boolean
   /** отметить этап пройденным */
   onToggle: (id: string) => void
+  /** открыть карточку точки: метка, чем добираемся, расстояние */
   onOpen: (id: string) => void
   onAdd: () => void
   /** какую точку подсветить: по её метке только что тапнули на карте */
@@ -60,12 +65,26 @@ export function RouteTiming({
     el?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
   }, [activeId, activeAt])
 
+  const patch = (id: string, f: (p: RoutePoint) => void) =>
+    update((s) => {
+      const p = s.route.find((x) => x.i === id)
+      if (p) {
+        f(p)
+        touch(p)
+      }
+    })
+
+  const drop = (p: RoutePoint) => {
+    remove('route', p.i)
+    toast(`«${p.n || 'Точка'}» убрана`)
+  }
+
   if (points.length === 0) {
     return (
       <EmptyState
         icon={Route}
         title="Маршрута пока нет"
-        text="Добавьте первую точку — или поставьте её тапом по карте, на соседней вкладке"
+        text="Точка маршрута — место, где мы окажемся по пути: сбор, выезд, закупка, лагерь"
         action={canEdit ? { label: 'Добавить точку', onClick: onAdd } : undefined}
       />
     )
@@ -77,6 +96,7 @@ export function RouteTiming({
         {points.map((p, idx) => {
           const last = idx === points.length - 1
           const active = p.i === activeId
+          const meta = pointMeta(p)
           return (
             <li key={p.i} className="relative" data-point={p.i} aria-current={active || undefined}>
               {/* Нитка между кружками: рисуется под точкой, кроме последней. */}
@@ -86,7 +106,7 @@ export function RouteTiming({
 
               <div
                 className={cn(
-                  'flex items-start gap-3 rounded-xl px-3 transition-colors',
+                  'group flex items-start gap-2 rounded-xl px-3 transition-colors',
                   active && 'bg-accent-soft',
                 )}
               >
@@ -106,15 +126,87 @@ export function RouteTiming({
                   </span>
                 )}
 
-                <div className="min-w-0 flex-1 pb-1">
-                  <Body
+                <div className="min-w-0 flex-1 py-2">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 w-16 shrink-0">
+                      <InlineText
+                        value={p.time}
+                        onSave={(v) =>
+                          patch(p.i, (x) => {
+                            x.time = v
+                          })
+                        }
+                        can={canEdit}
+                        label="Время"
+                        placeholder="··:··"
+                        className="tnum text-note font-bold text-accent-text"
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <InlineText
+                        value={p.n}
+                        onSave={(v) =>
+                          patch(p.i, (x) => {
+                            x.n = v
+                          })
+                        }
+                        can={canEdit}
+                        required
+                        label="Название точки"
+                        placeholder="Например, Приозерск: закупка"
+                        className={cn(
+                          'text-body leading-snug font-semibold text-ink',
+                          p.done && 'line-through',
+                        )}
+                      />
+                      {canEdit || p.c ? (
+                        <InlineText
+                          value={p.c}
+                          onSave={(v) =>
+                            patch(p.i, (x) => {
+                              x.c = v
+                            })
+                          }
+                          can={canEdit}
+                          multiline
+                          label="Описание точки"
+                          placeholder="Что здесь важно не забыть"
+                          className="text-note leading-snug text-muted"
+                        />
+                      ) : null}
+                    </span>
+                    <RowActions>
+                      {canEdit ? (
+                        <RowAction
+                          icon={Settings2}
+                          label={`${p.n}: метка, чем добираемся, расстояние`}
+                          onClick={() => onOpen(p.i)}
+                        />
+                      ) : null}
+                      {canEdit ? (
+                        <RowAction
+                          icon={Trash2}
+                          tone="danger"
+                          label={`Убрать точку «${p.n}»`}
+                          onClick={() => drop(p)}
+                        />
+                      ) : null}
+                    </RowActions>
+                  </div>
+
+                  {meta ? (
+                    <p className="tnum mt-1 text-micro leading-snug font-medium text-muted">{meta}</p>
+                  ) : null}
+
+                  <PlaceRow
                     point={p}
-                    /* Карту тап по строке больше не двигает: она на соседней вкладке,
-                       и переключать её из-под пальца, когда человек открывает
-                       карточку точки, — значит убирать ленту у него с глаз. */
-                    onOpen={canEdit ? () => onOpen(p.i) : undefined}
+                    canEdit={canEdit}
+                    onAddr={(v) =>
+                      patch(p.i, (x) => {
+                        x.addr = v
+                      })
+                    }
                   />
-                  <PlaceRow point={p} canEdit={canEdit} />
                 </div>
               </div>
             </li>
@@ -137,91 +229,58 @@ function Dot({ done }: { done: boolean }) {
       )}
       aria-hidden
     >
-      {done && <Check size={17} strokeWidth={3} />}
+      {done && <Check size={18} strokeWidth={1.75} />}
     </span>
   )
 }
 
 /**
- * Строка места: адрес (или координаты) — кнопка «показать на карте».
- * Координат нет и правка разрешена — предлагаем поставить точку.
- * Координат нет и правки нет — строки нет вовсе: показывать нечего.
+ * Строка места: адрес правится словами прямо здесь, а кнопка справа наводит
+ * на точку карту. Координат нет и правка разрешена — вместо кнопки предложение
+ * поставить точку на карте.
  */
-function PlaceRow({ point, canEdit }: { point: RoutePoint; canEdit: boolean }) {
+function PlaceRow({
+  point, canEdit, onAddr,
+}: {
+  point: RoutePoint
+  canEdit: boolean
+  onAddr: (v: string) => void
+}) {
   const coord = coordLabel(point)
-  const shown = point.addr || coord
-
-  if (!coord) {
-    if (!canEdit) return null
-    return (
-      <button
-        type="button"
-        onClick={() => askHere(point.i, 'place')}
-        className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-xl pr-2 text-left text-[13px] font-semibold text-accent-text transition-colors hover:bg-zebra/60"
-      >
-        <MapPinPlus size={17} strokeWidth={1.75} aria-hidden className="shrink-0" />
-        <span className="min-w-0 flex-1">Поставить на карте</span>
-      </button>
-    )
-  }
+  if (!canEdit && !point.addr && !coord) return null
 
   return (
-    <button
-      type="button"
-      onClick={() => askHere(point.i, 'show')}
-      aria-label={`${point.n}: показать на карте`}
-      className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-xl pr-2 text-left transition-colors hover:bg-zebra/60"
-    >
-      <MapPin size={17} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
-      <span className="tnum min-w-0 flex-1 truncate text-[13px] font-medium text-muted">
-        {shown}
+    <div className="mt-1 flex items-center gap-2">
+      <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
+      <span className="min-w-0 flex-1">
+        <InlineText
+          value={point.addr}
+          onSave={onAddr}
+          can={canEdit}
+          label="Адрес"
+          placeholder={coord || 'Улица, дом или ориентир'}
+          className="tnum text-note text-muted"
+        />
       </span>
-      <span className="shrink-0 text-[13px] font-semibold text-accent-text">на карте</span>
-    </button>
-  )
-}
-
-/** Тело этапа. Без обработчика — обычный блок текста, а не кнопка. */
-function Body({ point, onOpen }: { point: RoutePoint; onOpen?: () => void }) {
-  const meta = pointMeta(point)
-  const inner = (
-    <>
-      <span className="flex items-baseline gap-2">
-        <span className="tnum shrink-0 text-[13px] font-bold text-accent-text">
-          {point.time || '··:··'}
-        </span>
-        <span
-          className={cn(
-            'min-w-0 text-[16px] leading-snug font-semibold text-pretty text-ink',
-            point.done && 'line-through',
-          )}
+      {coord ? (
+        <button
+          type="button"
+          onClick={() => askHere(point.i, 'show')}
+          aria-label={`${point.n}: показать на карте`}
+          className="min-h-11 shrink-0 rounded-md px-2 text-note font-semibold text-accent-text transition-colors hover:bg-zebra"
         >
-          {point.n}
-        </span>
-      </span>
-      {point.c ? (
-        <span className="mt-0.5 block text-[13px] leading-snug text-muted">{point.c}</span>
+          на карте
+        </button>
+      ) : canEdit ? (
+        <button
+          type="button"
+          onClick={() => askHere(point.i, 'place')}
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md px-2 text-note font-semibold text-accent-text transition-colors hover:bg-zebra"
+        >
+          <MapPinPlus size={16} strokeWidth={1.75} aria-hidden />
+          поставить на карте
+        </button>
       ) : null}
-      {meta ? (
-        <span className="tnum mt-1 block text-[12px] leading-snug font-medium text-muted">
-          {meta}
-        </span>
-      ) : null}
-    </>
-  )
-
-  if (!onOpen) return <div className="min-h-16 w-full pt-3 pb-1">{inner}</div>
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={cn(
-        'min-h-16 w-full rounded-xl pt-3 pr-2 pb-1 text-left transition-colors hover:bg-zebra/60',
-        point.done && 'opacity-60',
-      )}
-    >
-      {inner}
-    </button>
+    </div>
   )
 }

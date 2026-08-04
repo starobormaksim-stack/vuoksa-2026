@@ -4,13 +4,13 @@ import type { SectionDef } from '../sections'
 export function Placeholder({ section }: { section: SectionDef }) {
   const Icon = section.icon
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-2xl border border-line bg-surface px-6 py-16 text-center shadow-sm">
-      <span className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent-deep">
-        <Icon size={26} strokeWidth={1.5} aria-hidden />
+    <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-xl border border-line bg-surface px-6 py-16 text-center shadow-sm">
+      <span className="grid size-16 place-items-center rounded-full bg-zebra text-muted">
+        <Icon size={28} strokeWidth={1.75} aria-hidden />
       </span>
       <div>
-        <h2 className="text-xl font-bold">{section.title}</h2>
-        <p className="mt-1 text-muted">Раздел переезжает из первой версии.</p>
+        <h2 className="text-head font-[700] text-ink">{section.title}</h2>
+        <p className="mt-1 text-note text-muted">Раздел переезжает из первой версии.</p>
       </div>
     </div>
   )

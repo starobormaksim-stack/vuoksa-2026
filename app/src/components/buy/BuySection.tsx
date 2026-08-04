@@ -1,43 +1,50 @@
-import { useMemo, useState } from 'react'
-import { Check, ChevronsDownUp, Pencil, ShoppingCart, Trash2 } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Buy, BuySection as BuySec } from '@/lib/types'
+import type { BuySection as BuySec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
-import { buyLine, counted, sumLabel } from '@/lib/buyx'
+import { orderedPeople } from '@/lib/people'
 import {
-  AddRow, Btn, EmptyState, Group, ItemRow, ResponsiveSheet, SectionHead, TextSheet,
+  Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll,
 } from '@/components/flops'
 import { BuyTotals } from './BuyTotals'
-import { BuyItemSheet } from './BuyItemSheet'
-import { ShopSheet } from './ShopSheet'
-import { cn } from '@/lib/utils'
+import { BuyTable } from './BuyTable'
+import { byOrd, type BuyItem } from './buylocal'
 
 /**
- * Раздел «Закупка» (docs/v2-ux-redesign.md, раздел 9).
+ * Раздел «Закупка» — таблицей, как лист заказчика.
  *
- * Претензия заказчика была про строку: «2 шт. × 900 план — факт» — форма ввода
- * в списке. Здесь строка ничего не вводит: она показывает вещь, одну фразу
- * («3 шт. по 550 ₽ · покупает Костя») и сумму. Всё редактирование — в карточке
- * по тапу. Ни одного `input` и ни одного знака × на экране списка.
+ * Переделка 04.08.2026. Прежняя карточка позиции и «режим магазина» убраны целиком:
+ * «мне не нужен поп-ап, в котором всё написано… это прямо вот здесь, в этой таблице
+ * уже должно быть» и «не нужен режим магазина, он должен уже здесь работать».
+ * Поле «Статус» ушло с экрана; что стало с его данными — написано в buylocal.tsx.
+ *
+ * Шторка осталась ровно одна и не про позицию, а про сам раздел: переименовать
+ * и удалить. Заголовок раздела в `Group` — целиком одна кнопка (свернуть/раскрыть),
+ * и вложить в неё поле ввода нельзя, не переделав общий компонент.
  */
 export function BuySection() {
   const { S, update, remove, perms } = useTrip()
   const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [S.buySections[0]?.i]: true }))
-  const [sheet, setSheet] = useState<string | null>(null)
-  const [shop, setShop] = useState(false)
-  const [addTo, setAddTo] = useState<string | null>(null)
+  /** id только что добавленной строки: подсвечена и сразу открыта на правку */
+  const [fresh, setFresh] = useState<string | null>(null)
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
+  /** блоки раздела прокручиваются вбок вместе: в бумажной таблице лист один */
+  const scroll = useRef(newTableScroll())
 
   const bySec = useMemo(() => {
-    const m: Record<string, Buy[]> = {}
-    for (const p of S.buy) (m[p.sec] ||= []).push(p)
-    for (const k of Object.keys(m)) m[k].sort((a, b) => (a.ord ?? 0) - (b.ord ?? 0))
+    const m: Record<string, BuyItem[]> = {}
+    for (const p of S.buy as BuyItem[]) (m[p.sec] ||= []).push(p)
+    for (const k of Object.keys(m)) m[k].sort(byOrd)
     return m
   }, [S.buy])
 
-  const patch = (id: string, f: (p: Buy) => void) =>
+  /* Читатель видит свою колонку первой — порядок один и тот же во всех блоках. */
+  const people = useMemo(() => orderedPeople(S.people, perms.me), [S.people, perms.me])
+
+  const patch = (id: string, f: (p: BuyItem) => void) =>
     update((s) => {
       const p = s.buy.find((x) => x.i === id)
       if (p) {
@@ -46,24 +53,53 @@ export function BuySection() {
       }
     })
 
-  const toggleBought = (p: Buy) => {
-    patch(p.i, (x) => {
-      x.b = !x.b
-      if (x.b && !x.who && perms.me) x.who = perms.me
-    })
-  }
-
-  const addItem = (secId: string, name: string) => {
+  /**
+   * Добавить позицию. `afterId` не передан — в конец блока; пустая строка —
+   * в самое начало; id строки — сразу под ней.
+   */
+  const addItem = (secId: string, afterId?: string) => {
     const id = 'p' + Date.now().toString(36)
     update((s) => {
+      const list = s.buy.filter((x) => x.sec === secId).sort(byOrd)
+      let ord = (list.length + 1) * 10
+      if (afterId !== undefined) {
+        /* У позиций из сида порядка нет вовсе, поэтому перед вставкой в середину
+           пересчитываем его по всему блоку — иначе новая строка уедет в конец. */
+        list.forEach((x, k) => {
+          x.ord = (k + 1) * 10
+          touch(x)
+        })
+        ord = (list.findIndex((x) => x.i === afterId) + 1) * 10 + 5
+      }
       s.buy.push({
-        i: id, sec: secId, n: name, q: 1, u: 'шт.', uid: 'sht',
+        i: id, sec: secId, n: '', q: 1, u: 'шт.', uid: 'sht',
         pr: 0, prf: 0, st: 'buy', c: '', who: '', by: perms.me || '',
-        qby: perms.me || '', ord: (s.buy.length + 1) * 10, ua: Date.now(),
+        qby: perms.me || '', ord, ua: Date.now(),
       })
     })
-    toast(`«${name}» в списке`)
-    setSheet(id)
+    setFresh(id)
+  }
+
+  /** Правка названия новой строки закончилась. Ничего не ввели — строки и не было. */
+  const endFresh = (id: string, saved: boolean) => {
+    setFresh(null)
+    if (saved) return
+    remove('buy', id)
+    toast('Пустая строка не сохранилась')
+  }
+
+  const delItem = (p: BuyItem) => {
+    remove('buy', p.i)
+    toast(`«${p.n}» удалено`, {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            if (s.del) delete s.del['buy:' + p.i]
+            if (!s.buy.some((x) => x.i === p.i)) s.buy.push({ ...p, ua: Date.now() })
+          }),
+      },
+    })
   }
 
   /* ─── действия над разделом (только редактору) ─── */
@@ -93,137 +129,51 @@ export function BuySection() {
     })
   }
 
-  const current = sheet ? S.buy.find((p) => p.i === sheet) : null
   const menuSec = menu ? S.buySections.find((s) => s.i === menu) ?? null : null
-  const personalIds = new Set(S.buySections.filter((s) => s.personal).map((s) => s.i))
 
   return (
     <div className="flex flex-col gap-4">
       <SectionHead
         title="Закупка"
         secId="buy"
-        hint="«Купить» попадает в сумму, «Есть у…» и «Не берём» — нет"
+        hint="Галочка слева — куплено. Без галочки «Берём» позиция в сумму не идёт"
       />
 
-      <BuyTotals S={S} onShop={() => setShop(true)} />
+      <BuyTotals S={S} />
 
       {[...S.buySections]
         .sort((a, b) => a.ord - b.ord)
         .map((sec) => {
           const rows = bySec[sec.i] ?? []
-          const done = rows.filter((p) => p.b).length
           return (
             <Group
               key={sec.i}
               title={sec.t}
-              done={done}
+              done={rows.filter((p) => p.b).length}
               total={rows.length}
               open={!!open[sec.i]}
               onToggle={() => setOpen((o) => ({ ...o, [sec.i]: !o[sec.i] }))}
               onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
-              badge={
-                sec.personal ? (
-                  <span className="shrink-0 rounded-lg border border-accent-text px-2 py-0.5 text-[11px] font-bold text-accent-text">
-                    личное
-                  </span>
-                ) : undefined
-              }
-              className={cn(sec.personal && 'border-dashed border-line-strong bg-bg')}
+              /* Личный блок отличается пунктиром рамки; словами правило написано
+                 в его подытоге — «в общий бюджет не входит». */
+              className={sec.personal ? 'border-dashed border-line-strong' : undefined}
             >
-              {rows.length === 0 ? (
-                <EmptyState
-                  icon={ShoppingCart}
-                  title="Ничего не запланировано"
-                  text="Добавьте, что нужно купить в этом разделе"
-                  action={{ label: 'Добавить позицию', onClick: () => setAddTo(sec.i) }}
-                />
-              ) : (
-                <div role="list">
-                  {rows.map((p, idx) => (
-                    <ItemRow
-                      key={p.i}
-                      dataHit={p.i}
-                      zebra={idx % 2 === 1}
-                      done={!!p.b}
-                      onOpen={() => setSheet(p.i)}
-                      onDelete={perms.canDel(p) ? () => {
-                        remove('buy', p.i)
-                        toast(`«${p.n}» удалено`, {
-                          action: { label: 'Отменить', onClick: () => undo(p) },
-                        })
-                      } : undefined}
-                      lead={
-                        <button
-                          type="button"
-                          aria-label={`${p.n}: ${p.b ? 'куплено' : 'не куплено'}. Отметить`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleBought(p)
-                          }}
-                          className="grid size-11 place-items-center rounded-xl transition-colors hover:bg-zebra"
-                        >
-                          <span
-                            className={cn(
-                              'grid size-6 place-items-center rounded-lg border-[1.5px]',
-                              p.b ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
-                            )}
-                          >
-                            {p.b && <Check size={16} strokeWidth={3} aria-hidden />}
-                          </span>
-                        </button>
-                      }
-                      title={p.n}
-                      line2={buyLine(p, S)}
-                      right={
-                        <span className={cn(!counted(p) && 'text-muted line-through')}>
-                          {sumLabel(p, S)}
-                        </span>
-                      }
-                    />
-                  ))}
-                  <AddRow label="Добавить позицию" onClick={() => setAddTo(sec.i)} />
-                </div>
-              )}
+              <BuyTable
+                sec={sec}
+                rows={rows}
+                S={S}
+                perms={perms}
+                people={people}
+                scroll={scroll}
+                fresh={fresh}
+                onPatch={patch}
+                onDelete={delItem}
+                onAdd={addItem}
+                onFreshEnd={endFresh}
+              />
             </Group>
           )
         })}
-
-      {current && (
-        <BuyItemSheet
-          item={current}
-          S={S}
-          perms={perms}
-          personal={personalIds.has(current.sec)}
-          onPatch={(f) => patch(current.i, f)}
-          onDelete={() => {
-            remove('buy', current.i)
-            toast(`«${current.n}» удалено`, {
-              action: { label: 'Отменить', onClick: () => undo(current) },
-            })
-          }}
-          onClose={() => setSheet(null)}
-        />
-      )}
-
-      <ShopSheet
-        S={S}
-        open={shop}
-        onOpenChange={setShop}
-        onToggle={(id, b) => patch(id, (p) => { p.b = b })}
-      />
-
-      <TextSheet
-        open={addTo !== null}
-        onOpenChange={(v) => !v && setAddTo(null)}
-        title="Что купить"
-        subtitle={S.buySections.find((s) => s.i === addTo)?.t}
-        value=""
-        placeholder="Например, хлеб"
-        onDone={(v) => {
-          if (v && addTo) addItem(addTo, v)
-          setAddTo(null)
-        }}
-      />
 
       {menuSec && (
         <ResponsiveSheet
@@ -239,7 +189,7 @@ export function BuySection() {
         >
           <div className="flex flex-col gap-2">
             <Btn tone="secondary" className="w-full justify-start" onClick={() => setRename(true)}>
-              <Pencil size={18} strokeWidth={1.5} aria-hidden />
+              <Pencil size={20} strokeWidth={1.75} aria-hidden />
               Переименовать
             </Btn>
             <Btn
@@ -250,17 +200,17 @@ export function BuySection() {
                 setMenu(null)
               }}
             >
-              <ChevronsDownUp size={18} strokeWidth={1.5} aria-hidden />
+              <ChevronsDownUp size={20} strokeWidth={1.75} aria-hidden />
               Свернуть все
             </Btn>
-            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем (12.2) */}
+            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем */}
             {(bySec[menuSec.i] ?? []).length === 0 ? (
               <Btn tone="danger" className="w-full justify-start" onClick={() => delSec(menuSec)}>
-                <Trash2 size={18} strokeWidth={1.5} aria-hidden />
+                <Trash2 size={20} strokeWidth={1.75} aria-hidden />
                 Удалить раздел
               </Btn>
             ) : (
-              <p className="mt-1 text-[13px] leading-snug text-muted">
+              <p className="mt-1 text-note leading-snug text-muted">
                 Раздел удаляется, когда в нём не осталось ни одной позиции.
               </p>
             )}
@@ -282,12 +232,4 @@ export function BuySection() {
       )}
     </div>
   )
-
-  /** Вернуть удалённую позицию (кнопка «Отменить» в тосте). */
-  function undo(p: Buy) {
-    update((s) => {
-      if (s.del) delete s.del['buy:' + p.i]
-      if (!s.buy.some((x) => x.i === p.i)) s.buy.push({ ...p, ua: Date.now() })
-    })
-  }
 }

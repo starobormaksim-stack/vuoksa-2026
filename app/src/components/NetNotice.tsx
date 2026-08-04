@@ -1,4 +1,5 @@
 import { useTrip } from '@/store'
+import { isOfflineCopy } from '@/lib/offline'
 
 /**
  * Полоска «правки не уходят на сервер».
@@ -18,6 +19,10 @@ import { useTrip } from '@/store'
  */
 export function NetNotice() {
   const { net } = useTrip()
+  /* Офлайн-копия на сервер и не ходит: сеть в ней закрыта наглухо (lib/offline.ts),
+     и про это уже сказано полоской наверху самого файла. Красное «нет связи»
+     здесь было бы неправдой — это не беда, а устройство копии. */
+  if (isOfflineCopy()) return null
   if (net.state !== 'err' && net.state !== 'off') return null
 
   /* Без сети — не беда, а обычное дело в лесу: правки лежат в браузере и уедут
@@ -34,7 +39,7 @@ export function NetNotice() {
       className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-40 flex justify-center px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:justify-end"
     >
       <p
-        className={`pointer-events-auto max-w-[32rem] rounded-xl border bg-surface px-4 py-3 text-sm shadow-lg ${
+        className={`pointer-events-auto max-w-[32rem] rounded-xl border bg-surface px-4 py-3 text-note shadow-lg ${
           беда ? 'border-danger/40 text-danger' : 'border-line text-muted'
         }`}
       >

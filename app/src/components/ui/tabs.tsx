@@ -27,7 +27,7 @@ const tabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-muted",
+        default: "bg-zebra",
         line: "gap-1 bg-transparent",
       },
     },

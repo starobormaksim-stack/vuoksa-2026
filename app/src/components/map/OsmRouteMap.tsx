@@ -1,21 +1,24 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as LeafletModule from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { RoutePoint } from '@/lib/types'
+import type { RoutePoint, Transport } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { DEST_H, DEST_W, destPinHtml, pointPinHtml } from './marks'
-import type { MapDest } from './GoogleRouteMap'
+import {
+  DEST_H, DEST_W, destPinHtml, leafletDash, markStyles, pointPinHtml, threads,
+  type MapTone,
+} from './marks'
+import { PAN_DOWN, type MapCard, type MapDest, type Spot } from './GoogleRouteMap'
 
 /**
  * Карта маршрута на OpenStreetMap (Leaflet).
  *
  * Запасной путь: пока не выдан ключ Google Maps — или если Google не поднялся —
  * маршрут показывается здесь. Поведение то же, что у Google-карты: редактор ставит
- * точку тапом и двигает маркер перетаскиванием, участник только смотрит.
+ * точку тапом и двигает маркер перетаскиванием, участник только смотрит, у каждой
+ * единицы техники своя нитка своим тоном и своим рисунком линии.
  *
- * Раньше этот файл лежал в components/road/RouteMap.tsx. Карта переехала в «Поездку»
- * (заказчик: «сначала заглавная фотография, за ней сразу карта»), поэтому и файл
- * переехал в общую папку map/: им пользуются оба раздела.
+ * Раньше этот файл лежал в components/road/RouteMap.tsx. Карта переехала в общую
+ * папку map/: ею пользуются оба раздела.
  */
 
 /* Leaflet 1.9 отдаётся UMD-сборкой: одни сборщики кладут её в пространство имён,
@@ -25,6 +28,8 @@ const L =
 
 interface Props {
   points: RoutePoint[]
+  /** техника поездки — по ней раскладываются нитки и тона */
+  transports: Transport[]
   centerLat: number
   centerLon: number
   canEdit: boolean
@@ -32,6 +37,8 @@ interface Props {
   onMove: (id: string, lat: number, lon: number) => void
   /** тап по метке — показать эту точку в ленте рядом */
   onSelect: (id: string) => void
+  /** курсор над меткой (десктоп): null — ушёл */
+  onHover?: (id: string | null) => void
   /** конечная точка поездки (trip.places, main) */
   dest?: MapDest | null
   /** метку конечной перетащили */
@@ -44,14 +51,16 @@ interface Props {
   fitAt?: number
   /** навестись на произвольное место (находка строки поиска над картой) */
   lookAt?: { lat: number; lon: number; at: number } | null
+  /** карточка открытой метки */
+  card?: MapCard | null
   className?: string
 }
 
 /** Свои метки: у Leaflet по умолчанию картинки, и в сборщиках они отваливаются. */
-function pinIcon(n: number, done: boolean) {
+function pinIcon(n: number, done: boolean, tone: MapTone, leg: Parameters<typeof pointPinHtml>[3]) {
   return L.divIcon({
     className: '',
-    html: pointPinHtml(n, done),
+    html: pointPinHtml(n, done, tone, leg),
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   })
@@ -68,8 +77,8 @@ function destIcon(name: string) {
 }
 
 export function OsmRouteMap({
-  points, centerLat, centerLon, canEdit, onAdd, onMove, onSelect,
-  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, className,
+  points, transports, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
+  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, card, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<ReturnType<typeof L.map> | null>(null)
@@ -77,11 +86,14 @@ export function OsmRouteMap({
   const destMark = useRef<ReturnType<typeof L.marker> | null>(null)
   const marks = useRef<Map<string, ReturnType<typeof L.marker>>>(new Map())
   const fitted = useRef(false)
+  const [live, setLive] = useState(false)
+  /** где сейчас метка открытой карточки, в пикселях внутри карты */
+  const [at, setAt] = useState<Spot | null>(null)
 
   /* Обработчики меняются на каждой перерисовке, а карта создаётся один раз —
      держим свежие ссылки в ref, иначе Leaflet позовёт устаревшее замыкание. */
-  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onMoveDest })
-  cb.current = { canEdit, onAdd, onMove, onSelect, onMoveDest }
+  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onHover, onMoveDest })
+  cb.current = { canEdit, onAdd, onMove, onSelect, onHover, onMoveDest }
 
   /* ── создание карты ── */
   useEffect(() => {
@@ -99,6 +111,7 @@ export function OsmRouteMap({
     layer.current = L.layerGroup().addTo(m)
     map.current = m
     fitted.current = false
+    setLive(true)
 
     /* Блок меняет размер вместе с колонкой — Leaflet сам этого не замечает. */
     const ro = new ResizeObserver(() => m.invalidateSize())
@@ -110,13 +123,17 @@ export function OsmRouteMap({
       map.current = null
       layer.current = null
       bag.clear()
+      setLive(false)
     }
   }, [])
 
-  /* ── маркеры ──
+  /* ── маркеры и нитки ──
      Зависимость — строка-слепок: пересобирать слой на каждой перерисовке нельзя,
      иначе маркер выпрыгивает из-под пальца прямо во время перетаскивания. */
-  const sig = points.map((p) => `${p.i}:${p.lat}:${p.lon}:${p.done ? 1 : 0}:${p.n}`).join('|')
+  const sig =
+    points.map((p) => `${p.i}:${p.lat}:${p.lon}:${p.done ? 1 : 0}:${p.n}:${p.tr ?? ''}`).join('|') +
+    '#' +
+    transports.map((t) => `${t.i}:${t.leg}`).join(',')
   useEffect(() => {
     const m = map.current
     const g = layer.current
@@ -124,22 +141,39 @@ export function OsmRouteMap({
     g.clearLayers()
     marks.current.clear()
 
-    if (points.length > 1) {
-      L.polyline(
-        points.map((p) => [p.lat as number, p.lon as number]),
-        { color: '#A74612', weight: 3, opacity: 0.85 },
-      ).addTo(g)
-    }
+    const list = threads(points, transports)
+    const styles = markStyles(list)
+
+    /* Нитки: своя на каждую технику. Тон и рисунок линии идут парой — по одному
+       цвету маршруты не различить (WCAG 1.4.1). */
+    list
+      .filter((t) => t.points.length > 1)
+      .forEach((t) => {
+        L.polyline(
+          t.points.map((p) => [p.lat as number, p.lon as number]),
+          {
+            color: t.tone.fill,
+            weight: 3,
+            opacity: 0.85,
+            dashArray: leafletDash(t.tone.dash),
+            lineCap: t.tone.dash === 'dot' ? 'round' : 'butt',
+          },
+        ).addTo(g)
+      })
 
     points.forEach((p, idx) => {
+      const st = styles.get(p.i)
       const marker = L.marker([p.lat as number, p.lon as number], {
         draggable: canEdit,
-        icon: pinIcon(idx + 1, p.done),
-        title: p.n,
+        icon: pinIcon(idx + 1, p.done, st?.tone ?? list[0].tone, st?.leg),
+        title: `${idx + 1}. ${p.n || 'Точка без названия'}`,
         keyboard: true,
       })
-      marker.bindTooltip(`${idx + 1}. ${p.n || 'Точка без названия'}`, { direction: 'top' })
       marker.on('click', () => cb.current.onSelect(p.i))
+      /* Наведение — это подсказка, а не выбор. На телефоне наведения нет,
+         там ту же карточку открывает тап. */
+      marker.on('mouseover', () => cb.current.onHover?.(p.i))
+      marker.on('mouseout', () => cb.current.onHover?.(null))
       marker.on('dragend', () => {
         const ll = marker.getLatLng()
         cb.current.onMove(p.i, ll.lat, ll.lng)
@@ -205,20 +239,85 @@ export function OsmRouteMap({
     m.setView([lookAt.lat, lookAt.lon], Math.max(m.getZoom(), 13), { animate: true })
   }, [lookAt])
 
-  /* ── просьба из «Тайминга»: подвести карту к точке и открыть её подпись ── */
+  /* ── просьба из ленты: подвести карту к точке и качнуть метку ── */
   useEffect(() => {
     const m = map.current
     if (!m || !focusId) return
     const mk = marks.current.get(focusId)
     if (!mk) return
     m.setView(mk.getLatLng(), Math.max(m.getZoom(), 12), { animate: true })
-    mk.openTooltip()
-    const t = window.setTimeout(() => mk.closeTooltip(), 2200)
-    return () => window.clearTimeout(t)
+    /* Качаем внутренний узел метки: на самом значке лежит её положение
+       на карте, и трогать его нельзя — метка уедет с места. */
+    const inner = mk.getElement()?.firstElementChild
+    if (!inner) return
+    const a = inner.animate(
+      [
+        { transform: 'translateY(0)' },
+        { transform: 'translateY(-10px)' },
+        { transform: 'translateY(0)' },
+      ],
+      { duration: 520, iterations: 3, easing: 'ease-in-out' },
+    )
+    return () => a.cancel()
   }, [focusId, focusAt, sig])
 
+  /* ── карточка метки едет вместе с картой ── */
+  const cardLat = card?.lat
+  const cardLon = card?.lon
+  useEffect(() => {
+    const m = map.current
+    if (!m || !live || cardLat == null || cardLon == null) {
+      setAt(null)
+      return
+    }
+    let frame = 0
+    const put = () => {
+      frame = 0
+      const p = m.latLngToContainerPoint([cardLat, cardLon])
+      const h = box.current?.clientHeight ?? 0
+      setAt({ x: p.x, y: p.y, under: p.y < h / 2 })
+    }
+    const soon = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(put)
+    }
+    put()
+    m.on('move zoom resize viewreset', soon)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      m.off('move zoom resize viewreset', soon)
+    }
+  }, [cardLat, cardLon, live])
+
+  /* ── открылась новая карточка — подводим к ней вид ── */
+  const cardId = card?.pan ? card.id : ''
+  useEffect(() => {
+    const m = map.current
+    if (!m || !live || !cardId || cardLat == null || cardLon == null) return
+    m.panTo([cardLat, cardLon], { animate: true })
+    /* Не ровно в середину, а чуть ниже: карточка висит НАД меткой, и ей нужно
+       место сверху. Иначе она упирается в край карты и обрезается. */
+    const h = box.current?.clientHeight ?? 0
+    if (h > 0) m.panBy([0, -Math.round(h * PAN_DOWN)], { animate: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, live])
+
   /* isolate: панели Leaflet живут на z-index 400 и без своего слоя лезут поверх шторок. */
-  return <div ref={box} className={cn('isolate bg-zebra', className)} />
+  return (
+    <div className={cn('relative isolate', className)}>
+      {/* z-0 у полотна обязателен: панели Leaflet живут на z-index 400–800 и без
+          собственного слоя у полотна перекрыли бы карточку метки. */}
+      <div ref={box} className="absolute inset-0 z-0 bg-zebra" />
+      {card && at && (
+        <div
+          className={cn('absolute z-10 -translate-x-1/2', !at.under && '-translate-y-full')}
+          style={{ left: at.x, top: at.y + (at.under ? 22 : -22) }}
+        >
+          {card.node}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** Собрать вид под всё, что на карте есть: точки маршрута и конечную. */

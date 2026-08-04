@@ -194,7 +194,7 @@ export function NumberSheet(props: NumberSheetProps) {
             value={why}
             onChange={(e) => setWhy(e.target.value)}
             placeholder="Нужно на смену"
-            className="mt-2 h-12 w-full rounded-lg border border-line-strong bg-surface px-3 text-[16px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="mt-2 h-12 w-full rounded-lg border border-line-strong bg-surface px-3 text-field text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
         </label>
       </ResponsiveSheet>
@@ -246,7 +246,7 @@ export function NumberSheet(props: NumberSheetProps) {
             onKeyDown={(e) => e.key === 'Enter' && applyExact()}
             placeholder={fmtNum(value, def.frac)}
             aria-label={`${title}: точное значение`}
-            className="tnum h-12 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-[16px] font-semibold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="tnum h-12 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-field font-semibold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
           <Btn tone="secondary" onClick={applyExact}>
             Поставить
@@ -298,14 +298,14 @@ function Stepper({
   return (
     <div className="flex items-center justify-center gap-4 py-4">
       <button type="button" aria-label="Меньше" className={btn} onPointerDown={onMinus} {...rel}>
-        <Minus size={26} strokeWidth={1.75} aria-hidden />
+        <Minus size={28} strokeWidth={1.75} aria-hidden />
       </button>
       <div className="min-w-36 text-center" aria-live="polite">
         <span className="tnum text-hero font-bold text-ink">{fmtNum(value, frac)}</span>
         {unit ? <span className="ml-1 text-head font-semibold text-muted">{unit}</span> : null}
       </div>
       <button type="button" aria-label="Больше" className={btn} onPointerDown={onPlus} {...rel}>
-        <Plus size={26} strokeWidth={1.75} aria-hidden />
+        <Plus size={28} strokeWidth={1.75} aria-hidden />
       </button>
     </div>
   )

@@ -1,52 +1,58 @@
 import { useMemo, useRef, useState } from 'react'
 import { Backpack, ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Gear, GearSection as GearSec, Person } from '@/lib/types'
+import type { Gear, GearSection as GearSec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
-import { cantOf, cycleStatus, qtyLabel, readyOfGroup } from '@/lib/gearx'
+import { readyOfGroup } from '@/lib/gearx'
 import { orderedPeople } from '@/lib/people'
 import {
   AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
+  newTableScroll, type TableScroll,
 } from '@/components/flops'
-import { GearAddSheet } from './GearAddSheet'
-import { GearDeniedSheet } from './GearDeniedSheet'
-import { GearItemSheet } from './GearItemSheet'
 import { GearLegendSheet } from './GearLegendSheet'
-import { GearMatrix, type MatrixScroll } from './GearMatrix'
+import { GearMatrix } from './GearMatrix'
 
 /**
- * Раздел «Сборы» (docs/v2-ux-redesign.md, раздел 8).
+ * Раздел «Сборы».
  *
- * Вид один — матрица «вещь × люди», как лист «Снаряжение» в таблице заказчика.
- * Вкладок по людям нет: заказчик прямо сказал, что проваливаться в каждого
- * человека неудобно, а всю раскладку хочется видеть сразу.
- * Ряда из четырёх чипов «фото + имя + количество + значок», на который он жаловался,
- * здесь тоже нет: имена стоят в шапке колонок.
+ * Вид один — таблица «вещь × люди», как лист «Снаряжение» в таблице заказчика,
+ * и одинаковый на всех ширинах: вбок листается сам блок, а не страница.
+ * Вкладок по людям нет — всю раскладку заказчик хочет видеть сразу.
+ *
+ * Карточки позиции и мастера добавления здесь больше нет: всё, что в них было,
+ * правится прямо в строке (решение заказчика 04.08.2026). Из шторок остались
+ * две, и обе — не редакторы: легенда значков и действия над самим разделом
+ * (заголовок группы — кнопка, вложить в неё правку названия нельзя).
  */
 
-/** Что открыто в карточке позиции: чья ячейка и надо ли сразу править количество. */
-interface SheetAt {
-  id: string
-  who: string
-  qty: boolean
-}
+/** Частые единицы измерения — первыми в выборе при заведении вещи. */
+const COMMON_UNITS = ['sht', 'para', 'up', 'kompl', 'nabor']
 
 export function GearSection() {
   const { S, update, remove, perms } = useTrip()
-  /* один общий сдвиг вбок на все блоки: лист в таблице один */
-  const scroll = useRef<MatrixScroll>({ nodes: new Set(), x: 0, busy: false })
+  /* один общий сдвиг вбок на все блоки: лист в таблице заказчика один */
+  const scroll = useRef<TableScroll>(newTableScroll())
   const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [S.gearSections[0]?.i]: true }))
-  const [sheet, setSheet] = useState<SheetAt | null>(null)
-  const [addTo, setAddTo] = useState<string | null>(null)
   const [legend, setLegend] = useState(false)
-  const [denied, setDenied] = useState<{ item: Gear; person: Person } | null>(null)
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
+  /** только что заведённая строка — она открыта в правке, чтобы было видно, куда вводить */
+  const [fresh, setFresh] = useState('')
 
   /* Человек, пришедший по своей ссылке, видит себя первым во всех списках.
      Сам документ (S.people) при этом не переставляется. */
   const people = useMemo(() => orderedPeople(S.people, perms.me), [S.people, perms.me])
+
+  const units = useMemo(() => {
+    /* документ первой версии мог приехать вообще без справочника единиц */
+    const all = S.units ?? []
+    const named = new Map(all.map((u) => [u.i, u.t]))
+    const common = COMMON_UNITS.map((i) => named.get(i)).filter((t): t is string => !!t)
+    if (common.length > 0) return common
+    /* справочник переписали своими руками — берём первые пять, какие есть */
+    return [...all].sort((a, b) => a.ord - b.ord).slice(0, 5).map((u) => u.t)
+  }, [S.units])
 
   const bySec = useMemo(() => {
     const m: Record<string, Gear[]> = {}
@@ -69,91 +75,43 @@ export function GearSection() {
       }
     })
 
-  /* Тап по кружку. Отметка «не могу взять» в круг не входит, поэтому снимается —
-     и, как всякое разрушающее действие, возвращается кнопкой «Отменить». */
-  const cycle = (item: Gear, personId: string) => {
-    const cant = cantOf(item, personId)
-    patch(item.i, (g) => {
-      cycleStatus(g, personId)
-    })
-    if (cant) {
-      toast('Отметка «не могу взять» снята', {
-        action: {
-          label: 'Отменить',
-          onClick: () => patch(item.i, (g) => {
-            g.q = g.q || {}
-            g.q[personId] = cant
-          }),
-        },
-      })
-    }
-  }
-
-  /* Назначить человеку 1 шт. — пустая ячейка матрицы и кнопка в карточке. */
-  const assign = (item: Gear, personId: string) => {
-    patch(item.i, (g) => {
-      g.o = g.o || {}
-      g.oby = g.oby || {}
-      g.o[personId] = 1
-      g.oby[personId] = perms.me || ''
-    })
-    const p = S.people.find((x) => x.id === personId)
-    if (p) toast(`${p.name} везёт «${item.n}» ${MDASH} ${qtyLabel(1)}`)
-  }
-
-  /* «Попросить» из объяснения отказа: задача уезжает в «Что не забыть» — это
-     единственный список поручений в документе, отдельной сущности задач в модели нет. */
-  const askMark = (item: Gear, personId: string) => {
-    const p = S.people.find((x) => x.id === personId)
-    if (!p) return
-    update((s) => {
-      const list = (s.ideas ||= [])
-      list.push({
-        i: 'q' + Date.now().toString(36),
-        n: `Отметить «${item.n}» в сборах`,
-        why: perms.mePerson ? `Просит ${perms.mePerson.name}` : 'Просьба из сборов',
-        who: p.id,
-        done: false,
-        ua: Date.now(),
-      })
-    })
-    toast(`${p.name} увидит просьбу отметить «${item.n}»`)
-  }
-
   /**
-   * Завести вещь сразу с раскладкой «кому сколько» — её собрал мастер добавления.
-   * Пустая раскладка допустима: позиция остаётся ничьей, как было раньше.
+   * Завести вещь перед строкой номер `before` — «я не должен листать до самого
+   * конца, чтобы добавить ещё одну вещь» (заказчик, 04.08.2026).
+   *
+   * В документах первой версии порядок у позиций сборов не проставлен вовсе
+   * (`ord` нет ни у одной), поэтому вставка между строками сначала нумерует
+   * раздел заново, а потом кладёт новую строку в промежуток.
    */
-  const addItem = (secId: string, name: string, qty: Record<string, number>) => {
+  const addAt = (secId: string, before: number) => {
     const id = 'g' + Date.now().toString(36)
-    const ids = Object.keys(qty).filter((k) => (qty[k] || 0) > 0)
-    const o: Record<string, number> = {}
-    const oby: Record<string, string> = {}
-    for (const pid of ids) {
-      o[pid] = qty[pid]
-      oby[pid] = perms.me || ''
-    }
     update((s) => {
+      const list = s.gear
+        .filter((g) => g.sec === secId)
+        .sort((a, b) => (a.ord ?? 0) - (b.ord ?? 0))
+      list.forEach((g, i) => {
+        const ord = (i + 1) * 10
+        if (g.ord !== ord) {
+          g.ord = ord
+          touch(g)
+        }
+      })
       s.gear.push({
         i: id,
         sec: secId,
-        n: name,
-        o,
+        n: '',
+        o: {},
         c: '',
         by: perms.me || '',
         q: {},
-        oby,
+        oby: {},
         s: {},
         as: perms.me || '',
-        ord: (s.gear.length + 1) * 10,
+        ord: (before + 1) * 10 - 5,
         ua: Date.now(),
       })
     })
-    const names = ids
-      .map((pid) => S.people.find((p) => p.id === pid)?.name)
-      .filter(Boolean)
-      .join(', ')
-    toast(names ? `«${name}» в списке ${MDASH} везёт ${names}` : `«${name}» в списке`)
+    setFresh(id)
   }
 
   /* ─── действия над разделом (только редактору) ─── */
@@ -184,13 +142,13 @@ export function GearSection() {
   }
 
   const del = (item: Gear) => {
+    if (fresh === item.i) setFresh('')
     remove('gear', item.i)
-    toast(`«${item.n}» удалено`, {
+    toast(`«${item.n || 'Без названия'}» удалено`, {
       action: { label: 'Отменить', onClick: () => undo(item) },
     })
   }
 
-  const current = sheet ? S.gear.find((g) => g.i === sheet.id) : null
   const menuSec = menu ? sections.find((s) => s.i === menu) ?? null : null
 
   return (
@@ -200,7 +158,17 @@ export function GearSection() {
         secId="gear"
         hint="Цифра — сколько штук везёт человек. «Всего» считается само"
         onHelp={() => setLegend(true)}
-      />
+      >
+        {/* Кружок в чужой ячейке участнику не кнопка, а значок — и это надо
+            прочитать словами, иначе тап «просто не работает» (постулаты 4 и 5). */}
+        {!perms.isEditor() && perms.mePerson && (
+          <p className="mt-2 text-note leading-snug text-muted">
+            Кружок нажимается только в своей колонке — «{perms.mePerson.name}». В чужих
+            колонках он показывает, как идут сборы у других: отмечать за них может
+            владелец или редактор.
+          </p>
+        )}
+      </SectionHead>
 
       {sections.map((sec) => {
         const rows = bySec[sec.i] ?? []
@@ -211,7 +179,7 @@ export function GearSection() {
             title={sec.t}
             /* итог как в таблице заказчика: «собрано: 0 из 14» */
             badge={
-              <span className="tnum shrink-0 text-[13px] font-semibold text-muted">
+              <span className="tnum shrink-0 text-note font-semibold text-muted">
                 собрано: {r.done} из {r.total}
               </span>
             }
@@ -224,7 +192,7 @@ export function GearSection() {
                 icon={Backpack}
                 title="Раздел пустой"
                 text="Ни одной вещи не заведено"
-                action={{ label: 'Добавить вещь', onClick: () => setAddTo(sec.i) }}
+                action={{ label: 'Добавить вещь', onClick: () => addAt(sec.i, 0) }}
               />
             ) : (
               <>
@@ -234,17 +202,15 @@ export function GearSection() {
                   perms={perms}
                   label={sec.t}
                   sync={scroll}
-                  onOpen={(g) => setSheet({ id: g.i, who: '', qty: false })}
-                  onCycle={cycle}
-                  onAssign={assign}
-                  onDenied={(g, id) => {
-                    const p = S.people.find((x) => x.id === id)
-                    if (p) setDenied({ item: g, person: p })
-                  }}
-                  onQty={(g, id) => setSheet({ id: g.i, who: id, qty: true })}
+                  units={units}
+                  fresh={fresh}
+                  onFreshDone={() => setFresh('')}
+                  patch={patch}
+                  onDelete={del}
+                  onInsert={(before) => addAt(sec.i, before)}
                 />
                 <div className="border-t border-line">
-                  <AddRow label="Добавить вещь" onClick={() => setAddTo(sec.i)} />
+                  <AddRow label="Добавить вещь" onClick={() => addAt(sec.i, rows.length)} />
                 </div>
               </>
             )}
@@ -252,46 +218,7 @@ export function GearSection() {
         )
       })}
 
-      {current && sheet && (
-        <GearItemSheet
-          /* карточка заводится заново на каждое открытие: иначе на новой вещи
-             остался бы второй уровень, открытый на прошлой */
-          key={`${sheet.id}:${sheet.who}:${sheet.qty}`}
-          item={current}
-          S={S}
-          perms={perms}
-          focus={sheet.who}
-          qtyFor={sheet.qty ? sheet.who : undefined}
-          onPatch={(f) => patch(current.i, f)}
-          onCycle={(id) => cycle(current, id)}
-          onAskMark={(id) => askMark(current, id)}
-          onDelete={() => del(current)}
-          onClose={() => setSheet(null)}
-        />
-      )}
-
-      {denied && (
-        <GearDeniedSheet
-          open
-          onOpenChange={(v) => !v && setDenied(null)}
-          personName={denied.person.name}
-          itemName={denied.item.n}
-          onAsk={() => askMark(denied.item, denied.person.id)}
-        />
-      )}
-
       <GearLegendSheet open={legend} onOpenChange={setLegend} />
-
-      <GearAddSheet
-        open={addTo !== null}
-        onOpenChange={(v) => !v && setAddTo(null)}
-        sectionName={S.gearSections.find((s) => s.i === addTo)?.t}
-        people={people}
-        preselect={perms.me || undefined}
-        onAdd={(name, qty) => {
-          if (addTo) addItem(addTo, name, qty)
-        }}
-      />
 
       {menuSec && (
         <ResponsiveSheet
@@ -307,7 +234,7 @@ export function GearSection() {
         >
           <div className="flex flex-col gap-2">
             <Btn tone="secondary" className="w-full justify-start" onClick={() => setRename(true)}>
-              <Pencil size={18} strokeWidth={1.5} aria-hidden />
+              <Pencil size={20} strokeWidth={1.75} aria-hidden />
               Переименовать
             </Btn>
             <Btn
@@ -318,17 +245,17 @@ export function GearSection() {
                 setMenu(null)
               }}
             >
-              <ChevronsDownUp size={18} strokeWidth={1.5} aria-hidden />
+              <ChevronsDownUp size={20} strokeWidth={1.75} aria-hidden />
               Свернуть все
             </Btn>
-            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем (12.2) */}
+            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем */}
             {(bySec[menuSec.i] ?? []).length === 0 ? (
               <Btn tone="danger" className="w-full justify-start" onClick={() => delSec(menuSec)}>
-                <Trash2 size={18} strokeWidth={1.5} aria-hidden />
+                <Trash2 size={20} strokeWidth={1.75} aria-hidden />
                 Удалить раздел
               </Btn>
             ) : (
-              <p className="mt-1 text-[13px] leading-snug text-muted">
+              <p className="mt-1 text-note leading-snug text-muted">
                 Раздел удаляется, когда в нём не осталось ни одной вещи.
               </p>
             )}
@@ -359,5 +286,3 @@ export function GearSection() {
     })
   }
 }
-
-const MDASH = '—'

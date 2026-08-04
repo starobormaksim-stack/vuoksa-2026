@@ -6,9 +6,10 @@
  * собирается из того же исходника.
  *
  * Документ поездки — одна строка таблицы `trips`:
- *   id text primary key, data jsonb, updated_at timestamptz, author text
- * Обычный адрес открывает строку `vuoksa2026`; `?sandbox=1` — отдельную копию `vuoksa2026-test`,
- * в которой можно проверять что угодно, не трогая боевые данные.
+ *   id text primary key, data jsonb, updated_at timestamptz, author text, owner_email text
+ * Поездок много: какая открыта — решает `?trip=<id>` в адресе, а без него запомненная
+ * в браузере или `vuoksa2026`. `?sandbox=1` и любой запуск с локальной машины дописывают
+ * к имени «-test»: проверять можно что угодно, не трогая боевые данные.
  */
 
 /** Проект и публичный (anon) ключ. Разграничение прав «джентльменское» — см. README. */
@@ -38,8 +39,116 @@ export function isSandbox(): boolean {
   return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
 }
 
-/** id строки в таблице `trips`. */
-export const TRIP_ID: string = isSandbox() ? 'vuoksa2026-test' : 'vuoksa2026'
+/* ─────────── какая поездка сейчас открыта ───────────
+   Раньше здесь стояла одна зашитая строка. С 04.08.2026 поездок много (заказчик:
+   «у меня этих поездок будет дофига»), поэтому id — значение, а не константа.
+
+   Откуда он берётся, по убыванию важности:
+     1. адрес: `?trip=<id>` — читаемый и пересылаемый;
+     2. запомненная в браузере поездка (новый ключ `flops.trip`; `flops.doc`,
+        `flops.theme` и `flops.auth` не трогаем — переименование стёрло бы людям
+        тему и личность);
+     3. `vuoksa2026` — тот же лист, что открывался всегда.
+
+   Песочница остаётся песочницей при любом id: на localhost к имени всегда
+   дописывается «-test», и попасть с своей машины в боевую строку нельзя
+   (04.08.2026 её так затирали пять раз). */
+
+/** Поездка, которая открывается, когда в адресе ничего не указано. */
+const DEFAULT_TRIP = 'vuoksa2026'
+
+/** Где браузер помнит выбранную поездку. Ключ НОВЫЙ — старые ключи не трогаем. */
+const TRIP_KEY = 'flops.trip'
+
+/** Допустимое имя строки: латиница, цифры и дефис. Всё прочее — чужое. */
+const TRIP_RE = /^[a-z0-9][a-z0-9-]{1,39}$/
+
+/** Дописать «-test», если работаем с локальной машины. */
+function sandboxed(id: string): string {
+  return isSandbox() && !id.endsWith('-test') ? id + '-test' : id
+}
+
+function tripFromSearch(): string {
+  const m = search().match(/[?&]trip=([^&]*)/)
+  return m ? decodeURIComponent(m[1]).trim().toLowerCase() : ''
+}
+
+function tripRemembered(): string {
+  try {
+    return (localStorage.getItem(TRIP_KEY) || '').trim().toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function resolveTrip(): string {
+  const q = tripFromSearch()
+  if (TRIP_RE.test(q)) return q
+  const r = tripRemembered()
+  if (TRIP_RE.test(r)) return r
+  return DEFAULT_TRIP
+}
+
+/**
+ * id строки в таблице `trips`.
+ *
+ * ⚠️ Это `let`, а не `const`, и на то есть причина: модули, импортировавшие имя
+ * (`lib/sync.ts`, `lib/auth.ts`), видят живую связь и всегда читают текущее
+ * значение. Так смена поездки не требует их переписывать.
+ */
+export let TRIP_ID: string = sandboxed(resolveTrip())
+
+/** Какая поездка открыта сейчас. */
+export function currentTripId(): string {
+  return TRIP_ID
+}
+
+/** Поездка по умолчанию (с поправкой на песочницу) — та, что открывалась всегда. */
+export function defaultTripId(): string {
+  return sandboxed(DEFAULT_TRIP)
+}
+
+/** Открыта ли поездка по умолчанию. От этого зависит ключ документа в браузере. */
+export function isDefaultTrip(): boolean {
+  return TRIP_ID === defaultTripId()
+}
+
+/**
+ * Имя строки для поездки с таким именем.
+ *
+ * ⚠️ Через эту функцию обязано проходить ЛЮБОЕ обращение к чужой поездке
+ * (список, дублирование, удаление): на локальной машине она дописывает «-test»,
+ * и боевые строки с рабочего компьютера остаются недосягаемы. 04.08.2026 боевую
+ * строку затирали пять раз именно потому, что такой заслонки не было.
+ */
+export function tripRowId(id: string): string {
+  return sandboxed(id)
+}
+
+/** Запомнить поездку в браузере, чтобы короткий адрес открывал её же. */
+export function rememberTrip(id: string): void {
+  if (!TRIP_RE.test(id)) return
+  try {
+    localStorage.setItem(TRIP_KEY, id.replace(/-test$/, ''))
+  } catch {
+    /* приватный режим — поездка проживёт до перезагрузки */
+  }
+}
+
+/**
+ * Сменить открытую поездку без перезагрузки. Нужно проверкам; в самом приложении
+ * поездка меняется переходом по адресу `?trip=…`, чтобы вместе с ней перечитались
+ * документ, права и присутствие.
+ */
+export function setTripId(id: string): void {
+  if (!TRIP_RE.test(id)) return
+  TRIP_ID = sandboxed(id)
+}
+
+/* Адрес важнее памяти, но и память надо держать в согласии с адресом: иначе
+   человек, перешедший по ссылке на другую поездку, при следующем коротком
+   заходе снова оказался бы в прежней. */
+rememberTrip(resolveTrip())
 
 /** Строка документа, как её отдаёт PostgREST. */
 export interface TripRow {
@@ -104,16 +213,25 @@ export function realtimeUrl(): string {
   )
 }
 
-/** Прочитать документ поездки. Пустой массив — строки ещё нет. */
-export function fetchTrip(): Promise<TripRow[]> {
-  return sbJson<TripRow[]>('trips?id=eq.' + TRIP_ID + '&select=data,updated_at,author')
+/**
+ * Прочитать документ поездки. Пустой массив — строки ещё нет.
+ * Без второго довода читается открытая поездка; с ним — любая другая
+ * (так «Мои поездки» дублируют чужой лист, не открывая его).
+ */
+export function fetchTrip(trip: string = TRIP_ID): Promise<TripRow[]> {
+  return sbJson<TripRow[]>('trips?id=eq.' + trip + '&select=data,updated_at,author')
 }
 
 /** Создать строку документа (или перезаписать, если её кто-то успел создать). */
-export function insertTrip(data: unknown, stamp: string, author: string): Promise<TripRow[]> {
+export function insertTrip(
+  data: unknown,
+  stamp: string,
+  author: string,
+  trip: string = TRIP_ID,
+): Promise<TripRow[]> {
   return sbJson<TripRow[]>('trips', {
     method: 'POST',
-    body: [{ id: TRIP_ID, data, updated_at: stamp, author }],
+    body: [{ id: trip, data, updated_at: stamp, author }],
     headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
   })
 }
@@ -148,11 +266,12 @@ export async function rpcTripWrite(
   stamp: string,
   author: string,
   key: string,
+  trip: string = TRIP_ID,
 ): Promise<TripRow[]> {
   const r = await sbFetch('rpc/trip_write?select=updated_at', {
     method: 'POST',
     body: {
-      p_trip: TRIP_ID,
+      p_trip: trip,
       p_key: key,
       p_data: data,
       p_seen: seenAt,
@@ -187,9 +306,10 @@ export function patchTrip(
   data: unknown,
   stamp: string,
   author: string,
+  trip: string = TRIP_ID,
 ): Promise<TripRow[]> {
   return sbJson<TripRow[]>(
-    'trips?id=eq.' + TRIP_ID + '&updated_at=eq.' + encodeURIComponent(seenAt),
+    'trips?id=eq.' + trip + '&updated_at=eq.' + encodeURIComponent(seenAt),
     { method: 'PATCH', rep: true, body: { data, updated_at: stamp, author } },
   )
 }
@@ -198,11 +318,11 @@ export function patchTrip(
  * Крошечный сигнал «документ изменился» в таблицу `trip_pings`.
  * По нему остальные забирают свежую версию — сам документ по сети в событии не гоняем.
  */
-export async function pingTrip(author: string): Promise<string> {
+export async function pingTrip(author: string, trip: string = TRIP_ID): Promise<string> {
   const stamp = new Date().toISOString()
   const out = await sbJson<{ updated_at: string }[]>('trip_pings', {
     method: 'POST',
-    body: [{ trip_id: TRIP_ID, updated_at: stamp, author }],
+    body: [{ trip_id: trip, updated_at: stamp, author }],
     headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
   })
   return out && out[0] ? out[0].updated_at : stamp

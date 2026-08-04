@@ -9,6 +9,14 @@
  * OpenStreetMap. Второй путь нужен не «на всякий случай»: пока ключа Google нет,
  * это единственный работающий, и подстановка названия должна работать уже сейчас.
  *
+ * ⚠️ К Google ходим ТОЛЬКО через `google.maps.Geocoder` из уже загруженной
+ * библиотеки карт (см. lib/gmaps.ts). Прямой запрос на
+ * `maps.googleapis.com/maps/api/geocode/json` тем же ключом не работает и никогда
+ * не заработает: ключ ограничен по HTTP-referrer, а REST такие ключи не принимает —
+ * ответ приходит `REQUEST_DENIED`, «API keys with referer restrictions cannot be
+ * used with this API». Живая проверка 04.08.2026. Классу Geocoder то же самое
+ * ограничение не мешает: он ходит изнутри библиотеки, с разрешённого домена.
+ *
  * Ответ — всегда только ПРЕДЛОЖЕНИЕ. Название подставляется в поле, а человек его
  * правит: геокодер часто называет место по ближайшей улице, а нам нужно
  * «Приозерск: закупка». Найденную по названию точку человек подтверждает руками —
@@ -16,7 +24,7 @@
  */
 
 import {
-  forwardGeocode, forwardGeocodeAll, hasGoogleKey, reverseGeocode, type GeoHit,
+  forwardGeocode, forwardGeocodeAll, googleUsable, reverseGeocode, type GeoHit,
 } from './gmaps.ts'
 
 /* ─────────── обратное: координаты → адрес ─────────── */
@@ -31,7 +39,7 @@ export interface PlaceGuess {
 
 /** Координаты → адрес и название. null — не получилось (нет сети, нет ответа). */
 export async function reversePlace(lat: number, lon: number): Promise<PlaceGuess | null> {
-  if (hasGoogleKey()) {
+  if (googleUsable()) {
     try {
       return await reverseGeocode(lat, lon)
     } catch {
@@ -77,7 +85,7 @@ export async function forwardPlace(
   query: string,
   near: { lat: number; lon: number },
 ): Promise<PlaceFound | null> {
-  if (hasGoogleKey()) {
+  if (googleUsable()) {
     try {
       const hit = await forwardGeocode(query, near)
       return hit && distKm(hit, near) <= MAX_KM ? hit : null
@@ -104,7 +112,7 @@ export async function searchPlaces(
   limit = 5,
 ): Promise<PlaceFound[]> {
   const near_ = { lat: near.lat, lon: near.lon }
-  if (hasGoogleKey()) {
+  if (googleUsable()) {
     try {
       const list = await forwardGeocodeAll(query, near_, limit)
       return list.filter((h) => distKm(h, near_) <= MAX_KM)

@@ -150,7 +150,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
     </span>
   ) : (
     <span
-      className="grid size-full place-items-center text-[56px] leading-none font-bold text-muted"
+      className="grid size-full place-items-center text-hero leading-none font-bold text-muted"
       aria-hidden
     >
       {initialOf(person.name, person.ini)}
@@ -203,12 +203,12 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
         {canEdit && (
           <div className="mt-3 flex flex-col gap-2">
             <Btn tone="secondary" className="w-full justify-start" onClick={pick}>
-              <Camera size={18} strokeWidth={1.5} aria-hidden />
+              <Camera size={18} strokeWidth={1.75} aria-hidden />
               {person.photo ? 'Заменить фотографию' : 'Поставить фотографию'}
             </Btn>
             {person.photo && (
               <Btn tone="secondary" className="w-full justify-start" onClick={dropPhoto}>
-                <ImageOff size={18} strokeWidth={1.5} aria-hidden />
+                <ImageOff size={18} strokeWidth={1.75} aria-hidden />
                 Убрать фотографию
               </Btn>
             )}
@@ -218,7 +218,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
         {hintInstead ? (
           /* Готовности ещё нет — вместо нуля пишем, чем карточку дозаполнить */
           <div className="mt-4 rounded-2xl bg-accent-soft p-4">
-            <div className="text-[15px] leading-snug font-semibold text-ink">
+            <div className="text-body leading-snug font-semibold text-ink">
               Карточка только заведена
             </div>
             <p className="mt-1 text-sm leading-snug text-ink">
@@ -232,7 +232,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
           /* Готовность сборов — та же цифра, что на карточке в сетке */
           <div className="mt-4 rounded-2xl bg-accent-soft p-4">
             <div className="flex items-baseline gap-2">
-              <span className="tnum text-[28px] leading-none font-bold text-ink">{ready.pct}%</span>
+              <span className="tnum text-title leading-none font-bold text-ink">{ready.pct}%</span>
               <span className="text-sm text-ink">
                 собрано {ready.done} из {ready.total}
               </span>
@@ -290,22 +290,22 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
 
         {/* Что уровень может и чего не может (7.3) */}
         <div className="mt-5">
-          <div className="text-[13px] font-semibold text-muted">
+          <div className="text-note font-semibold text-muted">
             Что может {permName(person.perm)}
           </div>
           <ul className="mt-2 flex flex-col gap-2">
             {cans.map((t) => (
-              <li key={t} className="flex items-start gap-2 text-[14px] leading-snug text-ink">
-                <Check size={17} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0 text-accent-text" />
+              <li key={t} className="flex items-start gap-2 text-note leading-snug text-ink">
+                <Check size={18} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-accent-text" />
                 <span>{t}</span>
               </li>
             ))}
             {cants.map((t) => (
               <li
                 key={t}
-                className="flex items-start gap-2 text-[14px] leading-snug text-ink opacity-60"
+                className="flex items-start gap-2 text-note leading-snug text-ink opacity-60"
               >
-                <X size={17} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />
+                <X size={18} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
                 <span>{t}</span>
               </li>
             ))}
@@ -316,7 +316,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
           {/* Личные ссылки видит и раздаёт только владелец (12.1) */}
           {perms.isChief() && (
             <Btn tone="secondary" className="w-full justify-start" onClick={copyLink}>
-              <Link2 size={18} strokeWidth={1.5} aria-hidden />
+              <Link2 size={18} strokeWidth={1.75} aria-hidden />
               Скопировать его ссылку
             </Btn>
           )}
@@ -331,7 +331,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
               scrollToSection('gear')
             }}
           >
-            <Backpack size={18} strokeWidth={1.5} aria-hidden />
+            <Backpack size={18} strokeWidth={1.75} aria-hidden />
             Показать сборы
           </Btn>
           {canSetPerm && (
@@ -343,7 +343,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
                 onClose()
               }}
             >
-              <UserMinus size={18} strokeWidth={1.5} aria-hidden />
+              <UserMinus size={18} strokeWidth={1.75} aria-hidden />
               Убрать из команды
             </Btn>
           )}

@@ -197,7 +197,19 @@ export function linkFor(p: Person, base?: string): string {
     (typeof location === 'undefined'
       ? ''
       : location.href.split('?')[0].split('#')[0])
-  return b + '?u=' + encodeURIComponent(p.slug || p.id) + '&k=' + encodeURIComponent(p.key || '')
+  /* Поездок стало много (04.08.2026), и личная ссылка обязана нести не только
+     человека, но и поездку: без `?trip=…` она приведёт в поездку по умолчанию
+     или в ту, что запомнил браузер получателя, — то есть не туда. У поездки
+     по умолчанию адрес прежний, старые ссылки продолжают работать как работали. */
+  const m = typeof location === 'undefined' ? null : location.search.match(/[?&]trip=([^&]*)/)
+  const trip = m ? m[1] : ''
+  return (
+    b +
+    '?' +
+    (trip ? 'trip=' + trip + '&' : '') +
+    'u=' + encodeURIComponent(p.slug || p.id) +
+    '&k=' + encodeURIComponent(p.key || '')
+  )
 }
 
 /* ─────────── кто что может ───────────

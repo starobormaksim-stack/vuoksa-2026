@@ -39,22 +39,22 @@ export function StatusDial({ value, cant, onCycle, onDenied, who, size = 44 }: P
         'hatch grid place-items-center rounded-full border-[1.5px] border-accent-text text-accent-text',
       )}
     >
-      <TriangleAlert size={icon} strokeWidth={2} aria-hidden />
+      <TriangleAlert size={icon} strokeWidth={1.75} aria-hidden />
     </span>
   ) : value === 3 ? (
     <span className={cn(dot, 'grid place-items-center rounded-full bg-loaded text-surface')}>
-      <Car size={icon} strokeWidth={2} aria-hidden />
+      <Car size={icon} strokeWidth={1.75} aria-hidden />
     </span>
   ) : value === 2 ? (
     <span className={cn(dot, 'grid place-items-center rounded-full bg-accent text-on-accent')}>
-      <Check size={icon + 2} strokeWidth={2.5} aria-hidden />
+      <Check size={icon + 2} strokeWidth={1.75} aria-hidden />
     </span>
   ) : value === 1 ? (
     <span
       className={cn(dot, 'relative grid place-items-center overflow-hidden rounded-full border-2 border-accent text-accent-text')}
     >
       <span className="absolute inset-x-0 bottom-0 h-1/2 bg-accent/35" aria-hidden />
-      <Clock size={icon} strokeWidth={2} className="relative" aria-hidden />
+      <Clock size={icon} strokeWidth={1.75} className="relative" aria-hidden />
     </span>
   ) : (
     <span className={cn(dot, 'rounded-full border-[1.5px] border-line-strong')} />

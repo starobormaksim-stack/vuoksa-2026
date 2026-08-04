@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Copy, Download, Ellipsis, Info, Link2, LogIn, LogOut } from 'lucide-react'
+import {
+  CloudOff,
+  Copy,
+  Download,
+  Ellipsis,
+  Luggage,
+  FileSpreadsheet,
+  Info,
+  Link2,
+  LogIn,
+  LogOut,
+  Save,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import {
   DropdownMenu,
@@ -11,13 +23,24 @@ import { ResponsiveSheet, Btn } from '@/components/flops'
 import { OwnerLogin } from '@/components/auth/OwnerLogin'
 import { useTrip } from '@/store'
 import { linkFor, permName } from '@/lib/perm'
-import { saveOfflineCopy } from '@/lib/offline'
+import { download, isOfflineCopy, offlineInfo, saveOfflineCopy } from '@/lib/offline'
+import { tripFileName, tripWorkbook } from '@/lib/export'
+import { openTripsList } from '@/lib/trips'
 import { currentSession, onAuthChange, signOut, type Session } from '@/lib/auth'
 import { BRAND } from './Logo'
 
+/** Тип файла книги Excel — по нему телефон понимает, чем её открывать. */
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
 /**
- * Меню «⋯» в шапке. Ссылки команды и офлайн-копию видит только владелец —
- * это его полномочия по модели прав, и у остальных пунктов просто нет в разметке.
+ * Меню «⋯» в шапке.
+ *
+ * Что кому положено (постулат «не положено — кнопки нет»):
+ *   · «Скачать таблицу» — всем, кто видит поездку: это выгрузка, а не правка;
+ *   · «Ссылки команды» — только владельцу, это его полномочия;
+ *   · «Скачать офлайн-копию» — владельцу; но внутри самой копии «Сохранить копию
+ *     заново» доступно любому: это его собственный файл на его компьютере,
+ *     и запрещать человеку сохранять свою работу не за что.
  */
 export function MoreMenu() {
   const { S, perms } = useTrip()
@@ -25,6 +48,11 @@ export function MoreMenu() {
   const [about, setAbout] = useState(false)
   const [login, setLogin] = useState(false)
   const chief = perms.isChief()
+
+  /* Офлайн-копия — файл, скачанный и открытый двойным щелчком. От неё зависят
+     и названия пунктов, и то, что написано в карточке «О сервисе». */
+  const offline = isOfflineCopy()
+  const info = offlineInfo()
 
   /* Кто вошёл почтой. Это НЕ права: права по-прежнему даёт личная ссылка (`lib/perm.ts`),
      а вход — отдельное подтверждение, что за документом владелец. */
@@ -49,6 +77,17 @@ export function MoreMenu() {
     }
   }
 
+  /* Книга Excel собирается прямо в браузере (см. lib/xlsx.ts). Молча упасть она
+     не имеет права: не собралась — человек должен прочитать об этом словами. */
+  const saveSheet = () => {
+    try {
+      download(tripWorkbook(S), tripFileName(S), XLSX_TYPE)
+      toast('Таблица скачана. Открывается в Excel, Гугл-таблицах и на телефоне')
+    } catch {
+      toast('Таблицу собрать не вышло — попробуйте ещё раз или обновите страницу')
+    }
+  }
+
   return (
     <>
       <DropdownMenu>
@@ -58,25 +97,41 @@ export function MoreMenu() {
             aria-label="Ещё действия"
             className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
           >
-            <Ellipsis size={21} strokeWidth={1.5} aria-hidden />
+            <Ellipsis size={20} strokeWidth={1.75} aria-hidden />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-56 border-line bg-surface text-ink">
+          {/* Поездок у заказчика будет много («у меня этих поездок будет дофига»),
+              и вход в список обязан быть там, где его станут искать. */}
+          {!offline && (
+            <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => openTripsList()}>
+              <Luggage size={18} strokeWidth={1.75} aria-hidden />
+              Мои поездки
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem className="min-h-11 gap-2" onSelect={saveSheet}>
+            <FileSpreadsheet size={18} strokeWidth={1.75} aria-hidden />
+            Скачать таблицу Excel
+          </DropdownMenuItem>
           {chief && (
             <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setLinks(true)}>
-              <Link2 size={18} strokeWidth={1.5} aria-hidden />
+              <Link2 size={18} strokeWidth={1.75} aria-hidden />
               Ссылки команды
             </DropdownMenuItem>
           )}
-          {chief && (
+          {(chief || offline) && (
             <DropdownMenuItem
               className="min-h-11 gap-2"
               onSelect={() => {
                 void saveOfflineCopy(S)
               }}
             >
-              <Download size={18} strokeWidth={1.5} aria-hidden />
-              Скачать офлайн-копию
+              {offline ? (
+                <Save size={18} strokeWidth={1.75} aria-hidden />
+              ) : (
+                <Download size={18} strokeWidth={1.75} aria-hidden />
+              )}
+              {offline ? 'Сохранить копию заново' : 'Скачать офлайн-копию'}
             </DropdownMenuItem>
           )}
           {sess ? (
@@ -88,24 +143,26 @@ export function MoreMenu() {
                 toast('Вы вышли')
               }}
             >
-              <LogOut size={18} strokeWidth={1.5} aria-hidden />
+              <LogOut size={18} strokeWidth={1.75} aria-hidden />
               <span className="min-w-0">
                 <span className="block">Выйти</span>
                 {/* Адрес мог не доехать: в ссылке из письма приезжают только ключи,
                     за личностью ходят отдельным запросом, и он может не ответить. */}
-                <span className="block truncate text-[12px] text-muted">
+                <span className="block truncate text-micro text-muted">
                   {sess.email || 'Вход подтверждён'}
                 </span>
               </span>
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setLogin(true)}>
-              <LogIn size={18} strokeWidth={1.5} aria-hidden />
-              Вход владельца
-            </DropdownMenuItem>
+            !offline && (
+              <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setLogin(true)}>
+                <LogIn size={18} strokeWidth={1.75} aria-hidden />
+                Вход владельца
+              </DropdownMenuItem>
+            )
           )}
           <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setAbout(true)}>
-            <Info size={18} strokeWidth={1.5} aria-hidden />
+            <Info size={18} strokeWidth={1.75} aria-hidden />
             О сервисе
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -127,8 +184,8 @@ export function MoreMenu() {
             <li key={p.id} className="border-b border-line/70 py-2 last:border-b-0">
               <div className="flex items-center gap-3">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold text-ink">{p.name}</span>
-                  <span className="block text-[13px] text-muted">{permName(p.perm)}</span>
+                  <span className="block text-body font-semibold text-ink">{p.name}</span>
+                  <span className="block text-note text-muted">{permName(p.perm)}</span>
                 </span>
                 <button
                   type="button"
@@ -136,10 +193,10 @@ export function MoreMenu() {
                   onClick={() => copy(linkFor(p), `Ссылка для ${p.name} скопирована`)}
                   className="grid size-11 shrink-0 place-items-center rounded-xl text-accent-text hover:bg-zebra"
                 >
-                  <Copy size={19} strokeWidth={1.5} aria-hidden />
+                  <Copy size={20} strokeWidth={1.75} aria-hidden />
                 </button>
               </div>
-              <div className="tnum truncate pb-1 text-[12px] text-muted">{linkFor(p)}</div>
+              <div className="tnum truncate pb-1 text-micro text-muted">{linkFor(p)}</div>
             </li>
           ))}
         </ul>
@@ -170,12 +227,25 @@ export function MoreMenu() {
           </Btn>
         }
       >
-        <p className="text-[15px] leading-relaxed text-ink">
+        <p className="text-body leading-relaxed text-ink">
           Лист живёт у всех участников сразу: правки сливаются по позициям, а не «кто последний,
           тот и прав». Права даёт личная ссылка. Владелец снимает офлайн-копию одним файлом —
-          он открывается без интернета и без сервера.
+          он открывается без интернета и без сервера. Всю поездку можно выгрузить таблицей
+          и открыть её в Excel или на телефоне.
         </p>
-        <p className="mt-3 text-[13px] text-muted">
+        {offline && (
+          <p className="mt-3 flex gap-2 text-note text-ink">
+            <CloudOff size={18} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-muted" />
+            <span>
+              Сейчас открыта офлайн-копия{info?.savedAt ? ` от ${info.savedAt}` : ''}. Она ничего
+              не берёт из сети и ничего туда не отправляет: правки остаются в этом файле.
+              {info && !info.storage
+                ? ' Браузер запретил файлу хранить данные — правки исчезнут вместе со вкладкой, сохраняйте копию заново.'
+                : ' Чтобы не потерять работу, время от времени сохраняйте копию заново.'}
+            </span>
+          </p>
+        )}
+        <p className="mt-3 text-note text-muted">
           Вы сейчас: {perms.mePerson ? perms.mePerson.name : 'без личной ссылки'} ·{' '}
           {permName(perms.perm)}
         </p>

@@ -37,7 +37,7 @@ export function BottomNav({ sections, active, onSelect }: Props) {
               type="button"
               onClick={() => onSelect(s.id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex min-h-14 min-w-11 flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 transition-colors ${
+              className={`flex min-h-14 min-w-11 flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 transition-colors active:scale-[0.98] ${
                 isActive ? 'text-accent-text' : 'text-muted'
               }`}
             >
@@ -46,9 +46,9 @@ export function BottomNav({ sections, active, onSelect }: Props) {
                   isActive ? 'bg-accent-soft' : ''
                 }`}
               >
-                <Icon size={21} strokeWidth={1.5} aria-hidden />
+                <Icon size={20} strokeWidth={1.75} aria-hidden />
               </span>
-              <span className="text-[11px] font-semibold leading-tight">{s.title}</span>
+              <span className="text-micro font-semibold">{s.title}</span>
             </button>
           )
         })}
@@ -56,14 +56,17 @@ export function BottomNav({ sections, active, onSelect }: Props) {
           <button
             type="button"
             aria-label="Остальные разделы"
-            className={`flex min-h-14 min-w-11 flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 ${
+            /* Кнопка обязана что-то делать: молчаливых отказов не бывает.
+               Пока разделов ровно шесть, эта ветка не рисуется вовсе. */
+            onClick={() => onSelect(overflow[0].id)}
+            className={`flex min-h-14 min-w-11 flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 transition-colors active:scale-[0.98] ${
               overflowActive ? 'text-accent-text' : 'text-muted'
             }`}
           >
             <span className="grid h-7 w-12 place-items-center">
-              <Ellipsis size={21} strokeWidth={1.5} aria-hidden />
+              <Ellipsis size={20} strokeWidth={1.75} aria-hidden />
             </span>
-            <span className="text-[11px] font-semibold leading-tight">Ещё</span>
+            <span className="text-micro font-semibold">Ещё</span>
           </button>
         )}
       </div>

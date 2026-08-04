@@ -20,6 +20,16 @@ const MOVE_TOLERANCE = 10
 
 interface Props {
   title: ReactNode
+  /**
+   * Название раздела, правящееся на месте (обычно `InlineText`). Передано —
+   * заголовок перестаёт быть одной большой кнопкой: слева правится название,
+   * справа отдельная кнопка сворачивания. Кнопку в кнопку вкладывать нельзя —
+   * это невалидная разметка, и промах по названию сворачивал бы раздел.
+   *
+   * Появилось 04.08.2026: переименование раздела было последним местом,
+   * где оставалась шторка, а заказчик отменил шторки везде, где можно.
+   */
+  titleEdit?: ReactNode
   /** счётчик «12 / 18»; без него счётчик не рисуется */
   done?: number
   total?: number
@@ -33,7 +43,9 @@ interface Props {
   className?: string
 }
 
-export function Group({ title, done, total, open, onToggle, badge, onMenu, children, className }: Props) {
+export function Group({
+  title, titleEdit, done, total, open, onToggle, badge, onMenu, children, className,
+}: Props) {
   const seen = useRef(open)
   if (open) seen.current = true
   const [, force] = useState(0)
@@ -88,6 +100,15 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
        она ничего не сообщала, а рядом с волосяной линией читалась как вторая граница. */
     <section className={cn('overflow-hidden rounded-2xl border border-line bg-surface', className)}>
       <h3 className="relative flex items-stretch">
+        {titleEdit ? (
+          /* Название правится на месте, поэтому оно НЕ внутри кнопки сворачивания:
+             кнопка в кнопке — невалидная разметка, и промах по названию сворачивал бы
+             раздел вместо правки. Сворачивание уезжает в отдельную кнопку справа. */
+          <span className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-4">
+            <span className="min-w-0 flex-1 text-body font-[650] text-ink">{titleEdit}</span>
+            {badge}
+          </span>
+        ) : null}
         <button
           type="button"
           onClick={click}
@@ -97,14 +118,20 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
           onPointerLeave={stopPress}
           onPointerCancel={stopPress}
           aria-expanded={open}
+          aria-label={titleEdit ? 'Свернуть или раскрыть раздел' : undefined}
           className={cn(
             /* 56 px — высота заголовка группы во всех разделах */
-            'flex min-h-14 flex-1 items-center gap-3 px-4 text-left transition-colors hover:bg-zebra',
+            'flex min-h-14 items-center gap-3 px-4 text-left transition-colors hover:bg-zebra',
+            /* Название уехало наружу и правится на месте — кнопке остаются
+               только счётчик и шеврон, растягивать её на всю ширину незачем. */
+            titleEdit ? 'shrink-0' : 'flex-1',
             onMenu && 'pr-1 select-none',
           )}
         >
-          <span className="min-w-0 flex-1 truncate text-body font-[650] text-ink">{title}</span>
-          {badge}
+          {titleEdit ? null : (
+            <span className="min-w-0 flex-1 truncate text-body font-[650] text-ink">{title}</span>
+          )}
+          {titleEdit ? null : badge}
           {total != null && total > 0 && (
             <span className="tnum shrink-0 text-note font-semibold text-muted">
               {done ?? 0} / {total}
@@ -112,7 +139,7 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
           )}
           <ChevronDown
             size={20}
-            strokeWidth={1.5}
+            strokeWidth={1.75}
             aria-hidden
             className={cn('shrink-0 text-muted transition-transform', open && 'rotate-180')}
           />
@@ -124,7 +151,7 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
             aria-label="Действия раздела"
             className="my-auto mr-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
           >
-            <MoreHorizontal size={20} strokeWidth={1.5} aria-hidden />
+            <MoreHorizontal size={20} strokeWidth={1.75} aria-hidden />
           </button>
         )}
         {/* Полоса под заголовком одна и та же всегда: без счётчика это просто линия,

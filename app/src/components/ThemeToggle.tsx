@@ -7,9 +7,9 @@ export function ThemeToggle({ dark, onToggle }: { dark: boolean; onToggle: () =>
       type="button"
       onClick={onToggle}
       aria-label={dark ? 'Включить светлую тему' : 'Включить тёмную тему'}
-      className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
+      className="grid size-11 place-items-center rounded-md text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
     >
-      {dark ? <Sun size={21} strokeWidth={1.5} /> : <Moon size={21} strokeWidth={1.5} />}
+      {dark ? <Sun size={20} strokeWidth={1.75} /> : <Moon size={20} strokeWidth={1.75} />}
     </button>
   )
 }

@@ -76,7 +76,7 @@ export function ItemRow({
     >
       {onDelete && dx < -8 && (
         <span className="absolute inset-y-0 right-4 grid place-items-center text-accent-text" aria-hidden>
-          <Trash2 size={22} strokeWidth={1.5} />
+          <Trash2 size={20} strokeWidth={1.75} />
         </span>
       )}
       {alarm && <span className="absolute inset-y-0 left-0 w-1 bg-accent-text" aria-hidden />}

@@ -1,41 +1,39 @@
-import {
-  useCallback, useEffect, useRef,
-  type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent,
-  type RefObject, type UIEvent as ReactUIEvent,
-} from 'react'
-import { Plus } from 'lucide-react'
+import { Fragment, useEffect, useState, type RefObject } from 'react'
+import { ListPlus, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import type { Gear, Person } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
-import { cantOf, qtyLabel, ST_NAME, statusOf, totalQty } from '@/lib/gearx'
-import { StatusDial } from '@/components/flops'
-import { GearAvatar } from './GearAvatar'
+import {
+  cantOf, cycleMark, markName, markOf, setCantWhy, setUnitOf, statusOf, totalQty, unitOf,
+} from '@/lib/gearx'
+import {
+  DataCell, DataHead, DataRow, DataTable, InlineNum, InlineText, PersonHead,
+  RowAction, RowActions, RowInsert, StatusDial, numText, type TableScroll,
+} from '@/components/flops'
+import { NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 
 /**
- * Матрица «вещь × люди» — единственный вид «Сборов» на всех ширинах
- * (эталон заказчика — лист «Снаряжение» его таблицы: строка вещи, колонка на каждого).
+ * Таблица «вещь × люди» — единственный вид «Сборов» на всех ширинах.
+ * Эталон — лист «Снаряжение» таблицы заказчика: строка на вещь, колонка на каждого,
+ * «Всего» справа, названия закреплены слева.
  *
- * Сделана CSS-гридом с ARIA-ролями, а не `<table>`: так проще липкая колонка
- * и адаптив (решение из 5.2, «не ставим table»).
- * На узком экране лист листается вбок внутри блока, а колонка с названием вещи
- * закреплена слева — строка не теряется, как в «Сводке» его же таблицы.
+ * Всё правится на месте (постулат 2, решение заказчика 04.08.2026: «мне не нужен
+ * поп-ап, в котором всё написано; это прямо вот здесь, в этой таблице уже должно
+ * быть»). Поэтому здесь нет ни карточки позиции, ни мастера добавления:
+ *
+ *   название и примечание — тап по тексту в первой колонке;
+ *   количество           — тап по числу, дальше счётчик прямо в ячейке;
+ *   состояние            — кружок в ячейке;
+ *   единица измерения    — тап по слову под «Всего»;
+ *   удалить и вставить   — действия в самой строке.
+ *
+ * ⛔ Долгого нажатия здесь больше нет. Именно оно ломало то, на что жаловался
+ * заказчик: «могу плюсиком добавить, а удалить его уже не могу, и отметить тоже
+ * не могу». Задержка в полсекунды съедала обычный тап по ячейке (палец на телефоне
+ * держится дольше, чем кажется), и вместо смены состояния открывалась шторка
+ * количества, а снять назначение можно было только в ней. Теперь снятие —
+ * видимое действие: счётчик доводится до нуля.
  */
-
-/** Сколько держать ячейку, чтобы открылась правка количества. */
-const LONG_PRESS_MS = 500
-/** На столько палец может съехать, пока это ещё удержание, а не прокрутка. */
-const MOVE_TOLERANCE = 10
-
-/**
- * Общая горизонтальная прокрутка блоков раздела: в таблице лист один,
- * поэтому пролистав вбок один блок, человек ждёт того же и от соседних.
- */
-export interface MatrixScroll {
-  /** видимые сейчас области прокрутки — по одной на блок */
-  nodes: Set<HTMLElement>
-  x: number
-  busy: boolean
-}
 
 interface Props {
   /** позиции одного раздела в порядке ord */
@@ -44,257 +42,380 @@ interface Props {
   perms: Perms
   /** название раздела — для подписи таблицы скринридеру */
   label: string
-  sync: RefObject<MatrixScroll>
-  onOpen: (g: Gear) => void
-  onCycle: (g: Gear, personId: string) => void
-  /** пустая ячейка: назначить 1 шт. */
-  onAssign: (g: Gear, personId: string) => void
-  onDenied: (g: Gear, personId: string) => void
-  /** долгое нажатие или правая кнопка по ячейке — количество */
-  onQty: (g: Gear, personId: string) => void
+  sync: RefObject<TableScroll>
+  /** частые единицы измерения из справочника S.units[] */
+  units: string[]
+  /** только что заведённая строка: название открыто в правке, единица ждёт выбора */
+  fresh: string
+  onFreshDone: () => void
+  patch: (id: string, f: (g: Gear) => void) => void
+  onDelete: (g: Gear) => void
+  /** завести строку перед строкой с этим номером */
+  onInsert: (before: number) => void
 }
 
 export function GearMatrix({
-  rows, people, perms, label, sync, onOpen, onCycle, onAssign, onDenied, onQty,
+  rows, people, perms, label, sync, units, fresh, onFreshDone, patch, onDelete, onInsert,
 }: Props) {
-  const cols = {
-    gridTemplateColumns: `minmax(var(--ncol),1fr) repeat(${people.length}, var(--pcol)) var(--tcol)`,
-  }
+  /** ячейка с раскрытым счётчиком — «вещь:человек»; открыта всегда одна */
+  const [qtyAt, setQtyAt] = useState('')
+  /** строка, у которой выбирается единица измерения */
+  const [unitAt, setUnitAt] = useState('')
 
-  /* Прокрутку соседних блоков ставим напрямую в DOM: перерисовывать матрицу
-     на каждый кадр прокрутки незачем. `busy` гасит эхо-события от соседей. */
-  const attach = useCallback(
-    (el: HTMLDivElement | null) => {
-      if (!el) return
-      const s = sync.current
-      s.nodes.add(el)
-      if (s.x) el.scrollLeft = s.x
-      return () => {
-        s.nodes.delete(el)
-      }
-    },
-    [sync],
-  )
-  const onScroll = (e: ReactUIEvent<HTMLDivElement>) => {
-    const s = sync.current
-    if (s.busy) return
-    const el = e.currentTarget
-    s.x = el.scrollLeft
-    s.busy = true
-    for (const n of s.nodes) if (n !== el) n.scrollLeft = s.x
-    requestAnimationFrame(() => {
-      s.busy = false
-    })
-  }
+  /* Новая строка сразу спрашивает единицу: «пара» у носков и «шт.» у топора —
+     решение, которое заказчик принимает в момент, когда заводит вещь. */
+  useEffect(() => {
+    if (fresh) setUnitAt(fresh)
+  }, [fresh])
+
+  /* Счётчик закрывается нажатием мимо ячейки. Перед закрытием снимаем фокус:
+     если человек набирал число с клавиатуры, поле должно успеть его отдать,
+     иначе набранное молча пропадёт. */
+  useEffect(() => {
+    if (!qtyAt) return
+    const off = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && t.closest('[data-qty]')) return
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      setQtyAt('')
+    }
+    document.addEventListener('pointerdown', off, true)
+    return () => document.removeEventListener('pointerdown', off, true)
+  }, [qtyAt])
+
+  const cols =
+    `var(--ncol) repeat(${people.length}, var(--pcol)) var(--tcol) var(--acol) minmax(0,1fr)`
 
   return (
-    <div
-      ref={attach}
-      onScroll={onScroll}
-      className="overflow-x-auto [--ncol:9.5rem] [--pcol:3.5rem] [--tcol:3.5rem] lg:[--ncol:16rem] lg:[--pcol:8.25rem] lg:[--tcol:4.5rem]"
+    <DataTable
+      cols={cols}
+      label={`Кто что везёт: ${label}`}
+      sync={sync}
+      /* Ширина колонок задана переменными, чтобы шапка и строки считали её одинаково.
+         `min-w-max` держит сетку шире блока — лист листается вбок внутри блока,
+         у страницы горизонтальной прокрутки нет (постулат 7). */
+      className={cn(
+        '[--acol:5.5rem] [--ncol:10rem] [--pcol:6rem] [--tcol:4rem]',
+        'lg:[--ncol:20rem] lg:[--pcol:7rem] lg:[--tcol:5rem]',
+        '[&>[role=grid]]:min-w-max',
+      )}
     >
-      <div
-        role="grid"
-        aria-label={`Кто что везёт: ${label}`}
-        className="min-w-full"
-        style={{
-          minWidth: `calc(var(--ncol) + ${people.length} * var(--pcol) + var(--tcol))`,
-        }}
-      >
-        <div role="row" style={cols} className="grid items-stretch border-b border-line">
-          <span
-            role="columnheader"
-            className="sticky left-0 z-20 flex items-center border-r border-line bg-surface px-4 py-2 text-[13px] font-semibold text-muted"
+      <DataHead>
+        <DataCell sticky head align="left">
+          Вещь
+        </DataCell>
+        {people.map((p) => (
+          <DataCell
+            key={p.id}
+            head
+            /* колонка читателя слегка подсвечена: свою человек ищет первой */
+            className={cn(p.id === perms.me && 'bg-accent-soft')}
           >
-            Вещь
-          </span>
-          {people.map((p) => (
-            <span
-              key={p.id}
-              role="columnheader"
-              /* колонка читателя слегка подсвечена: свою человек ищет первой */
-              className={cn(
-                'flex items-center justify-center gap-2 px-1 py-2',
-                p.id === perms.me && 'bg-accent-soft',
-              )}
-            >
-              <GearAvatar p={p} size={24} />
-              <span className="hidden truncate text-[15px] font-semibold text-ink lg:inline">
-                {p.name}
-              </span>
-            </span>
-          ))}
-          <span
-            role="columnheader"
-            className="flex items-center justify-center px-1 py-2 text-[13px] font-semibold text-muted"
-          >
-            Всего
-          </span>
-        </div>
+            <PersonHead
+              name={p.name}
+              photo={p.photo}
+              ini={p.ini}
+              mine={p.id === perms.me}
+              size={40}
+            />
+          </DataCell>
+        ))}
+        <DataCell head>Всего</DataCell>
+        <DataCell head />
+      </DataHead>
 
-        {rows.map((g, idx) => {
-          const alarm = people.some((p) => cantOf(g, p.id))
-          const bg = alarm ? 'bg-accent-soft' : idx % 2 === 1 ? 'bg-zebra' : 'bg-surface'
-          return (
-            <div
-              key={g.i}
-              role="row"
-              data-hit={g.i}
-              style={cols}
-              className={cn('grid border-b border-line/60 last:border-b-0', bg)}
-            >
-              <span role="gridcell" className={cn('sticky left-0 z-10 min-w-0 border-r border-line', bg)}>
-                <button
-                  type="button"
-                  onClick={() => onOpen(g)}
-                  className="relative flex h-14 w-full flex-col justify-center px-4 text-left transition-colors hover:bg-zebra/60"
-                >
-                  {alarm && (
-                    <span className="absolute inset-y-0 left-0 w-[3px] bg-accent-text" aria-hidden />
-                  )}
-                  <span className="truncate text-[15px] font-semibold text-ink">{g.n}</span>
-                  {g.c ? <span className="truncate text-[12px] text-muted">{g.c}</span> : null}
-                </button>
-              </span>
+      {rows.map((g, idx) => {
+        const alarm = people.some((p) => !!cantOf(g, p.id))
+        const bg = alarm ? 'alarm' : idx % 2 === 1 ? 'zebra' : 'surface'
+        const canEdit = perms.canEditItem(g)
+        const isFresh = fresh === g.i
+        return (
+          <Fragment key={g.i}>
+            {/* role="presentation": полоса вставки живёт между строками таблицы,
+                и разметке сетки она не строка, а прослойка */}
+            <div role="presentation">
+              <RowInsert onInsert={() => onInsert(idx)} label={`Завести вещь перед «${g.n}»`} />
+            </div>
+            <DataRow zebra={idx % 2 === 1} alarm={alarm} fresh={isFresh} dataHit={g.i}>
+              <DataCell sticky bg={bg} align="left">
+                <InlineText
+                  value={g.n}
+                  onSave={(v) => patch(g.i, (x) => { x.n = v })}
+                  can={canEdit}
+                  label="Название вещи"
+                  placeholder="Без названия"
+                  autoEdit={isFresh}
+                  onEditEnd={onFreshDone}
+                  className="text-body font-semibold text-ink"
+                />
+                <InlineText
+                  value={g.c}
+                  onSave={(v) => patch(g.i, (x) => { x.c = v })}
+                  can={canEdit}
+                  label="Примечание к вещи"
+                  placeholder="примечание"
+                  multiline
+                  className="text-note text-muted"
+                />
+
+                {people.map((p) => {
+                  const cant = cantOf(g, p.id)
+                  if (!cant) return null
+                  return (
+                    <span key={p.id} className="mt-1 flex w-full min-w-0 items-start gap-1.5">
+                      <TriangleAlert
+                        size={16}
+                        strokeWidth={1.75}
+                        className="mt-0.5 shrink-0 text-accent-text"
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-micro font-semibold text-accent-text">
+                          {p.name} не может взять
+                        </span>
+                        <InlineText
+                          value={cant.why || ''}
+                          onSave={(v) => patch(g.i, (x) => { setCantWhy(x, p.id, v) })}
+                          can={perms.canMark(p.id)}
+                          label="Почему не может взять"
+                          placeholder="причина не записана"
+                          multiline
+                          className="text-micro text-muted"
+                        />
+                      </span>
+                    </span>
+                  )
+                })}
+
+                {unitAt === g.i && canEdit && (
+                  <UnitPick
+                    units={units}
+                    value={unitOf(g)}
+                    onPick={(u) => {
+                      patch(g.i, (x) => { setUnitOf(x, u) })
+                      setUnitAt('')
+                    }}
+                  />
+                )}
+              </DataCell>
+
               {people.map((p) => (
                 <Cell
                   key={p.id}
                   g={g}
                   p={p}
-                  canMark={perms.canMark(p.id)}
-                  onCycle={() => onCycle(g, p.id)}
-                  onAssign={() => onAssign(g, p.id)}
-                  onDenied={() => onDenied(g, p.id)}
-                  onQty={() => onQty(g, p.id)}
+                  perms={perms}
+                  unit={unitOf(g)}
+                  open={qtyAt === g.i + ':' + p.id}
+                  onOpen={() => setQtyAt(g.i + ':' + p.id)}
+                  patch={patch}
                 />
               ))}
-              <span
-                role="gridcell"
-                className="tnum grid h-14 place-items-center text-[15px] font-semibold text-ink"
-              >
-                {totalQty(g)}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+
+              <DataCell>
+                <span className="tnum text-body font-semibold text-ink">
+                  {numText(totalQty(g))}
+                </span>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => setUnitAt(unitAt === g.i ? '' : g.i)}
+                    aria-label={`Единица измерения: ${unitOf(g)}. Изменить`}
+                    /* Видимое слово мелкое, а нажимать по нему пальцем —
+                       поэтому зону нажатия добираем невидимым слоем до 44 px. */
+                    className="relative rounded-md px-1 transition-colors before:absolute before:-inset-x-2 before:-inset-y-3.5 before:content-[''] hover:bg-zebra/70 active:bg-zebra"
+                  >
+                    <span className="editable text-micro text-muted">{unitOf(g)}</span>
+                  </button>
+                ) : (
+                  <span className="text-micro text-muted">{unitOf(g)}</span>
+                )}
+              </DataCell>
+
+              <DataCell className="px-1">
+                <RowActions>
+                  {/* На телефоне наведения нет, поэтому вставку там даёт сама строка;
+                      на десктопе её даёт полоса между строками (RowInsert). */}
+                  <span className="contents lg:hidden">
+                    <RowAction
+                      icon={ListPlus}
+                      label={`Завести вещь после «${g.n}»`}
+                      onClick={() => onInsert(idx + 1)}
+                    />
+                  </span>
+                  {perms.canDel(g) && (
+                    <RowAction
+                      icon={Trash2}
+                      tone="danger"
+                      label={`Удалить «${g.n}»`}
+                      onClick={() => onDelete(g)}
+                    />
+                  )}
+                </RowActions>
+              </DataCell>
+            </DataRow>
+          </Fragment>
+        )
+      })}
+    </DataTable>
   )
 }
 
 /**
- * Долгое нажатие по ячейке. На телефоне правой кнопки нет, а количество
- * править надо — держим полсекунды и попадаем в ту же правку.
+ * Ячейка человека: кружок состояния и количество.
+ *
+ * Пустая ячейка — пунктирный кружок с плюсом: тап записывает одну штуку.
+ * Занятая — кружок состояния (тап меняет по кругу) и число (тап раскрывает
+ * счётчик прямо здесь). Счётчик доводится до нуля — так назначение снимается
+ * видимым действием, а не спрятанным жестом.
+ *
+ * Чего человеку не положено — того здесь нет вовсе (постулат 5): отмечать
+ * за другого может не каждый, и тогда кружок остаётся значком, а не кнопкой.
  */
-function useLongPress(onLong: () => void) {
-  const press = useRef<{ t: number | null; x: number; y: number; fired: boolean }>({
-    t: null, x: 0, y: 0, fired: false,
-  })
-  const stop = useCallback(() => {
-    if (press.current.t !== null) window.clearTimeout(press.current.t)
-    press.current.t = null
-  }, [])
-  useEffect(() => stop, [stop])
-
-  const down = (e: ReactPointerEvent<HTMLElement>) => {
-    stop()
-    press.current = {
-      x: e.clientX,
-      y: e.clientY,
-      fired: false,
-      t: window.setTimeout(() => {
-        press.current.t = null
-        press.current.fired = true
-        onLong()
-      }, LONG_PRESS_MS),
-    }
-  }
-  const move = (e: ReactPointerEvent<HTMLElement>) => {
-    if (press.current.t === null) return
-    if (
-      Math.abs(e.clientX - press.current.x) > MOVE_TOLERANCE ||
-      Math.abs(e.clientY - press.current.y) > MOVE_TOLERANCE
-    )
-      stop()
-  }
-  /** true — клик надо погасить: он пришёл следом за сработавшим удержанием */
-  const consumed = () => {
-    stop()
-    if (!press.current.fired) return false
-    press.current.fired = false
-    return true
-  }
-  return { down, move, stop, consumed }
-}
-
-/** Ячейка человека: количество и кружок статуса. Пустая — точка-плюс. */
 function Cell({
-  g, p, canMark, onCycle, onAssign, onDenied, onQty,
+  g, p, perms, unit, open, onOpen, patch,
 }: {
   g: Gear
   p: Person
-  canMark: boolean
-  onCycle: () => void
-  onAssign: () => void
-  onDenied: () => void
-  onQty: () => void
+  perms: Perms
+  unit: string
+  open: boolean
+  onOpen: () => void
+  patch: (id: string, f: (g: Gear) => void) => void
 }) {
   const qty = g.o?.[p.id] || 0
-  const cant = cantOf(g, p.id)
-  const lp = useLongPress(onQty)
+  const mark = markOf(g, p.id)
+  const canQty = perms.canEditQty(g, p.id)
+  const canMark = perms.canMark(p.id)
 
-  const hold = {
-    onPointerDown: lp.down,
-    onPointerMove: lp.move,
-    onPointerUp: lp.stop,
-    onPointerLeave: lp.stop,
-    onPointerCancel: lp.stop,
-    onContextMenu: (e: ReactMouseEvent) => {
-      e.preventDefault()
-      onQty()
-    },
-  }
+  /* Ноль — человек вещь не везёт: убираем и его отметки, иначе они «висят»
+     за назначением, которого больше нет. */
+  const write = (n: number) =>
+    patch(g.i, (x) => {
+      x.o = x.o || {}
+      x.oby = x.oby || {}
+      if (n > 0) {
+        x.o[p.id] = n
+        x.oby[p.id] = x.oby[p.id] || perms.me || ''
+        return
+      }
+      delete x.o[p.id]
+      delete x.oby[p.id]
+      if (x.s) delete x.s[p.id]
+      if (x.q) delete x.q[p.id]
+    })
 
   if (qty <= 0) {
+    if (!canQty) return <DataCell />
     return (
-      <span role="gridcell">
+      <DataCell>
         <button
           type="button"
-          aria-label={`${g.n}: ${p.name} не везёт. Назначить ${qtyLabel(1)}`}
-          onClick={() => {
-            if (lp.consumed()) return
-            onAssign()
-          }}
-          {...hold}
-          className="grid h-14 w-full touch-manipulation place-items-center text-muted transition-colors select-none hover:bg-accent-soft"
+          data-qty
+          onClick={() => write(1)}
+          aria-label={`${g.n}: ${p.name} не везёт. Записать 1${NBSP}${unit}`}
+          className="grid size-11 place-items-center rounded-full text-muted transition-colors hover:bg-accent-soft hover:text-accent-text active:scale-95"
         >
           <span
-            className="grid size-6 place-items-center rounded-full border border-dashed border-line-strong"
+            className="grid size-7 place-items-center rounded-full border border-dashed border-line-strong"
             aria-hidden
           >
-            <Plus size={14} strokeWidth={2} />
+            <Plus size={18} strokeWidth={1.75} />
           </span>
         </button>
-      </span>
+      </DataCell>
     )
   }
 
   return (
-    <span role="gridcell">
-      <button
-        type="button"
-        aria-label={`${g.n}, ${p.name}: ${qtyLabel(qty)}, ${cant ? 'не может взять' : ST_NAME[statusOf(g, p.id)]}. Изменить`}
-        onClick={() => {
-          if (lp.consumed()) return
-          if (canMark) onCycle()
-          else onDenied()
-        }}
-        {...hold}
-        className="flex h-14 w-full touch-manipulation flex-col items-center justify-center gap-0 transition-colors select-none hover:bg-zebra/60 lg:flex-row lg:gap-2"
+    <DataCell>
+      {/* Кружок и число стоят столбиком на телефоне и в строку на широком экране:
+          зона нажатия у кружка 44 px, и в узкую колонку рядом с числом она не встаёт.
+          Раскрытый счётчик всегда уходит под кружок: со стрелками он шире колонки. */}
+      <span
+        data-qty
+        className={cn(
+          'flex w-full flex-col items-center gap-1',
+          !open && 'lg:flex-row lg:justify-center',
+        )}
       >
-        <StatusDial value={statusOf(g, p.id)} cant={!!cant} who={p.name} size={32} />
-        <span className="tnum text-[12px] font-semibold text-ink lg:text-[15px]">{qty}</span>
-      </button>
+        <StatusDial
+          value={statusOf(g, p.id)}
+          cant={mark === 'cant'}
+          who={p.name}
+          size={44}
+          onCycle={canMark ? () => patch(g.i, (x) => { cycleMark(x, p.id) }) : undefined}
+        />
+        {open ? (
+          <InlineNum
+            value={qty}
+            onSave={write}
+            can={canQty}
+            label={`${p.name}: сколько везёт`}
+            min={0}
+            step={1}
+            className="text-note font-semibold text-ink"
+          />
+        ) : canQty ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`${p.name}: ${qty}${NBSP}${unit}, ${markName(mark)}. Изменить количество`}
+            className="w-full rounded-md py-1 transition-colors hover:bg-zebra/70 active:bg-zebra lg:w-auto lg:px-2"
+          >
+            <span className="editable tnum text-note font-semibold text-ink">{numText(qty)}</span>
+          </button>
+        ) : (
+          <span className="tnum py-1 text-note font-semibold text-ink">{numText(qty)}</span>
+        )}
+      </span>
+    </DataCell>
+  )
+}
+
+/**
+ * Выбор единицы измерения: ряд частых из справочника плюс своя.
+ * Живёт в первой колонке — она закреплена и видна на любой прокрутке,
+ * а в узкой колонке «Всего» ряд кнопок не поместился бы.
+ */
+function UnitPick({
+  units, value, onPick,
+}: {
+  units: string[]
+  value: string
+  onPick: (u: string) => void
+}) {
+  return (
+    <span className="mt-2 block w-full">
+      <span className="block text-micro text-muted">Единица</span>
+      <span className="mt-1 flex flex-wrap items-center gap-1">
+        {units.map((u) => (
+          <button
+            key={u}
+            type="button"
+            onClick={() => onPick(u)}
+            aria-pressed={u === value}
+            className={cn(
+              'grid h-11 min-w-11 place-items-center rounded-md border px-2 text-note transition-colors',
+              u === value
+                ? 'border-accent bg-accent-soft text-accent-text'
+                : 'border-line-strong text-ink hover:bg-zebra/70 active:bg-zebra',
+            )}
+          >
+            {u}
+          </button>
+        ))}
+        <span className="min-w-16 flex-1">
+          <InlineText
+            value={units.includes(value) ? '' : value}
+            onSave={(v) => onPick(v)}
+            can
+            label="Своя единица измерения"
+            placeholder="своя"
+            className="text-note text-muted"
+          />
+        </span>
+      </span>
     </span>
   )
 }

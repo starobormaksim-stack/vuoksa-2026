@@ -34,7 +34,7 @@ export function SheetRow({ label, value, onClick, hint, empty, className }: Prop
         >
           {value}
         </span>
-        {onClick && <ChevronRight size={18} strokeWidth={1.5} className="shrink-0 text-muted" aria-hidden />}
+        {onClick && <ChevronRight size={18} strokeWidth={1.75} className="shrink-0 text-muted" aria-hidden />}
       </span>
     </>
   )

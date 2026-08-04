@@ -3,9 +3,9 @@ import type { StatusValue } from '@/lib/gearx'
 import { ST_NAME } from '@/lib/gearx'
 
 /**
- * Легенда пяти значков (docs/v2-ux-redesign.md, 4.5).
- * Живёт шторкой по кнопке в заголовке раздела, а не карточкой над списком, как в v1:
- * так экран освобождается на 120 px, а объяснение остаётся под рукой.
+ * Что означают кружки в ячейках. Шторка здесь не редактор, а объяснение правила:
+ * значков пять, а места под их подписи в таблице нет. Открывается кнопкой
+ * в заголовке раздела и ничего не меняет в документе.
  */
 interface Row {
   v: StatusValue
@@ -23,7 +23,7 @@ const ROWS: Row[] = [
     v: 0,
     cant: true,
     title: 'не могу взять',
-    text: 'Ставится из карточки вещи, с причиной. В круг состояний не входит — вещь ждёт, пока её передадут другому.',
+    text: 'Вещь остаётся в списке с пометкой и причиной: владелец увидит её и передаст другому. В готовность не идёт.',
   },
 ]
 
@@ -39,21 +39,21 @@ export function GearLegendSheet({
       open={open}
       onOpenChange={onOpenChange}
       title="Что означают значки"
-      subtitle="Тап по кружку переводит вещь в следующее состояние"
+      subtitle="Собранными считаются «упаковано» и «в машине»"
     >
       <ul className="pb-2">
         {ROWS.map((r) => (
           <li key={r.title} className="flex items-start gap-3 border-b border-line/70 py-2 last:border-b-0">
             <StatusDial value={r.v} cant={r.cant} />
             <span className="min-w-0 flex-1 py-1">
-              <span className="block text-[15px] font-semibold text-ink">{r.title}</span>
-              <span className="mt-0.5 block text-[13px] leading-snug text-muted">{r.text}</span>
+              <span className="block text-body font-semibold text-ink">{r.title}</span>
+              <span className="mt-0.5 block text-note leading-snug text-muted">{r.text}</span>
             </span>
           </li>
         ))}
       </ul>
-      <p className="text-[13px] leading-snug text-muted">
-        Долгое нажатие на ячейку открывает количество, тап по названию вещи — её карточку.
+      <p className="text-note leading-snug text-muted">
+        Значки идут по кругу: от «не взято» до «не могу взять» и снова к началу.
       </p>
     </ResponsiveSheet>
   )

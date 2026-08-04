@@ -43,6 +43,22 @@ export function hasGoogleKey(): boolean {
   return GOOGLE_MAPS_KEY.length > 0
 }
 
+/**
+ * Google уже отказал в этой вкладке (домен не в списке, ключ отозван, биллинг).
+ * Взводится один раз и навсегда: переспрашивать бессмысленно, а каждая попытка
+ * стоит человеку секунд ожидания на пустом месте.
+ */
+let denied = false
+
+/**
+ * Стоит ли вообще идти к Google. Ключа нет или он уже отказал — не стоит:
+ * геокодирование сразу уходит на запасной путь (Nominatim), и человек получает
+ * адрес, а не молчание. См. lib/geocode.ts.
+ */
+export function googleUsable(): boolean {
+  return hasGoogleKey() && !denied
+}
+
 /** Промис загрузки: библиотеку тянем один раз на всё приложение. */
 let loading: Promise<typeof google.maps> | null = null
 
@@ -97,6 +113,7 @@ if (typeof window !== 'undefined') {
     /* Единственное место, где видно причину отката на OpenStreetMap. Без этой строки
        остаётся гадать, почему карта «не та»: сам Google в консоль ничего не пишет. */
     console.warn('Google Maps отказал (домен, ключ или биллинг) — показываем OpenStreetMap')
+    denied = true
     authFailed.forEach((l) => l('auth'))
   }
 }

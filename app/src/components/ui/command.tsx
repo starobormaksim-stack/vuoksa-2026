@@ -57,7 +57,15 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* ⚠️ Обёртка <Command> ОБЯЗАТЕЛЬНА и однажды была здесь потеряна.
+            Поле ввода, список и строки поиска берут своё состояние из контекста
+            этого компонента. Без него первый же дочерний элемент обращается
+            к несуществующему хранилищу («Cannot read properties of undefined
+            (reading 'subscribe')»), React выбрасывает исключение при отрисовке
+            и сносит ВСЁ дерево приложения — экран становится пустым.
+            Заказчик 04.08.2026: «нажимаю на строку поиска, и у меня полностью
+            весь сервис закрывается». Не удалять. */}
+        <Command>{children}</Command>
       </DialogContent>
     </Dialog>
   )
@@ -153,7 +161,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
+        "group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-zebra data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
         className
       )}
       {...props}

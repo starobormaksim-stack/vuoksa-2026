@@ -86,7 +86,7 @@ function DialogContent({
               className="absolute top-3 right-3 size-11 rounded-md text-muted hover:bg-zebra hover:text-ink"
               size="icon"
             >
-              <XIcon className="size-[22px]" strokeWidth={1.5} />
+              <XIcon className="size-[22px]" strokeWidth={1.75} />
               <span className="sr-only">Закрыть</span>
             </Button>
           </DialogPrimitive.Close>
@@ -118,7 +118,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-zebra p-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}

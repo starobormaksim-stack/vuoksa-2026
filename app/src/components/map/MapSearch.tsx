@@ -99,7 +99,7 @@ export function MapSearch({ near, onPick, hint }: Props) {
           placeholder="Найти адрес или место"
           aria-label="Найти адрес или место на карте"
           enterKeyHint="search"
-          className="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted"
+          className="h-11 min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-muted"
         />
         {busy && (
           <LoaderCircle
@@ -114,7 +114,7 @@ export function MapSearch({ near, onPick, hint }: Props) {
             type="button"
             onClick={clear}
             aria-label="Очистить поиск"
-            className="grid size-11 shrink-0 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
+            className="grid size-11 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-zebra hover:text-ink"
           >
             <X size={18} strokeWidth={1.75} aria-hidden />
           </button>
@@ -123,12 +123,12 @@ export function MapSearch({ near, onPick, hint }: Props) {
 
       {/* Что нашлось. Пока не искали — строка молчит и места не занимает. */}
       {busy && list === null && (
-        <p className="px-3 pb-2 text-[13px] text-muted">Ищем на карте…</p>
+        <p className="px-3 pb-2 text-note text-muted">Ищем на карте…</p>
       )}
 
       {list !== null && list.length === 0 && !busy && (
-        <p className="flex items-start gap-2 px-3 pb-2 text-[13px] text-muted">
-          <SearchX size={15} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0" />
+        <p className="flex items-start gap-2 px-3 pb-2 text-note text-muted">
+          <SearchX size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
           <span>
             Ничего не нашлось поблизости. Напишите иначе — или поставьте точку
             пальцем прямо по карте.
@@ -138,7 +138,7 @@ export function MapSearch({ near, onPick, hint }: Props) {
 
       {list !== null && list.length > 0 && (
         <>
-          <p className="px-3 pb-1 text-[12px] font-semibold text-muted">{hint}</p>
+          <p className="px-3 pb-1 text-micro font-semibold text-muted">{hint}</p>
           <ul className="max-h-56 overflow-y-auto border-t border-line">
             {list.map((hit, idx) => (
               <li key={`${hit.lat}:${hit.lon}:${idx}`}>
@@ -148,16 +148,16 @@ export function MapSearch({ near, onPick, hint }: Props) {
                   className="flex min-h-13 w-full items-start gap-2.5 border-b border-line/60 px-3 py-2 text-left transition-colors hover:bg-zebra"
                 >
                   <MapPin
-                    size={17}
+                    size={18}
                     strokeWidth={1.75}
                     aria-hidden
                     className="mt-0.5 shrink-0 text-accent-text"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] leading-tight font-semibold text-ink">
+                    <span className="block text-body leading-tight font-semibold text-ink">
                       {shortPlaceName(hit.addr)}
                     </span>
-                    <span className="block text-[13px] leading-snug text-muted">
+                    <span className="block text-note leading-snug text-muted">
                       {hit.precise ? '' : 'Примерно: '}
                       {hit.addr}
                     </span>

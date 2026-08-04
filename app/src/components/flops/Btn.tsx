@@ -13,15 +13,19 @@ export type BtnSize = 'sm' | 'md' | 'lg'
 /* Заливка главной кнопки говорит сама за себя — тень под ней была украшением
    и рядом с плоскими карточками читалась как чужая деталь. */
 const TONE: Record<BtnTone, string> = {
-  primary: 'bg-accent-fill text-on-accent hover:opacity-90 border-transparent',
+  /* Под курсором заливка становится плотнее (--accent-fill-hover), а не прозрачнее.
+     Прежнее `hover:opacity-90` высветляло кнопку, и наведение читалось как отказ. */
+  primary: 'bg-accent-fill text-on-accent hover:bg-accent-fill-hover border-transparent',
   secondary: 'bg-zebra text-ink border-transparent hover:bg-line',
   ghost: 'bg-transparent text-muted hover:bg-zebra hover:text-ink border-transparent',
   danger: 'bg-transparent text-accent-text border border-accent-text hover:bg-accent-soft',
 }
 
-/* Высоты 36 · 44 · 52 и радиусы 8 · 12 · 12 — из общей шкалы проекта. */
+/* Высоты 36 · 44 · 52 и радиусы 8 · 12 · 12 — из общей шкалы проекта.
+   У маленькой кнопки видимая высота 36 px, а зона нажатия добирается невидимым
+   слоем до 44 px: меньше пальцем не попасть (постулат 7). */
 const SIZE: Record<BtnSize, string> = {
-  sm: 'h-9 px-3 text-note gap-2 rounded-md',
+  sm: 'h-9 px-3 text-note gap-2 rounded-md relative before:absolute before:-inset-y-1 before:inset-x-0 before:content-[""]',
   md: 'h-11 px-4 text-body gap-2 rounded-lg',
   lg: 'h-13 px-5 text-body gap-2 rounded-lg',
 }

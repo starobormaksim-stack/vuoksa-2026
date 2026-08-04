@@ -80,8 +80,13 @@ export function CrewSection() {
 
   /**
    * Скопировать личную ссылку прямо с карточки — чтобы за ней не приходилось
-   * ходить в меню «⋯» → «Ссылки команды». Видит владелец и редактор: ссылка
-   * несёт права, участникам её раздача не положена (модель прав в lib/perm.ts).
+   * ходить в меню «⋯» → «Ссылки команды».
+   *
+   * Видит только владелец. Так написано в модели прав («Видит и раздаёт ссылки
+   * команды» есть у владельца и прямо отобрано у редактора — lib/perm.ts,
+   * CANT в PersonSheet), так же сделана кнопка в карточке участника. До 04.08.2026
+   * здесь стояло `isEditor()`: редактор видел на плитке действие, которого внутри
+   * карточки уже не было. Постулат 5 — не положено, кнопки нет.
    */
   const copyLink = async (p: Person) => {
     try {
@@ -130,7 +135,7 @@ export function CrewSection() {
                 tone={toneOf(S.people, p.id)}
                 ready={readyOf(S, p.id)}
                 onOpen={() => setSheet(p.id)}
-                onCopyLink={perms.isEditor() ? () => void copyLink(p) : undefined}
+                onCopyLink={perms.isChief() ? () => void copyLink(p) : undefined}
               />
             ))}
           </div>
@@ -141,7 +146,7 @@ export function CrewSection() {
               `self-start` не даёт ей растянуться на ширину раздела. */}
           {perms.isEditor() && (
             <Btn tone="secondary" className="self-start" onClick={() => setAdding(true)}>
-              <UserPlus size={18} strokeWidth={1.5} aria-hidden />
+              <UserPlus size={18} strokeWidth={1.75} aria-hidden />
               Добавить участника
             </Btn>
           )}
@@ -249,17 +254,17 @@ function CrewCard({
             />
           </span>
         ) : (
-          <span className="grid size-full place-items-center bg-zebra text-[64px] leading-none font-bold text-muted" aria-hidden>
+          <span className="grid size-full place-items-center bg-zebra text-hero leading-none font-bold text-muted" aria-hidden>
             {initialOf(person.name, person.ini)}
           </span>
         )}
 
         {/* бейдж уровня прав — слева сверху, поверх фотографии */}
-        <span className="absolute top-2 left-2 rounded-lg bg-surface/85 px-2 py-0.5 text-[11px] font-[600] text-ink backdrop-blur-sm">
+        <span className="absolute top-2 left-2 rounded-lg bg-surface/85 px-2 py-0.5 text-micro font-[600] text-ink backdrop-blur-sm">
           {permName(person.perm)}
         </span>
         {here && (
-          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-lg bg-surface/85 px-2 py-0.5 text-[11px] font-[600] text-ink backdrop-blur-sm">
+          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-lg bg-surface/85 px-2 py-0.5 text-micro font-[600] text-ink backdrop-blur-sm">
             <span className="size-1.5 rounded-full bg-accent" aria-hidden />
             здесь
           </span>
@@ -275,16 +280,16 @@ function CrewCard({
           <span className="flex items-center gap-1.5">
             {/* личная метка: кружок янтаря на подложке, новых цветов не заводим */}
             <PersonMark tone={tone} size={14} />
-            <span className="min-w-0 flex-1 truncate text-[17px] leading-tight font-[650] text-brand-cream">
+            <span className="min-w-0 flex-1 truncate text-head leading-tight font-[650] text-brand-cream">
               {person.name}
             </span>
             {mine && (
-              <span className="shrink-0 rounded-md bg-brand-cream px-1.5 py-0.5 text-[11px] font-[600] text-brand-dark">
+              <span className="shrink-0 rounded-md bg-brand-cream px-1.5 py-0.5 text-micro font-[600] text-brand-dark">
                 это я
               </span>
             )}
           </span>
-          <span className="mt-0.5 flex items-baseline gap-1.5 text-[12px] leading-snug font-[500] text-brand-cream/80">
+          <span className="mt-0.5 flex items-baseline gap-1.5 text-micro leading-snug font-[500] text-brand-cream/80">
             <span className="min-w-0 flex-1 truncate">{line}</span>
             {ready.total > 0 && (
               <span className="tnum shrink-0 font-semibold">{`${ready.pct}${NBSP}%`}</span>
@@ -308,9 +313,9 @@ function CrewCard({
             e.stopPropagation()
             onCopyLink()
           }}
-          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold text-accent-text transition-colors hover:bg-zebra"
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl text-note font-semibold text-accent-text transition-colors hover:bg-zebra"
         >
-          <Link2 size={16} strokeWidth={1.5} aria-hidden />
+          <Link2 size={18} strokeWidth={1.75} aria-hidden />
           Скопировать ссылку
         </button>
       )}

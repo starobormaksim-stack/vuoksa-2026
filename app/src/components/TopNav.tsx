@@ -4,6 +4,7 @@ import type { Person } from '../lib/types'
 import type { SectionDef } from '../sections'
 import { Logo } from './Logo'
 import { PresenceStack } from './PresenceStack'
+import { WhoAmI } from './WhoAmI'
 import { ThemeToggle } from './ThemeToggle'
 import { MoreMenu } from './MoreMenu'
 
@@ -25,8 +26,10 @@ interface Props {
  * как под мостом, а не просвечивать сквозь неё.
  *
  * Раскладка: знак и правый блок кнопок не сжимаются, разделы забирают остаток посередине.
- * Стопка присутствия появляется только от 1280 px — на 1024 она налезала на последний
+ * Ряд присутствия появляется только от 1280 px — на 1024 он налезал на последний
  * пункт меню (это и было видно на снимке заказчика: аватарки поверх слова «Меню»).
+ * Сам ряд показывает тех, кто действительно открыл лист сейчас (см. PresenceStack);
+ * пока никого не видно — ряда нет вовсе, и место занимают разделы.
  */
 export function TopNav({
   sections, active, onSelect, people, dark, onToggleTheme, onSearch, onHome,
@@ -39,7 +42,7 @@ export function TopNav({
           type="button"
           onClick={onHome}
           aria-label="Pine-to-Pine — наверх"
-          className="shrink-0 rounded-xl transition-opacity hover:opacity-80"
+          className="-mx-2 flex shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-zebra/70 active:scale-[0.98]"
         >
           <Logo height={28} />
         </button>
@@ -55,11 +58,15 @@ export function TopNav({
                 onClick={() => onSelect(s.id)}
                 aria-current={isActive ? 'page' : undefined}
                 title={s.title}
-                className={`relative flex min-w-0 items-center gap-2 px-2.5 text-[15px] font-semibold whitespace-nowrap transition-colors xl:px-3 ${
-                  isActive ? 'text-ink' : 'text-muted hover:text-ink'
+                /* Наведение подсвечивает фон, но не перекрашивает надпись: смена
+                   оттенка текста под курсором — ровно то, что заказчик назвал
+                   «неадекватно подсвечиваются кнопки». Активный раздел отмечен
+                   плотностью текста и полосой под ним, а не подсветкой. */
+                className={`relative flex min-w-0 items-center gap-2 px-2.5 text-body font-semibold whitespace-nowrap transition-colors hover:bg-zebra/70 xl:px-3 ${
+                  isActive ? 'text-ink' : 'text-muted'
                 }`}
               >
-                <Icon size={20} strokeWidth={1.5} aria-hidden className="shrink-0" />
+                <Icon size={20} strokeWidth={1.75} aria-hidden className="shrink-0" />
                 <span className="truncate">{s.title}</span>
                 {isActive && (
                   <motion.span
@@ -76,6 +83,10 @@ export function TopNav({
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
+          {/* Кто ты — на видном месте, а не в окне «О сервисе» (заказчик, 04.08.2026). */}
+          <span className="mr-3 hidden max-w-56 lg:inline-flex">
+            <WhoAmI />
+          </span>
           <span className="mr-1 hidden xl:inline-flex">
             <PresenceStack people={people} />
           </span>
@@ -83,9 +94,9 @@ export function TopNav({
             type="button"
             aria-label="Поиск по листу"
             onClick={onSearch}
-            className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
+            className="grid size-11 place-items-center rounded-md text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
           >
-            <Search size={21} strokeWidth={1.5} aria-hidden />
+            <Search size={20} strokeWidth={1.75} aria-hidden />
           </button>
           <ThemeToggle dark={dark} onToggle={onToggleTheme} />
           <MoreMenu />

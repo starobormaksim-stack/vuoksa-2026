@@ -68,7 +68,7 @@ export function PickSheet({
                   )}
                   aria-hidden
                 >
-                  {on && <Check size={15} strokeWidth={3} />}
+                  {on && <Check size={16} strokeWidth={1.75} />}
                 </span>
                 {o.lead}
                 <span className="min-w-0 flex-1 py-2">

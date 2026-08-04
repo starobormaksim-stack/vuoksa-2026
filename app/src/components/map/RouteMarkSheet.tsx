@@ -131,7 +131,7 @@ export function RouteMarkSheet({ open, onOpenChange, route, near, onSet, onPlace
         </Btn>
       }
     >
-      <p className="pb-3 text-[15px] text-balance text-muted">
+      <p className="pb-3 text-body text-balance text-muted">
         Где смогли — нашли по названию. Проверьте адрес и поставьте точку на карту.
         Стоянку и костёр по названию не найти: их укажите пальцем. А если написано
         «примерно» — место угадано грубо, потом сдвиньте метку на карте пальцем.
@@ -159,20 +159,20 @@ export function RouteMarkSheet({ open, onOpenChange, route, near, onSet, onPlace
               <div className="flex min-h-11 items-start gap-3">
                 <span
                   className={
-                    'tnum mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-[13px] font-bold ' +
+                    'tnum mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-note font-bold ' +
                     (placed ? 'bg-ink text-bg' : 'bg-accent-fill text-on-accent')
                   }
                 >
                   {idx}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[15px] leading-snug font-semibold text-ink">{p.n}</div>
-                  <div className="mt-0.5 flex items-start gap-1.5 text-[13px] break-words text-muted">
+                  <div className="text-body leading-snug font-semibold text-ink">{p.n}</div>
+                  <div className="mt-0.5 flex items-start gap-1.5 text-note break-words text-muted">
                     <Status placed={placed} point={p} hit={h} />
                   </div>
                 </div>
                 {placed && (
-                  <Check size={20} strokeWidth={2} aria-hidden className="mt-1 shrink-0 text-accent-text" />
+                  <Check size={18} strokeWidth={1.75} aria-hidden className="mt-1 shrink-0 text-accent-text" />
                 )}
               </div>
 
@@ -184,7 +184,7 @@ export function RouteMarkSheet({ open, onOpenChange, route, near, onSet, onPlace
                     <Btn onClick={() => accept(q.id)}>Поставить сюда</Btn>
                   )}
                   <Btn tone="secondary" onClick={() => onPlaceByHand(q.id)}>
-                    <Crosshair size={16} strokeWidth={1.5} aria-hidden />
+                    <Crosshair size={18} strokeWidth={1.75} aria-hidden />
                     Указать на карте
                   </Btn>
                 </div>
@@ -202,7 +202,7 @@ function Status({ placed, point, hit }: { placed: boolean; point: RoutePoint; hi
   if (placed) {
     return (
       <>
-        <MapPin size={14} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0 text-accent-text" />
+        <MapPin size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-accent-text" />
         <span className="tnum">На карте: {coordLabel(point)}</span>
       </>
     )
@@ -210,7 +210,7 @@ function Status({ placed, point, hit }: { placed: boolean; point: RoutePoint; hi
   if (!hit || hit.state === 'busy') {
     return (
       <>
-        <LoaderCircle size={14} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0 animate-spin" />
+        <LoaderCircle size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 animate-spin" />
         <span>Ищем на карте…</span>
       </>
     )
@@ -218,14 +218,14 @@ function Status({ placed, point, hit }: { placed: boolean; point: RoutePoint; hi
   if (hit.state === 'none') {
     return (
       <>
-        <SearchX size={14} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0" />
+        <SearchX size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
         <span>По названию не нашлось — укажите пальцем</span>
       </>
     )
   }
   return (
     <>
-      <MapPin size={14} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0" />
+      <MapPin size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
       <span>
         {hit.at.precise ? '' : 'Примерно: '}
         {hit.at.addr}

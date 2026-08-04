@@ -25,6 +25,9 @@
  *                perms.canMark(personId), perms.canDel(item), perms.canEditPerson(p),
  *                perms.canSetPerm(p), perms.canSaveFile(), perms.canEditQty(item, personId),
  *                perms.assignerOf(item, personId), perms.stale (ссылка устарела).
+ *   signIn     — вход по почте: { email, state, reason, note }. Права из него уже
+ *                учтены в perms; сам объект нужен, чтобы объяснить человека словами
+ *                (PermNotice). Порядок определения личности — у refreshAuth() ниже.
  *   net        — { state: 'ok'|'work'|'err'|'off', msg } для индикатора в шапке.
  *   presence   — [{ id, name }] тех, кто сейчас в документе.
  *   isHere(id) — человек сейчас здесь.
@@ -44,13 +47,25 @@ import type { State } from './lib/types.ts'
 import type { Auth, Perms } from './lib/perm.ts'
 import { checkAuth, makePerms } from './lib/perm.ts'
 import { clone, forget, mergeInto, mergeSeed, normalizeDoc } from './lib/merge.ts'
-import { initAuth } from './lib/auth.ts'
+import { fetchTripOwner, initAuth, onAuthChange } from './lib/auth.ts'
+import type { Session, TripOwner } from './lib/auth.ts'
 import { Sync } from './lib/sync.ts'
 import type { NetState, Presence } from './lib/sync.ts'
-import seedJson from './data/seed-v2.json'
+import { docKey, seedFor } from './lib/trips.ts'
 
-const KEY = 'flops.doc'
-const SEED = seedJson as unknown as State
+/**
+ * Ключ документа в браузере. У поездки, которая была всегда, он прежний —
+ * `flops.doc`; у остальных к нему дописано имя поездки. Переименовывать старый
+ * ключ нельзя: это стёрло бы людям их документ (см. lib/trips.ts).
+ */
+const KEY = docKey()
+
+/**
+ * Сид, из которого добирается недостающее. У Вуоксы это весь `seed-v2.json`,
+ * у прочих поездок — только справочники: чужие вещи и маршрут в них не едут.
+ * Считается один раз: он не меняется, пока открыта одна и та же поездка.
+ */
+const SEED: State = seedFor()
 
 /* ─────────── документ в памяти ─────────── */
 
@@ -87,15 +102,161 @@ let net: { state: NetState; msg: string } = { state: 'off', msg: '' }
 let presence: Presence[] = []
 let perms: Perms = makePerms(doc, null, false)
 
-/** Личность из ссылки: кто я и подтверждён ли ключ. */
+/* ─────────── вход по почте ─────────── */
+
+/**
+ * Чем кончилась сверка сеанса с листом. Это не права, а объяснение для человека
+ * (его печатает `components/PermNotice.tsx`):
+ *
+ *   none      — почтой никто не входил, всё как раньше;
+ *   owner     — почта сеанса совпала с владельцем листа: полные права, молча;
+ *   unclaimed — лист ещё ни за кем не закреплён, вошедший станет владельцем;
+ *   foreign   — лист закреплён за другой почтой: полных прав не даём;
+ *   nochief   — в команде нет ни одного владельца, некому передать права;
+ *   unknown   — проверить не вышло (нет связи или колонки владельца в базе).
+ */
+export type SignInState = 'none' | 'owner' | 'unclaimed' | 'foreign' | 'nochief' | 'unknown'
+
+/** Состояние входа по почте — для объяснений на экране. */
+export interface SignIn {
+  /** почта живого сеанса; '' — никто не входил */
+  email: string
+  state: SignInState
+  /** почему не проверили (только при state === 'unknown') */
+  reason: string
+  /** сообщение о том, что только что произошло; гаснет само */
+  note: string
+}
+
+/** Сколько живёт сообщение о событии (выход из сеанса). */
+const NOTE_LIFE = 15000
+
+let session: Session | null = null
+let owner: TripOwner = { ok: false, email: '', reason: '' }
+let note = ''
+let noteT: ReturnType<typeof setTimeout> | null = null
+/** Кого выбрал сеанс. Нужен, чтобы на выходе вернуть всё как было. */
+let meBySession = ''
+let signIn: SignIn = { email: '', state: 'none', reason: '', note: '' }
+
+/**
+ * Кто за документом. Порядок определения личности — ровно такой, и он важнее всего
+ * остального в этом файле:
+ *
+ *   1. ЖИВОЙ СЕАНС ВЛАДЕЛЬЦА. Почта сеанса совпала с `owner_email` строки (или строка
+ *      ещё ничья), и в документе есть человек с `perm: 'chief'`. Такой человек —
+ *      владелец с полными правами БЕЗ `?k=`. Ссылка, оставшаяся в адресе, его не
+ *      понижает и личность не подменяет: до 04.08.2026 было наоборот, и владелец,
+ *      открывший страницу по ссылке Кости, работал за Костю с правами участника.
+ *   2. ЛИЧНАЯ ССЫЛКА С КЛЮЧОМ: `?u=<кто>&k=<ключ>` или путь `/<поездка>/<имя>`.
+ *      Работает как работала — этим живёт вся команда.
+ *   3. ЗАПОМНЕННЫЙ В БРАУЗЕРЕ человек (`flops.auth`): им живут короткие адреса,
+ *      открытые второй раз.
+ *   4. НИЧЕГО — гость. Права считаются как в v1.
+ *
+ * Шаги 2–4 целиком внутри `checkAuth()` (lib/perm.ts) и не меняются.
+ */
 function refreshAuth(): void {
   const c = checkAuth(doc.people)
-  auth = c.auth
-  stale = c.stale
-  if (c.me && doc.me !== c.me) doc.me = c.me
+  let nextAuth = c.auth
+  let nextStale = c.stale
+  let me = c.me
+  let state: SignInState = 'none'
+  let reason = ''
+
+  const mail = (session ? session.email : '').trim().toLowerCase()
+  if (mail) {
+    const chief = doc.people.find((p) => p.perm === 'chief') || null
+    if (!owner.ok) {
+      state = 'unknown'
+      reason = owner.reason
+    } else if (owner.email && owner.email !== mail) {
+      state = 'foreign'
+    } else if (!chief) {
+      state = 'nochief'
+    } else {
+      /* Шаг 1: сеанс перекрывает адрес. Ключ владельца берётся из его же карточки —
+         тем же ключом подписываются правки (sync.getKey), а сервер сверяет ещё и
+         почту из токена (docs/rls-apply-c.sql), так что обойти это подстановкой
+         в браузере нельзя. */
+      state = owner.email ? 'owner' : 'unclaimed'
+      me = chief.id
+      meBySession = chief.id
+      nextAuth = { id: chief.id, key: chief.key || '' }
+      nextStale = false
+    }
+  }
+
+  /* Сеанс погас — выбранную им личность забываем. Иначе вышедший владелец остался бы
+     «Максом без ключа» даже там, где ссылки в адресе нет вовсе, и вместо прежних
+     полномочий «файла на одного» получил бы права участника. */
+  if (meBySession && me !== meBySession) {
+    if (!me && doc.me === meBySession) doc.me = ''
+    meBySession = ''
+  }
+
+  auth = nextAuth
+  stale = nextStale
+  if (me && doc.me !== me) doc.me = me
   perms = makePerms(doc, auth, stale)
+  signIn = { email: mail, state, reason, note }
 }
 refreshAuth()
+
+/** Показать сообщение о событии входа-выхода. Пустая строка — убрать. */
+function setNote(text: string): void {
+  note = text
+  signIn = { ...signIn, note }
+  if (noteT) clearTimeout(noteT)
+  noteT = text ? setTimeout(() => setNote(''), NOTE_LIFE) : null
+  emit()
+}
+
+/** Сеанс появился или пропал. */
+function onSession(s: Session | null): void {
+  const было = session ? session.email : ''
+  session = s
+  /* Владелец листа — вопрос к серверу, и на каждый вход его надо задавать заново. */
+  owner = { ok: false, email: '', reason: '' }
+  refreshAuth()
+  emit()
+  if (s) {
+    void loadOwner()
+    return
+  }
+  /* Молчаливых отказов не бывает: человек должен прочитать, что личность
+     снова берётся из ссылки, и кем он стал. */
+  if (было) {
+    const кто = perms.mePerson ? perms.mePerson.name : ''
+    setNote(
+      кто
+        ? `Вы вышли из сеанса ${было}. Личность снова берётся из ссылки — сейчас это ${кто}.`
+        : `Вы вышли из сеанса ${было}. Личность снова берётся из ссылки в адресе.`,
+    )
+  }
+}
+
+/** Сходить за `owner_email` строки и пересчитать личность. */
+async function loadOwner(): Promise<void> {
+  const r = await fetchTripOwner()
+  /* Пока ходили, человек мог выйти — тогда ответ уже ни к чему. */
+  if (!session) return
+  owner = r
+  refreshAuth()
+  emit()
+  /* Молчаливых отказов не бывает — но и молчаливых удач тоже: человек, который
+     только что подтвердил почту, должен прочитать, кем он стал в этой поездке.
+     Заказчик 04.08.2026: «я даже не вписал, кто я. То есть я не понимаю, как это
+     будет работать». Про «unclaimed» и про отказы говорит PermNotice сам. */
+  if (signIn.state === 'owner') {
+    const кто = perms.mePerson
+    setNote(
+      кто && кто.name
+        ? `Вы вошли как ${signIn.email}. В этой поездке вы — ${кто.name}, владелец.`
+        : `Вы вошли как ${signIn.email}. Эта поездка ваша: вы её владелец.`,
+    )
+  }
+}
 
 /* ─────────── подписка (useSyncExternalStore) ─────────── */
 
@@ -108,8 +269,9 @@ interface Snapshot {
   perms: Perms
   net: { state: NetState; msg: string }
   presence: Presence[]
+  signIn: SignIn
 }
-let snapshot: Snapshot = { S: doc, perms, net, presence }
+let snapshot: Snapshot = { S: doc, perms, net, presence, signIn }
 
 /** Пересобрать снимок и разбудить подписчиков — только если что-то правда изменилось. */
 function emit(): void {
@@ -117,10 +279,11 @@ function emit(): void {
     snapshot.S === doc &&
     snapshot.perms === perms &&
     snapshot.net === net &&
-    snapshot.presence === presence
+    snapshot.presence === presence &&
+    snapshot.signIn === signIn
   )
     return
-  snapshot = { S: doc, perms, net, presence }
+  snapshot = { S: doc, perms, net, presence, signIn }
   listeners.forEach((l) => l())
 }
 
@@ -251,9 +414,11 @@ function startSync(): void {
   if (sync || typeof window === 'undefined') return
 
   /* Поднять сеанс владельца (Supabase Auth) до первого запроса к базе: если человек
-     вошёл, запросы пойдут от его имени, а не от общего ключа. Ничего не ждём — вход
-     сейчас никому ничего не запрещает, а документ должен открыться в любом случае.
-     Подробности и что осталось сделать в базе — docs/rls-migration.sql. */
+     вошёл, запросы пойдут от его имени, а не от общего ключа. Ничего не ждём —
+     документ должен открыться в любом случае, а личность уточнится, когда придёт
+     ответ про владельца листа.
+     Подписка ставится ДО initAuth(): она же и получит первое событие. */
+  onAuthChange(onSession)
   void initAuth()
   sync = new Sync({
     applyRemote,
@@ -292,12 +457,20 @@ export interface TripApi {
   perms: Perms
   net: { state: NetState; msg: string }
   presence: Presence[]
+  /** чем кончилась сверка сеанса по почте с листом */
+  signIn: SignIn
   isHere: (id: string) => boolean
 }
 
 /** Текущее состояние без хука — для кода вне React и для проверок. */
 export function readTrip(): Omit<TripApi, 'update' | 'remove' | 'isHere'> {
-  return { S: snapshot.S, perms: snapshot.perms, net: snapshot.net, presence: snapshot.presence }
+  return {
+    S: snapshot.S,
+    perms: snapshot.perms,
+    net: snapshot.net,
+    presence: snapshot.presence,
+    signIn: snapshot.signIn,
+  }
 }
 
 /** Главный хук: документ, права, сеть, присутствие и правка. */
@@ -314,6 +487,7 @@ export function useTrip(): TripApi {
     perms: snap.perms,
     net: snap.net,
     presence: snap.presence,
+    signIn: snap.signIn,
     isHere,
   }
 }

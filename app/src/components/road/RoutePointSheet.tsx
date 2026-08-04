@@ -2,22 +2,27 @@ import { useState } from 'react'
 import { MapPinned, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { LegMode, RouteLabel, RoutePoint } from '@/lib/types'
-import { Btn, NumberSheet, PickSheet, ResponsiveSheet, SheetRow, TextSheet } from '@/components/flops'
+import { Btn, InlineNum, InlineText, PickSheet, ResponsiveSheet, SheetRow } from '@/components/flops'
 import { Switch } from '@/components/ui/switch'
 import { plural } from '@/format'
 import { calcLegsByMap } from './legs'
-import { coordLabel, kmLabel, labelName, LABEL_OPTIONS, legName } from './roadx'
+import { coordLabel, dg, kmLabel, labelName, LABEL_OPTIONS, legName } from './roadx'
 
 /**
- * Карточка точки маршрута (docs/v2-ux-redesign.md, 10.6):
- * время, название, заметка, метка, «как добираемся», расстояние и координаты.
+ * Карточка точки маршрута — только то, что выбирается из списка.
  *
- * Координаты здесь не набираются руками: точка ставится и двигается на карте,
+ * ⚠️ Время, название, описание и адрес отсюда ушли: они правятся прямо в строке
+ * ленты (RouteTiming). Здесь осталась метка этапа, чем добираемся до точки,
+ * расстояние от прошлой точки и снятие точки с карты.
+ *
+ * Координаты руками не набираются: точка ставится и двигается на карте,
  * а карточка показывает то, что получилось.
+ *
+ * Карточку открывает и лента, и карта — поэтому она живёт отдельным файлом.
  */
 
 /** Что открыто вторым уровнем. */
-type Level2 = null | 'time' | 'name' | 'note' | 'addr' | 'lab' | 'labT' | 'mode' | 'leg'
+type Level2 = null | 'lab' | 'mode'
 
 interface Props {
   item: RoutePoint
@@ -77,55 +82,83 @@ export function RoutePointSheet({
           </Btn>
         }
       >
-        {item.c ? <p className="text-sm leading-snug text-muted">{item.c}</p> : null}
-
-        <div className="mt-2">
-          <SheetRow label="Время" value={item.time || 'не поставлено'} empty={!item.time} onClick={go('time')} />
-          <SheetRow label="Название" value={item.n || 'без названия'} empty={!item.n} onClick={go('name')} />
-          <SheetRow label="Заметка" value={item.c || 'нет'} empty={!item.c} onClick={go('note')} />
-          <SheetRow label="Метка" value={labelName(item) || 'без метки'} empty={!item.lab} onClick={go('lab')} />
+        <div>
+          <SheetRow
+            label="Метка"
+            value={labelName(item) || 'без метки'}
+            empty={!item.lab}
+            onClick={go('lab')}
+          />
           {item.lab === 'other' ? (
-            <SheetRow label="Своя метка" value={item.labT || 'нет'} empty={!item.labT} onClick={go('labT')} />
+            <div className="border-b border-line py-2">
+              <div className="text-note font-semibold text-muted">Своя метка</div>
+              <InlineText
+                value={item.labT}
+                onSave={(v) =>
+                  onPatch((p) => {
+                    p.labT = v
+                  })
+                }
+                can={canEdit}
+                label="Своя метка"
+                placeholder="Как назвать этот этап"
+                className="text-body text-ink"
+              />
+            </div>
           ) : null}
           <SheetRow label="Как добираемся" value={legName(item.mode)} onClick={go('mode')} />
-          <SheetRow
-            label="От прошлой точки"
-            value={item.leg > 0 ? kmLabel(item.leg) : 'не считали'}
-            empty={item.leg <= 0}
-            hint={
-              item.legSrc === 'osrm'
-                ? 'Посчитано по карте'
-                : item.legSrc === 'hand'
-                  ? 'Вписано руками'
-                  : undefined
-            }
-            onClick={go('leg')}
-          />
+
+          <div className="flex min-h-14 items-center gap-3 border-b border-line px-1">
+            <span className="min-w-0 flex-1 text-body font-medium text-muted">
+              От прошлой точки
+            </span>
+            <InlineNum
+              value={item.leg}
+              onSave={(v) =>
+                onPatch((p) => {
+                  p.leg = v
+                  p.legSrc = 'hand'
+                })
+              }
+              can={canEdit}
+              kind="plain"
+              digits={dg(item.leg)}
+              unit="км"
+              label="Расстояние от прошлой точки"
+              className="text-body font-semibold text-ink"
+            />
+          </div>
+          <p className="-mt-1 pb-3 pl-1 text-note text-muted">
+            {item.legSrc === 'osrm'
+              ? 'Посчитано по карте. В расчёт бензина это расстояние не идёт'
+              : 'В расчёт бензина это расстояние не идёт — оно только показывается в ленте'}
+          </p>
+
           {canEdit && (
-            <div className="border-b border-line/70 py-2">
+            <div className="border-b border-line py-2">
               <Btn tone="secondary" disabled={busy} onClick={() => void byMap()}>
-                <MapPinned size={18} strokeWidth={1.5} aria-hidden />
+                <MapPinned size={18} strokeWidth={1.75} aria-hidden />
                 {busy ? 'Считаем по карте…' : 'Посчитать по карте'}
               </Btn>
-              <p className="mt-1 text-[13px] leading-snug text-muted">
+              <p className="mt-1 text-note leading-snug text-muted">
                 Расстояния между всеми точками возьмём по дорогам. Руками вписанное
                 число встанет поверх.
               </p>
             </div>
           )}
-          <SheetRow label="Адрес" value={item.addr || 'нет'} empty={!item.addr} onClick={go('addr')} />
+
           <SheetRow
             label="Координаты"
             value={coord || 'не поставлены'}
             empty={!coord}
-            hint="Точка ставится и двигается на карте — на вкладке «На карте»"
+            hint="Точка ставится и двигается на карте"
           />
 
           {canEdit ? (
-            <div className="flex min-h-14 items-center gap-3 border-b border-line/70 px-1">
+            <div className="flex min-h-14 items-center gap-3 border-b border-line px-1">
               <label
                 htmlFor={`done-${item.i}`}
-                className="min-w-0 flex-1 py-2 text-[15px] font-medium text-muted"
+                className="min-w-0 flex-1 py-2 text-body font-medium text-muted"
               >
                 Этап пройден
               </label>
@@ -181,85 +214,14 @@ export function RoutePointSheet({
                 onClose()
               }}
             >
-              <Trash2 size={18} strokeWidth={1.5} aria-hidden />
+              <Trash2 size={18} strokeWidth={1.75} aria-hidden />
               Убрать точку
             </Btn>
           </div>
         )}
       </ResponsiveSheet>
 
-      {/* ─── второй уровень ─── */}
-      <TextSheet
-        open={lvl === 'time'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Время"
-        subtitle="Во сколько мы здесь — часы и минуты"
-        value={item.time}
-        placeholder="11:00"
-        onDone={(v) =>
-          onPatch((p) => {
-            p.time = v
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'name'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Название точки"
-        subtitle={item.time}
-        value={item.n}
-        placeholder="Например, Приозерск: закупка"
-        onDone={(v) =>
-          v &&
-          onPatch((p) => {
-            p.n = v
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'note'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Заметка"
-        subtitle={item.n}
-        value={item.c}
-        multiline
-        placeholder="Что здесь важно не забыть"
-        onDone={(v) =>
-          onPatch((p) => {
-            p.c = v
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'addr'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Адрес"
-        subtitle={item.n}
-        value={item.addr}
-        placeholder="Улица, дом или ориентир"
-        onDone={(v) =>
-          onPatch((p) => {
-            p.addr = v
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'labT'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Своя метка"
-        subtitle={item.n}
-        value={item.labT}
-        onDone={(v) =>
-          onPatch((p) => {
-            p.labT = v
-          })
-        }
-      />
+      {/* ─── второй уровень: выбор из списка ─── */}
       <PickSheet
         open={lvl === 'lab'}
         onOpenChange={(v) => !v && back()}
@@ -289,23 +251,6 @@ export function RoutePointSheet({
         onPick={(id) =>
           onPatch((p) => {
             p.mode = id as LegMode
-          })
-        }
-      />
-      <NumberSheet
-        open={lvl === 'leg'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="От прошлой точки"
-        subtitle={item.n}
-        value={item.leg}
-        kind="km"
-        unit="км"
-        hint={() => 'Это расстояние показывается в ленте и в расчёт бензина не идёт'}
-        onChange={(v) =>
-          onPatch((p) => {
-            p.leg = v
-            p.legSrc = 'hand'
           })
         }
       />

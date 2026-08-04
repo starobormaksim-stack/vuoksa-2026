@@ -73,7 +73,7 @@ function Head({ title, subtitle, onBack }: Pick<ResponsiveSheetProps, 'title' | 
           aria-label="Назад"
           className="-ml-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
         >
-          <ChevronLeft size={22} strokeWidth={1.5} aria-hidden />
+          <ChevronLeft size={20} strokeWidth={1.75} aria-hidden />
         </button>
       )}
       {/* Скринридеру заголовок уже объявлен через DrawerTitle/DialogTitle —

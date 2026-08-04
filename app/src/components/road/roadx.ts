@@ -7,51 +7,28 @@
  * через разделитель, без единого знака операции.
  */
 
-import {
-  Backpack, Bike, Car, Flame, Package, Plane, Sailboat, SquareParking, TentTree,
-  type LucideIcon,
-} from 'lucide-react'
-import type {
-  CanRow, Kind, LegMode, Rent, RouteLabel, RoutePoint, State, Transport,
-} from '@/lib/types'
-import { litres, money, routeKm } from '@/lib/calc'
+import type { CanRow, Kind, LegMode, Rent, RouteLabel, RoutePoint, State, Transport } from '@/lib/types'
+import { litres } from '@/lib/calc'
 import { fmtNum, NBSP, plural, startOfDay } from '@/format'
 
 const MDASH = '—'
 
 /**
- * Какое число сейчас правится в разделе «Дорога».
+ * Сколько знаков после запятой показывать у этого числа.
  *
- * Шторка правки чисел в разделе одна на все поля (NumberSheet), а полей полтора
- * десятка: расстояния, цены топлива, расходы техники, цены и сроки аренды.
- * Этот тип — адрес правимого числа, который карточка «Исходные данные» передаёт
- * разделу, а раздел разворачивает в подписи, шаг и подсказку.
+ * Целое показывается целым («2 ×», «150 км»), дробное — с одним знаком
+ * («10,5 л/100 км»). Постоянная точность врала бы в обе стороны: «2,0 конца»
+ * там, где стоит двойка, и «3 ×» там, где человек вписал 2,5.
  */
-export type NumField =
-  | { k: 'dist'; f: 'manual' | 'kBack' | 'local' }
-  | { k: 'fuel'; id: string }
-  | { k: 'tr'; id: string; f: 'rate' | 'hours' | 'litres' }
-  | { k: 'rent'; id: string; f: 'price' | 'qty' | 'count' }
+export function dg(v: number): 0 | 1 {
+  return Number.isInteger(v) ? 0 : 1
+}
 
 /* ─────────── техника ─────────── */
-
-/** kinds[].icon → иконка Lucide. Значка нет в таблице — рисуем машину. */
-const KIND_ICONS: Record<string, LucideIcon> = {
-  car: Car,
-  sailboat: Sailboat,
-  flame: Flame,
-  bike: Bike,
-  plane: Plane,
-}
 
 /** Вид техники из справочника (нет в справочнике — null, тогда живёт kindT). */
 export function kindOf(t: Transport, S: State): Kind | null {
   return S.kinds.find((k) => k.i === t.kind) ?? null
-}
-
-export function kindIcon(t: Transport, S: State): LucideIcon {
-  const k = kindOf(t, S)
-  return (k && KIND_ICONS[k.icon]) || Car
 }
 
 /** Название вида: из справочника, иначе «свой вариант» kindT. */
@@ -69,12 +46,6 @@ export function personName(S: State, id: string): string {
 /** Название топлива по id из fuelPrices. */
 export function fuelName(S: State, id: string): string {
   return S.fuelPrices.find((f) => f.i === id)?.n ?? 'топливо'
-}
-
-/** Первая строка техники: «Honda Accord · Костя». */
-export function transportTitle(t: Transport, S: State): string {
-  const owner = personName(S, t.owner)
-  return owner ? `${t.n} · ${owner}` : t.n
 }
 
 /** Подзаголовок карточки: «Автомобиль · Костя · АИ-95». */
@@ -125,21 +96,6 @@ export function hoursLabel(n: number): string {
   return `${fmtNum(n, 1)}${NBSP}${plural(Math.round(n), 'час', 'часа', 'часов')}`
 }
 
-/**
- * Вторая строка техники — три факта через «·», без знаков операций:
- *   «330 км · 10,5 л на 100 км · 34,7 л»
- *   «10 часов · 2,5 л в час · 25 л»
- *   «5 л заливаем разом»
- */
-export function transportLine(t: Transport, S: State): string {
-  const l = litresLabel(litres(t, S))
-  if (t.rateU === 'lh') {
-    return `${hoursLabel(t.hours)} · ${fmtNum(t.rate, 1)}${NBSP}л в час · ${l}`
-  }
-  if (t.rateU === 'fix') return `${litresLabel(t.litres)} заливаем разом`
-  return `${kmLabel(routeKm(S))} · ${fmtNum(t.rate, 1)}${NBSP}л на 100${NBSP}км · ${l}`
-}
-
 /** Как считаем расход — по-русски, для строки «Расход считаем». */
 export const RATE_TITLES: Record<string, string> = {
   l100km: 'на 100 км',
@@ -181,20 +137,6 @@ export function canRowOf(S: State, fuelId: string): CanRow | null {
 
 /* ─────────── аренда ─────────── */
 
-/** Иконка категории аренды. */
-const RENT_ICONS: Record<string, LucideIcon> = {
-  transport: Sailboat,
-  place: TentTree,
-  parking: SquareParking,
-  gear: Backpack,
-  other: Package,
-}
-
-export function rentIcon(r: Rent, S: State): LucideIcon {
-  const cat = S.rentCats.find((c) => c.i === r.cat)
-  return (cat && RENT_ICONS[cat.i]) || Package
-}
-
 export function rentCatName(r: Rent, S: State): string {
   return S.rentCats.find((c) => c.i === r.cat)?.t ?? 'Другое'
 }
@@ -210,15 +152,6 @@ export function rentQtyLabel(r: Rent): string {
     return `${fmtNum(r.qty, 0)}${NBSP}${plural(Math.round(r.qty), 'сутки', 'суток', 'суток')}`
   }
   return `${fmtNum(r.qty, 1)}${NBSP}${r.unit || 'шт.'}`
-}
-
-/** «2 000 ₽ в сутки, 5 суток, 2 штуки» — вторая строка аренды. */
-export function rentLine(r: Rent, S: State): string {
-  const parts = [`${money(r.price, S.doc)} ${rentPer(r)}`, rentQtyLabel(r)]
-  if (r.count > 1) {
-    parts.push(`${fmtNum(r.count, 0)}${NBSP}${plural(r.count, 'штука', 'штуки', 'штук')}`)
-  }
-  return parts.join(', ')
 }
 
 /** Длительность поездки в сутках по trip.start/trip.end (10–14 августа → 5). */
@@ -281,13 +214,14 @@ export function pointMeta(p: RoutePoint): string {
   return parts.join(' · ')
 }
 
-/** Третья строка точки маршрута: метка · расстояние · координаты. */
+/**
+ * Строка точки с координатами — ею подписывает метку карта.
+ * Здесь координаты нужны: на карте адрес не виден, а метка должна назвать себя.
+ */
 export function pointLine(p: RoutePoint): string {
   const parts: string[] = []
-  const lab = labelName(p)
-  if (lab) parts.push(lab)
-  if (p.mode && p.mode !== 'road') parts.push(legName(p.mode))
-  if (p.leg > 0) parts.push(kmLabel(p.leg))
+  const meta = pointMeta(p)
+  if (meta) parts.push(meta)
   const c = coordLabel(p)
   if (c) parts.push(c)
   return parts.join(' · ')

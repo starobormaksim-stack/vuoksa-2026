@@ -20,7 +20,7 @@ export function EmptyState({ icon: Icon, title, text, action }: Props) {
   return (
     <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
       <span className="grid size-16 place-items-center rounded-full bg-zebra text-muted">
-        <Icon size={28} strokeWidth={1.5} aria-hidden />
+        <Icon size={28} strokeWidth={1.75} aria-hidden />
       </span>
       <div>
         <div className="text-body font-[650] text-ink">{title}</div>

@@ -64,7 +64,7 @@ export function SectionHead({
             aria-label="Что означают значки"
             className="grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
           >
-            <CircleHelp size={21} strokeWidth={1.5} aria-hidden />
+            <CircleHelp size={20} strokeWidth={1.75} aria-hidden />
           </button>
         )}
         {action && (
@@ -73,7 +73,7 @@ export function SectionHead({
             onClick={action.onClick}
             className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-4 text-body font-semibold text-on-accent transition-opacity hover:opacity-90"
           >
-            <Plus size={18} strokeWidth={2} aria-hidden />
+            <Plus size={18} strokeWidth={1.75} aria-hidden />
             {action.label}
           </button>
         )}
@@ -125,7 +125,7 @@ export function AddRow({ label, onClick }: { label: string; onClick: () => void 
       onClick={onClick}
       className="flex min-h-14 w-full items-center gap-2 px-4 text-left text-body font-semibold text-accent-text transition-colors hover:bg-zebra"
     >
-      <Plus size={18} strokeWidth={2} aria-hidden />
+      <Plus size={18} strokeWidth={1.75} aria-hidden />
       {label}
     </button>
   )

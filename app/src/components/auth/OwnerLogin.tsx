@@ -16,6 +16,13 @@ import { sendMagicLink } from '@/lib/auth'
  * в `lib/auth.ts`), вход и регистрация — одно и то же письмо.
  * Заголовок даёт шапка шторки — второй такой же внутри был бы дублем.
  *
+ * ─── Что здесь написано словами и почему ───
+ * Заказчик 04.08.2026: «я, как владелец, единственный буду регистрироваться… потом
+ * я раздаю ссылки того, кого я сделаю редактором. Я выбираю, кого сделать редактором».
+ * Значит экран обязан сказать это прямо: почтой входит владелец поездки, остальные —
+ * по личным ссылкам из раздела «Команда». Иначе человек ищет здесь общий вход для всех
+ * и не находит.
+ *
  * Обмен с сервером целиком в `lib/auth.ts`: здесь только `sendMagicLink`.
  *
  * Форма остаётся на экране и после отправки. Так человек видит адрес, на который ушло
@@ -71,8 +78,12 @@ export function OwnerLogin() {
     <div className="flex flex-col gap-5 pb-1">
       <div className="flex flex-col items-center gap-3 pt-1 text-center">
         <Logo height={30} />
-        <p className="text-[14px] leading-relaxed text-balance text-ink">
-          Ссылку для входа пришлём на почту. Первый вход с нового адреса сам создаёт
+        <p className="text-body leading-relaxed text-balance text-ink">
+          Почтой входит владелец поездки — один человек на весь лист. Остальные заходят
+          по личным ссылкам, которые владелец раздаёт в разделе «Команда».
+        </p>
+        <p className="text-note leading-relaxed text-balance text-muted">
+          Ссылку для входа пришлём на почту. Первый вход с нового адреса сам заводит
           учётную запись — отдельной регистрации нет. Пароль придумывать не надо.
         </p>
       </div>
@@ -84,11 +95,11 @@ export function OwnerLogin() {
         >
           <MailCheck
             size={20}
-            strokeWidth={1.5}
+            strokeWidth={1.75}
             className="mt-0.5 shrink-0 text-accent-text"
             aria-hidden
           />
-          <p className="text-[14px] leading-relaxed text-ink">
+          <p className="text-note leading-relaxed text-ink">
             Письмо ушло на <span className="font-semibold break-all">{sentTo}</span>. Откройте
             его и нажмите на ссылку — вернётесь сюда уже вошедшим. Письмо идёт не мгновенно;
             если его нет — посмотрите в папке со спамом.
@@ -100,11 +111,12 @@ export function OwnerLogin() {
           браузера показала бы своё окошко поверх нашего. */}
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3" noValidate>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="owner-email" className="text-[13px] font-semibold text-muted">
+          <Label htmlFor="owner-email" className="text-note font-semibold text-muted">
             Почта
           </Label>
           {/* inputMode и autoCapitalize — чтобы телефон предложил адрес и не включил
-              заглавную букву в начале; 16 px не дают iOS приблизить страницу. */}
+              заглавную букву в начале; `text-field` — те самые 16 px вне шкалы,
+              без которых iOS приближает страницу при фокусе (index.css). */}
           <Input
             id="owner-email"
             type="email"
@@ -120,12 +132,12 @@ export function OwnerLogin() {
               setEmail(e.target.value)
               setError('')
             }}
-            className="h-12 rounded-xl border-line-strong bg-surface px-3 text-[16px] text-ink md:text-[16px] focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="h-12 rounded-xl border-line-strong bg-surface px-3 text-field text-ink md:text-field focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
           />
         </div>
 
         {error && (
-          <p role="alert" className="text-[13px] leading-relaxed text-danger">
+          <p role="alert" className="text-note leading-relaxed text-danger">
             {error}
           </p>
         )}
@@ -137,14 +149,15 @@ export function OwnerLogin() {
           disabled={busy || wait > 0}
           aria-busy={busy}
         >
-          {busy && <Loader2 size={18} strokeWidth={1.5} className="animate-spin" aria-hidden />}
+          {busy && <Loader2 size={18} strokeWidth={1.75} className="animate-spin" aria-hidden />}
           {label}
         </Btn>
       </form>
 
-      <p className="text-[12px] leading-relaxed text-muted">
-        Вход почтой ничего не отнимает: личные ссылки участников работают как работали.
-        Он лишь подтверждает, что за документом — владелец.
+      <p className="text-micro leading-relaxed text-muted">
+        Личные ссылки участников работают как работали — вход почтой у них ничего не
+        отнимает. Владельцу он нужен, чтобы лист узнавал его самого: после входа полные
+        права даются по почте, даже если в адресе осталась чужая ссылка.
       </p>
     </div>
   )

@@ -101,8 +101,8 @@ export function SearchCommand({
       <CommandList className="max-h-[60dvh]">
         <CommandEmpty>
           <div className="px-4 py-6 text-center">
-            <div className="text-base font-[650] text-ink">Ничего не нашлось</div>
-            <p className="mt-1 text-sm text-muted">
+            <div className="text-body font-[650] text-ink">Ничего не нашлось</div>
+            <p className="mt-1 text-note text-muted">
               Попробуйте другое слово — ищем по названиям и примечаниям
             </p>
           </div>
@@ -119,8 +119,8 @@ export function SearchCommand({
               className="min-h-14 items-start gap-1"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-semibold text-ink">{h.title}</span>
-                <span className="block truncate text-[13px] text-muted">
+                <span className="block truncate text-body font-semibold text-ink">{h.title}</span>
+                <span className="block truncate text-note text-muted">
                   {h.sectionTitle}
                   {h.note ? ` · ${h.note}` : ''}
                 </span>

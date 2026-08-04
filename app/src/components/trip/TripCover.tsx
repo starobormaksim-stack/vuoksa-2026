@@ -1,17 +1,47 @@
 import { useState } from 'react'
 import { CalendarDays, Camera, MapPin, TentTree } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Trip, TripPlace } from '../../lib/types'
-import { countdown, fmtRange } from '../../format'
-import { update } from '../../store'
-import { PhotoCropSheet, usePhotoPick } from '../flops'
+import type { State, Trip, TripPlace } from '@/lib/types'
+import type { Perms } from '@/lib/perm'
+import { countdown, daysUntil, fmtRange, plural } from '@/format'
+import { update } from '@/store'
+import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
+import { MoneyTiles } from './MoneyTiles'
+import { WeatherDetail, WeatherRow } from './WeatherStrip'
+
+/**
+ * Обложка поездки — квадрат с фотографией, на которой живёт вся поездка
+ * (заказчик 04.08.2026: «надо вот эту фотографию сделать квадратной… не по центру
+ * хуярить это всё»).
+ *
+ * На самой фотографии: блок «до выезда», прицепленный к левой стороне; название
+ * и подзаголовок; даты и места; четыре суммы; лента погоды по дням. Всё — по левому
+ * краю, никакого центрирования. Плашки с обратным отсчётом внизу больше нет:
+ * она дублировала блок слева, и заказчик велел её убрать.
+ *
+ * Правится всё прямо здесь, тапом по самому значению. Шторок ровно две, и обе
+ * неизбежны: выбор фотографии (кадрирование пальцем) и календарь дат.
+ *
+ * ⚠️ Фотография НЕ кадрируется: `object-contain` показывает её целиком, пустоту
+ * по краям закрывает размытая копия того же снимка — приём из `PersonHead`.
+ * Заказчик дважды жаловался, что снимок «обрезается по углам».
+ *
+ * ⚠️ Текст поверх снимка читается на любой фотографии: подложка — графит бренда
+ * с прозрачностью 90 %. Даже на белом снимке крем на такой подложке даёт ≥ 6 : 1
+ * (норма 4,5 : 1). Подсветка наведения тоже кремовая, а не светлая из токенов:
+ * светлое пятно под кремовым текстом убило бы контраст. Селектор с потомком
+ * сильнее утилиты `hover:` по специфичности, поэтому `!important` не нужен.
+ */
+
+/** Общая подложка текста поверх фотографии — один цвет на все плашки обложки. */
+const SCRIM = 'bg-brand-dark/90'
+/** Наведение и нажатие поверх фотографии: крем, а не светлый токен страницы. */
+const ONPHOTO = '[&_button:hover]:bg-brand-cream/12 [&_button:active]:bg-brand-cream/20'
 
 /**
  * Подпись с датами. Считается из trip.start и trip.end — из тех же полей, из которых
- * считается обратный отсчёт и длительность поездки. Готовая строка trip.dates берётся
- * только тогда, когда владелец вписал её руками (datesAuto === false): иначе после
- * правки календаря на обложке могла бы остаться старая подпись, не сходящаяся
- * с отсчётом «до выезда».
+ * считается обратный отсчёт. Готовая строка trip.dates берётся только тогда, когда
+ * владелец вписал её руками (datesAuto === false).
  */
 function datesLabel(trip: Trip): string {
   if (trip.datesAuto === false) return trip.dates
@@ -21,79 +51,235 @@ function datesLabel(trip: Trip): string {
   return fmtRange(a, b)
 }
 
-interface Props {
-  trip: Trip
-  places: TripPlace[]
-  onEditDates: () => void
-  onShowPlaces: () => void
-  /** тап по названию поездки — шторка правки текста (живёт в TripSection) */
-  onEditTitle: () => void
-  /** тап по подзаголовку — своя шторка там же */
-  onEditSub: () => void
-  /**
-   * Даты и места меняют только владелец и редактор. Участнику кнопки не рисуются
-   * вовсе (правило 12.2: «действие не положено — кнопки нет, а не серая»).
-   */
-  canEdit: boolean
+/** Точки поездки; если массива places ещё нет — собираем из старого поля place. */
+function tripPlaces(S: State): TripPlace[] {
+  if (S.trip.places?.length) return S.trip.places
+  if (S.trip.place) return [{ i: 'pl-legacy', n: S.trip.place, main: true }]
+  return []
 }
 
-/**
- * Обложка поездки: на десктопе квадрат слева, фото-hero с градиентной подложкой,
- * заголовок, подзаголовок, даты (тап — календарь), места (тап — шторка) и обратный отсчёт.
- */
-export function TripCover({
-  trip, places, onEditDates, onShowPlaces, onEditTitle, onEditSub, canEdit,
-}: Props) {
-  const main = places.find((p) => p.main) ?? places[0]
-  const extra = places.length - 1
-  const dates = datesLabel(trip)
-  const chip =
-    'flex min-h-11 items-center gap-2 rounded-xl bg-brand-dark/45 px-3 backdrop-blur-sm'
+interface Props {
+  S: State
+  perms: Perms
+  /** тап по датам — календарь (одна из двух оправданных шторок) */
+  onEditDates: () => void
+}
 
-  /* Обложка меняется тем же кадрированием, что и фотографии людей (flops/PhotoSheet).
-     Раньше её нельзя было поменять никак — в первой версии это работало, во второй
-     пропало, и заказчик на это отдельно жаловался. */
+export function TripCover({ S, perms, onEditDates }: Props) {
+  const trip = S.trip
+  const canEdit = perms.isEditor()
+  const places = tripPlaces(S)
+  const dates = datesLabel(trip)
+  const days = daysUntil(trip.start)
+  const start = new Date(trip.start)
+  const time = Number.isNaN(start.getTime()) ? '' : start.toTimeString().slice(0, 5)
+
+  /** какой день прогноза раскрыт под фотографией */
+  const [wDay, setWDay] = useState<string | null>(null)
+  /** выбранный файл ждёт кадрирования */
   const [src, setSrc] = useState<string | null>(null)
   const { pick, input } = usePhotoPick(setSrc)
 
+  /* Названия мест правятся на месте. Массива в документе может ещё не быть —
+     тогда сперва заводим его из старого поля, не потеряв название. */
+  const patchPlaces = (f: (list: TripPlace[]) => void) =>
+    update((s) => {
+      if (!s.trip.places?.length) {
+        s.trip.places = s.trip.place ? [{ i: 'pl-legacy', n: s.trip.place, main: true }] : []
+      }
+      f(s.trip.places)
+    })
+
+  const renamePlace = (id: string, n: string) =>
+    patchPlaces((list) => {
+      const p = list.find((x) => x.i === id)
+      if (p) p.n = n
+    })
+
+  const addPlace = (n: string) =>
+    patchPlaces((list) => {
+      list.push({ i: 'pl' + Date.now().toString(36), n, main: list.length === 0 })
+    })
+
   return (
-    /* На десктопе обложка больше не квадрат: под ней в той же колонке стоит лента
-       точек (см. map/RouteBoard.tsx), и квадрат съедал бы всю высоту блока. */
-    <div className="relative aspect-[4/3] overflow-hidden rounded-2xl shadow-md sm:aspect-[16/9] lg:max-h-[400px]">
-      {trip.hero ? (
-        <img src={trip.hero} alt="" className="absolute inset-0 size-full object-cover" />
-      ) : (
-        /* Пока у поездки нет фото — фирменная хвойная подложка. */
-        <div
-          className="absolute inset-0 grid place-items-center"
-          style={{ background: 'linear-gradient(160deg, #3D5226 0%, #223012 70%, #161C10 100%)' }}
-        >
-          <TentTree size={96} strokeWidth={1} aria-hidden className="opacity-25 text-brand-cream" />
+    <section
+      aria-label="Обложка поездки"
+      className="overflow-hidden rounded-xl border border-line bg-surface shadow-md"
+    >
+      {/* Квадрат — решение заказчика. На десктопе это крупный квадрат, а не полоса.
+          Три слоя лежат в одной клетке сетки: пустая распорка задаёт квадрат,
+          на ней — снимок, поверх — содержимое. Высота клетки равна самому высокому
+          слою, поэтому на узком экране содержимое не срезается верхним краем:
+          обложка просто становится чуть выше квадрата, а не теряет строку. */}
+      {/* ⚠️ `min-w-0` и `grid-cols-[minmax(0,1fr)]` обязательны. Без них колонка
+          грида растягивается по самому длинному неразрывному куску содержимого:
+          название поездки в 24 px не переносилось, задавало колонке 420 px при
+          экране 390, и правый край обложки уезжал за экран (замерено 04.08.2026).
+          Горизонтальной прокрутки при этом не появлялось — её гасит
+          `body { overflow-x: hidden }`, — так что беда была молчаливой. */}
+      <div className="relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)]">
+        <div className="col-start-1 row-start-1 aspect-square w-full" aria-hidden />
+
+        <div className="relative col-start-1 row-start-1 overflow-hidden">
+          {trip.hero ? (
+            <>
+              {/* Размытая копия закрывает поля по краям, чтобы снимок не пришлось резать. */}
+              <img
+                src={trip.hero}
+                alt=""
+                aria-hidden
+                className="absolute inset-0 size-full scale-110 object-cover blur-xl"
+              />
+              <img src={trip.hero} alt="" className="absolute inset-0 size-full object-contain" />
+            </>
+          ) : (
+            <div className="absolute inset-0 grid place-items-center bg-brand-pine">
+              <TentTree size={96} strokeWidth={1.75} aria-hidden className="text-brand-cream/25" />
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Градиентная подложка под текст */}
-      <div
-        className="absolute inset-x-0 bottom-0 h-3/4"
-        style={{
-          background:
-            'linear-gradient(to top, rgba(22,28,16,.82) 0%, rgba(22,28,16,.45) 45%, rgba(22,28,16,0) 100%)',
-        }}
-        aria-hidden
-      />
+        {/* Блок «до выезда» прицеплен к левой стороне — так просил заказчик. */}
+        <div className={`absolute top-4 left-0 z-10 rounded-r-lg px-4 py-2 ${SCRIM}`}>
+          {days > 0 ? (
+            <>
+              <span className="block text-micro text-brand-cream/85">До выезда</span>
+              <span className="tnum block text-title font-bold text-brand-cream lg:text-hero">
+                {days}&#160;{plural(days, 'день', 'дня', 'дней')}
+              </span>
+            </>
+          ) : (
+            <span className="block text-head font-bold text-brand-cream">
+              {countdown(trip.start, trip.end)}
+            </span>
+          )}
+          {days >= 0 && time ? (
+            <span className="block text-micro text-brand-cream/85">
+              выезд в <span className="tnum">{time}</span>
+            </span>
+          ) : null}
+        </div>
 
-      {/* Сменить обложку. Участнику кнопки нет вовсе — не серой, а отсутствующей. */}
-      {canEdit && (
-        <button
-          type="button"
-          onClick={pick}
-          aria-label={trip.hero ? 'Сменить обложку поездки' : 'Поставить обложку поездки'}
-          className="absolute top-3 right-3 grid size-11 place-items-center rounded-xl bg-brand-dark/45 text-brand-cream backdrop-blur-sm transition-colors hover:bg-brand-dark/70"
+        {/* Сменить обложку. Участнику кнопки нет вовсе — не серой, а отсутствующей. */}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={pick}
+            aria-label={trip.hero ? 'Сменить обложку поездки' : 'Поставить обложку поездки'}
+            className={`absolute top-4 right-4 z-10 grid size-11 place-items-center rounded-lg text-brand-cream transition-colors hover:bg-brand-dark ${SCRIM}`}
+          >
+            <Camera size={20} strokeWidth={1.75} aria-hidden />
+          </button>
+        )}
+        {input}
+
+        {/* Всё содержимое обложки — по левому краю, внизу снимка. */}
+        <div className={`relative col-start-1 row-start-1 flex flex-col justify-end ${ONPHOTO}`}>
+          <div className="h-16 shrink-0 bg-gradient-to-t to-transparent from-brand-dark/90" aria-hidden />
+          <div className={`px-4 pb-4 lg:px-6 lg:pb-5 ${SCRIM}`}>
+            {/* `break-words`: название придумывает человек, и «ВУОКСА · ЮБИЛЕЙНАЯ»
+                одним куском не должно распирать обложку (см. комментарий у грида). */}
+            <h1 className="text-title leading-tight font-[750] text-brand-cream text-balance break-words lg:text-hero">
+              <InlineText
+                value={trip.title}
+                onSave={(v) => update((s) => { s.trip.title = v })}
+                can={canEdit}
+                label="Название поездки"
+                required
+                placeholder="Название поездки"
+                className="text-brand-cream"
+              />
+            </h1>
+
+            <p className="mt-0.5 text-note text-brand-cream/85">
+              <InlineText
+                value={trip.sub}
+                onSave={(v) => update((s) => { s.trip.sub = v })}
+                can={canEdit}
+                label="Подзаголовок поездки"
+                placeholder="Подзаголовок"
+                className="text-brand-cream/85"
+              />
+            </p>
+
+            <div className="mt-1 flex flex-col">
+              {/* Значок внутри кнопки: так вся строка дат — одна зона нажатия 44 px,
+                  и невидимый расширитель не залезает на строку места. */}
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={onEditDates}
+                  aria-label={`Даты поездки: ${dates}. Изменить`}
+                  className="-mx-2 flex min-h-11 items-center gap-2 rounded-md px-2 text-note text-brand-cream/85 transition-colors"
+                >
+                  <CalendarDays size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                  <span className="editable tnum font-semibold">{dates}</span>
+                </button>
+              ) : (
+                <span className="flex min-h-11 items-center gap-2 text-note text-brand-cream/85">
+                  <CalendarDays size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                  <span className="tnum font-semibold">{dates}</span>
+                </span>
+              )}
+
+              {(places.length > 0 || canEdit) && (
+                <div className="flex min-h-11 items-center gap-2 text-note text-brand-cream/85">
+                  <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4">
+                    {places.map((p) => (
+                      <span key={p.i} className="min-w-0 max-w-full">
+                        <InlineText
+                          value={p.n}
+                          onSave={(v) => renamePlace(p.i, v)}
+                          can={canEdit}
+                          label="Место поездки"
+                          required
+                          className="truncate font-semibold text-brand-cream/85"
+                        />
+                      </span>
+                    ))}
+                    {/* Мест ещё нет — на обложке пусто, и вписать место негде.
+                        Даём поле прямо здесь; когда место есть, лишнего приглашения
+                        не рисуем: новые точки ставятся на карте в «Дороге». */}
+                    {canEdit && places.length === 0 && (
+                      <span className="min-w-0 max-w-full">
+                        <InlineText
+                          value=""
+                          onSave={(v) => v && addPlace(v)}
+                          can
+                          label="Место поездки"
+                          placeholder="Место поездки"
+                          className="truncate text-brand-cream/85"
+                        />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── Суммы и погода ──
+            ⚠️ На телефоне они НЕ помещаются на снимок. Замерено 04.08.2026:
+            панель занимала 356 px из 357 — фотографии не оставалось вовсе,
+            а заказчик просил именно «сделать фотографию квадратной», то есть
+            хочет её видеть. Поэтому здесь один и тот же блок стоит в двух местах
+            раскладки: на телефоне это ВТОРАЯ строка сетки, то есть панель под
+            снимком; на десктопе, где квадрат ~700 px, он абсолютом ложится
+            на низ снимка — как и просил заказчик, «всё на фотографии».
+            Подложка одна и та же, поэтому кремовый текст читается в обоих местах. */}
+        <div
+          className={`relative z-10 px-4 pt-3 pb-4 ${SCRIM} ${ONPHOTO} lg:absolute lg:inset-x-0 lg:bottom-0 lg:px-6 lg:pt-0 lg:pb-5`}
         >
-          <Camera size={20} strokeWidth={1.5} aria-hidden />
-        </button>
-      )}
-      {input}
+          <MoneyTiles S={S} perms={perms} />
+          <WeatherRow S={S} open={wDay} onOpen={setWDay} />
+        </div>
+      </div>
+
+      {/* Что не влезло в ленту прогноза: разбор дня, световой день и выводы. */}
+      <WeatherDetail S={S} open={wDay} />
 
       {src && (
         <PhotoCropSheet
@@ -114,89 +300,6 @@ export function TripCover({
           onClose={() => setSrc(null)}
         />
       )}
-
-      <div className="absolute inset-x-0 bottom-0 p-5 text-brand-cream lg:p-6">
-        <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-dark">
-          {countdown(trip.start, trip.end)}
-        </span>
-        {/* Название и подзаголовок: у редактора это кнопки правки («как вижу, так и
-            редактирую»), у участника — обычный текст, не кнопка. Зона нажатия
-            добирается до 44 px невидимыми полями (py + отрицательный my). */}
-        <h1 className="mt-3 text-[32px] leading-[1.1] font-[750] text-balance lg:text-4xl">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={onEditTitle}
-              aria-label={`Название поездки: ${trip.title}. Изменить`}
-              className="editable -mx-2 -my-1.5 max-w-full rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-brand-dark/40"
-            >
-              {trip.title}
-            </button>
-          ) : (
-            trip.title
-          )}
-        </h1>
-        {canEdit ? (
-          <p className="mt-1 text-[15.5px] text-brand-cream/85">
-            <button
-              type="button"
-              onClick={onEditSub}
-              aria-label={
-                trip.sub ? `Подзаголовок: ${trip.sub}. Изменить` : 'Добавить подзаголовок'
-              }
-              className="editable -mx-2 -my-3 max-w-full rounded-xl px-2 py-3 text-left transition-colors hover:bg-brand-dark/40"
-            >
-              {/* Пустой подзаголовок — спокойное приглашение, чтобы было по чему тапнуть */}
-              {trip.sub || <span className="text-brand-cream/55">Подзаголовок</span>}
-            </button>
-          </p>
-        ) : (
-          trip.sub && <p className="mt-1 text-[15.5px] text-brand-cream/85">{trip.sub}</p>
-        )}
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={onEditDates}
-              className={`${chip} transition-colors hover:bg-brand-dark/65`}
-              aria-label={`Даты поездки: ${dates}. Изменить`}
-            >
-              <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
-              <span className="editable tnum text-sm font-semibold">{dates}</span>
-            </button>
-          ) : (
-            <span className={chip}>
-              <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
-              <span className="tnum text-sm font-semibold">{dates}</span>
-            </span>
-          )}
-
-          {main &&
-            (canEdit ? (
-              <button
-                type="button"
-                onClick={onShowPlaces}
-                className={`${chip} transition-colors hover:bg-brand-dark/65`}
-                aria-label="Места поездки"
-              >
-                <MapPin size={18} strokeWidth={1.5} aria-hidden />
-                <span className="editable max-w-56 truncate text-sm font-semibold">
-                  {main.n}
-                  {extra > 0 && ` +${extra}`}
-                </span>
-              </button>
-            ) : (
-              <span className={chip}>
-                <MapPin size={18} strokeWidth={1.5} aria-hidden />
-                <span className="max-w-56 truncate text-sm font-semibold">
-                  {main.n}
-                  {extra > 0 && ` +${extra}`}
-                </span>
-              </span>
-            ))}
-        </div>
-      </div>
-    </div>
+    </section>
   )
 }

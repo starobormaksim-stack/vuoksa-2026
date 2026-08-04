@@ -1,5 +1,8 @@
 import { Search } from 'lucide-react'
+import { useTrip } from '@/store'
 import { Logo } from './Logo'
+import { PresenceStack } from './PresenceStack'
+import { WhoAmI } from './WhoAmI'
 import { ThemeToggle } from './ThemeToggle'
 import { MoreMenu } from './MoreMenu'
 
@@ -46,6 +49,11 @@ export function MobileHeader({
   onSearch: () => void
   onHome: () => void
 }) {
+  /* Ряд присутствия встаёт ВНУТРИ полосы кнопок, а не отдельной строкой под ней:
+     высота шапки и высота распорки обязаны совпадать, а ряд появляется и пропадает
+     сам собой. Отдельная строка двигала бы всё содержимое страницы вниз. */
+  const { S } = useTrip()
+
   return (
     <>
       {/* Полоса безопасной зоны: непрозрачная заливка цветом фона поверх всего. */}
@@ -66,7 +74,7 @@ export function MobileHeader({
             aria-label="Pine-to-Pine — наверх"
             /* Знак 26 px, но нажимать надо по 44 px: высоту добирает сама кнопка,
                не трогая размер логотипа (заказчик отдельно просил его не растить). */
-            className="-mx-2 flex min-h-11 items-center rounded-xl px-2 transition-opacity active:opacity-70"
+            className="-mx-2 flex min-h-11 items-center rounded-md px-2 transition-colors hover:bg-zebra/70 active:scale-[0.98]"
           >
             <Logo height={26} />
           </button>
@@ -75,9 +83,9 @@ export function MobileHeader({
               type="button"
               aria-label="Поиск по листу"
               onClick={onSearch}
-              className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
+              className="grid size-11 place-items-center rounded-md text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
             >
-              <Search size={21} strokeWidth={1.5} aria-hidden />
+              <Search size={20} strokeWidth={1.75} aria-hidden />
             </button>
             <ThemeToggle dark={dark} onToggle={onToggleTheme} />
             <MoreMenu />
@@ -91,6 +99,17 @@ export function MobileHeader({
         className="lg:hidden"
         style={{ height: `calc(${BAR}px + env(safe-area-inset-top))` }}
       />
+
+      {/* Кто сейчас смотрит лист. Строка стоит В ПОТОКЕ, под распоркой, и уезжает
+          вместе со страницей: внутри полосы кнопок ей физически нет места (знак
+          и три кнопки занимают её целиком на 390 px), а второй ЭТАЖ самой шапки
+          развёл бы высоту шапки с высотой распорки — ту самую поломку, ради
+          которой шапка и стала `fixed`. Пока никого не видно — строки нет. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3 lg:hidden">
+        {/* Кто ты — первым делом. От этого зависит, что вообще можно делать. */}
+        <WhoAmI />
+        <PresenceStack people={S.people} variant="strip" />
+      </div>
     </>
   )
 }

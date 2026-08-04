@@ -284,7 +284,10 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
       e += fields(a, b, [
         'n', 'q', 'pr', 'prf', 'st', 'u', 'uid', 'who', 'sec', 'c', 'by', 'as', 'qby', 'ord',
       ])
-      e += jsonFields(a, b, ['qask'])
+      /* `o` — кто сколько покупает (id человека → количество). Появилось
+         04.08.2026 вместе с отметками покупателей в таблице закупки; без слияния
+         эти отметки жили бы только в одном браузере. */
+      e += jsonFields(a, b, ['qask', 'o'])
       a.ua = b.ua
     }
     return { marks: m, edits: e }
@@ -301,8 +304,11 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
       }
     }
     if ((b.ua || 0) > (a.ua || 0)) {
+      /* `tr` — чья это точка (id единицы техники). Появилось 04.08.2026 вместе
+         с цветными нитками маршрута на карте; без слияния принадлежность точки
+         не доехала бы с другого телефона, и нитки разошлись бы по-разному. */
       e += fields(a, b, [
-        'n', 'time', 'c', 'lat', 'lon', 'addr', 'lab', 'labT', 'mode', 'leg', 'legSrc', 'ord',
+        'n', 'time', 'c', 'lat', 'lon', 'addr', 'lab', 'labT', 'mode', 'tr', 'leg', 'legSrc', 'ord',
       ])
       a.ua = b.ua
     }
