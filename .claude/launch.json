@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flops-app-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "app", "run", "dev", "--", "--port", "5199", "--strictPort", "--host", "127.0.0.1"],
+      "port": 5199
+    },
+    {
+      "name": "flops-app-dev-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "app", "run", "dev", "--", "--port", "5200", "--strictPort", "--host", "127.0.0.1"],
+      "port": 5200
+    }
+  ]
+}
