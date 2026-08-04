@@ -33,6 +33,7 @@
 
 import { toast } from 'sonner'
 import type { State } from './types.ts'
+import { docKey } from './trips.ts'
 import { fmtDate } from '../format.ts'
 
 /** Имя офлайн-сборки рядом с index.html (его кладёт publish-v2.mjs). */
@@ -51,6 +52,8 @@ interface OfflineWindow extends Window {
   __PINE_OFFLINE__?: OfflineInfo
   __PINE_DOC__?: unknown
   __PINE_HTML__?: string
+  /** ключ хранилища той поездки, чья это копия (см. docScript) */
+  __PINE_KEY__?: string
 }
 
 function win(): OfflineWindow | null {
@@ -106,6 +109,26 @@ if(doc)W.__PINE_DOC__=doc;
 try{var d=document.getElementById('pine-doc');if(d)d.textContent=''}catch(e){}
 W.__PINE_B64__='';W.__PINE_SAVED__='';
 })()`
+
+/*
+ * ⚠️ ОТКРЫТЫЙ ХВОСТ: копия непервой поездки и ключ хранилища.
+ *
+ * Загрузчик читает `flops.doc` — ключ поездки по умолчанию. У всякой другой
+ * поездки ключ другой: `flops.doc.<поездка>` (`lib/trips.ts:56`).
+ *
+ * ⛔ Простая замена имени ключа здесь — ЛОВУШКА, и она была написана и снята
+ * в этой же сессии. Внутри скачанного файла нет ни `?trip=`, ни `flops.trip`
+ * (это другой адрес, `file:`), поэтому приложение в копии считает поездку
+ * первой и ПИШЕТ в `flops.doc` (`store.ts`, `docKey()`). Поменяв только чтение,
+ * мы получили бы копию, которая при перезагрузке не находит собственных правок
+ * и молча откатывается на вшитый снимок — то есть настоящую потерю работы
+ * вместо гипотетического чтения чужого документа.
+ *
+ * Лечится только парой: копия должна и читать, и писать по одному ключу.
+ * Значит правка не здесь, а в том, как копия узнаёт свою поездку. Отложено
+ * осознанно, описано в `PROMPT-NEXT.md`. Имя ключа при этом уже едет вместе
+ * с данными (`__PINE_KEY__` ниже) — оно понадобится тому, кто возьмётся.
+ */
 
 /**
  * Скрипт-хранитель. Стоит в самом конце тела: разметка уже разобрана целиком,
@@ -170,10 +193,14 @@ const DOC_OPEN = OPEN + ' id="pine-doc">'
 const HEAD_END = '</head>'
 const BODY_END = '</body>'
 
-/** Разметка скрипта с данными: только строка base64 и дата снимка. */
+/** Разметка скрипта с данными: строка base64, дата снимка и ключ хранилища. */
 function docScript(S: State, savedAt: string): string {
   const b64 = toBase64(JSON.stringify(S))
-  return `${OPEN} id="pine-doc">window.__PINE_SAVED__=${JSON.stringify(savedAt)};window.__PINE_B64__="${b64}"${CLOSE}`
+  return (
+    `${OPEN} id="pine-doc">window.__PINE_SAVED__=${JSON.stringify(savedAt)};` +
+    `window.__PINE_KEY__=${JSON.stringify(docKey())};` +
+    `window.__PINE_B64__="${b64}"${CLOSE}`
+  )
 }
 
 /**

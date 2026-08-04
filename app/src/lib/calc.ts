@@ -83,15 +83,22 @@ export function transportTotal(S: State): number {
   return fuelTotal(S) + rentTotal(S)
 }
 
-/** id личных разделов закупки (buySections[].personal === true). */
-function personalSecIds(S: State): Set<string> {
+/**
+ * id личных разделов закупки (buySections[].personal === true).
+ *
+ * Открыт наружу ради взаиморасчётов (`settle.ts`): личное — алкоголь, сигареты —
+ * в общий делёж не входит, и признак этого обязан быть ОДИН на весь сервис.
+ * Второй такой же признак рано или поздно разошёлся бы с бюджетом.
+ */
+export function personalSecIds(S: State): Set<string> {
   return new Set(S.buySections.filter((s) => s.personal).map((s) => s.i))
 }
 
 /** Цена позиции закупки: q × (prf > 0 ? prf : pr). */
-function buyItemSum(b: Buy): number {
+export function buyItemSum(b: Buy): number {
   return b.q * (b.prf > 0 ? b.prf : b.pr)
 }
+
 
 /**
  * Сумма закупки по позициям со st === 'buy'.

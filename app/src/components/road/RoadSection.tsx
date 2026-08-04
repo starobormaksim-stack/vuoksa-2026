@@ -11,6 +11,7 @@ import { MDASH, plural } from '@/format'
 import { cn } from '@/lib/utils'
 import { RouteBoard } from '@/components/map/RouteBoard'
 import { RoadCalc } from './RoadCalc'
+import { Settlement } from './Settlement'
 import { TransportSheet } from './TransportSheet'
 import { RentSheet } from './RentSheet'
 import { calcLegsByMap } from './legs'
@@ -230,6 +231,9 @@ export function RoadSection() {
         onFreshEnd={() => setFresh(null)}
         mapStrip={mapStrip}
       />
+
+      {/* ─── Кто кому должен ─── */}
+      <Settlement S={S} me={perms.me} />
 
       {/* ─── Вопросы ─── */}
       <Group

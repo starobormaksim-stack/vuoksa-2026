@@ -17,11 +17,31 @@ export type Notes = Record<string, Note>
 /** Единицы расхода топлива. */
 export type RateUnitId = 'l100km' | 'lh' | 'fix'
 
+/**
+ * Взаиморасчёты: два поля, общие для траты любого рода (топливо, аренда,
+ * позиция закупки). Заказчик 05.08.2026: «Оплатили 3000, каждый по полторы —
+ * остальные должны им ровно столько, сколько не хватает».
+ *
+ * ⛔ Оба поля НЕОБЯЗАТЕЛЬНЫ, и пустое поле означает СЕГОДНЯШНЕЕ поведение:
+ * без плательщика трата считается «скинулись поровну», без круга — делится
+ * на всех. Иначе сдвинулись бы контрольные цифры (правило всех этапов).
+ *
+ * ⛔ `Transport.owner` этими полями НЕ заменяется и не переписывается:
+ * `transport` сливается по позициям, подмена формы стёрла бы данные у всех
+ * (урок У-04). Пустой `payer` у техники читается как её владелец.
+ */
+export interface SpendShare {
+  /** id человека, который выложил деньги; пусто — скинулись поровну */
+  payer?: string
+  /** id людей, между кем делится; пусто или нет вовсе — делится на всех */
+  sp?: string[]
+}
+
 /** Участок маршрута, по которому идёт техника. */
 export type LegMode = 'road' | 'water' | 'walk'
 
 /** S.transport[] — единица техники. */
-export interface Transport {
+export interface Transport extends SpendShare {
   i: string
   n: string
   /** id вида из S.kinds[]; kindT — текст «своего варианта» */
@@ -69,7 +89,7 @@ export interface RentBlock {
 }
 
 /** S.rent[] — строка аренды. Сумма = price × qty × count. */
-export interface Rent {
+export interface Rent extends SpendShare {
   i: string
   n: string
   /** id категории из S.rentCats[] */
@@ -301,7 +321,7 @@ export interface Gear {
 export type BuyStatus = 'buy' | 'ask' | 'skip' | `has_${string}`
 
 /** S.buy[] — позиция закупки. */
-export interface Buy {
+export interface Buy extends SpendShare {
   i: string
   sec: string
   n: string

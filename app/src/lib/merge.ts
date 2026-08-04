@@ -61,11 +61,17 @@ export function revive(S: State, kind: string, i: string): void {
    Простые коллекции: сравниваем перечисленные поля, побеждает более свежий `ua`.
    Списки полей — из docs/v2-architecture.md, раздел 2.4. */
 const PLAIN: Record<string, string[]> = {
+  /* ⚠️ `payer` — кто выложил деньги за топливо (взаиморасчёты, settle.ts).
+     `owner` рядом с ним ОСТАЁТСЯ и не переписывается: подмена формы стёрла бы
+     принадлежность техники у всех сразу (урок У-04). */
   transport: [
     'n', 'kind', 'kindT', 'fuel', 'rate', 'rateU', 'hours', 'litres',
-    'carry', 'owner', 'leg', 'calcT', 'c', 'ord', 'by', 'as',
+    'carry', 'owner', 'payer', 'leg', 'calcT', 'c', 'ord', 'by', 'as',
   ],
-  rent: ['n', 'cat', 'price', 'unit', 'qty', 'count', 'calcT', 'c', 'warn', 'ord', 'by', 'as'],
+  rent: [
+    'n', 'cat', 'price', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',
+    'ord', 'by', 'as',
+  ],
   fuelPrices: ['n', 'price', 'u', 'c', 'ord'],
   gearSections: ['t', 'ord'],
   buySections: ['t', 'personal', 'ord'],
@@ -75,10 +81,16 @@ const PLAIN: Record<string, string[]> = {
   canRows: ['t', 'c', 'fuel', 'ord'],
 }
 
-/** Поля-объекты: сравнение через JSON.stringify. */
+/**
+ * Поля-объекты: сравнение через JSON.stringify.
+ *
+ * ⚠️ `sp` — круг делящих трату (взаиморасчёты). Это МАССИВ, а `fields()`
+ * сравнивает через `!==`, то есть у двух одинаковых списков он всегда видел бы
+ * разницу и переписывал бы поле на каждом слиянии. Поэтому только сюда.
+ */
 const PLAIN_JSON: Record<string, string[]> = {
-  transport: ['nt'],
-  rent: ['blocks', 'nt'],
+  transport: ['nt', 'sp'],
+  rent: ['blocks', 'nt', 'sp'],
   fuelPrices: ['nt'],
 }
 
@@ -282,12 +294,15 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
     }
     if ((b.ua || 0) > (a.ua || 0)) {
       e += fields(a, b, [
-        'n', 'q', 'pr', 'prf', 'st', 'u', 'uid', 'who', 'sec', 'c', 'by', 'as', 'qby', 'ord',
+        'n', 'q', 'pr', 'prf', 'st', 'u', 'uid', 'who', 'sec', 'c', 'by', 'as', 'qby',
+        'payer', 'ord',
       ])
       /* `o` — кто сколько покупает (id человека → количество). Появилось
          04.08.2026 вместе с отметками покупателей в таблице закупки; без слияния
-         эти отметки жили бы только в одном браузере. */
-      e += jsonFields(a, b, ['qask', 'o'])
+         эти отметки жили бы только в одном браузере. Взаиморасчёты читают его же
+         как плательщиков позиции (settle.ts), поэтому потерять его нельзя вдвойне.
+         `sp` — круг делящих; массив, значит только через jsonFields. */
+      e += jsonFields(a, b, ['qask', 'o', 'sp'])
       a.ua = b.ua
     }
     return { marks: m, edits: e }

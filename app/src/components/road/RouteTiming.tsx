@@ -56,13 +56,32 @@ export function RouteTiming({
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
 
-  /* Подсвеченная точка может оказаться за краем ленты — подводим её к глазам.
-     block:'nearest' и behavior:'auto': лента прокручивается внутри себя, дёргать
-     ради этого всю страницу нельзя, карта рядом должна остаться на месте. */
+  /**
+   * Подсвеченная точка может оказаться за краем ленты — подводим её к глазам.
+   *
+   * ⛔ `scrollIntoView` здесь нельзя, хотя он и стоял раньше: он прокручивает
+   * ВСЕХ прокручиваемых предков, а не только ленту, и `block:'nearest'` этого
+   * не отменяет. Пока лента стояла справа от карты, разницы не было — они были
+   * на одном уровне. Теперь лента под картой во всю ширину, и наведение из
+   * карты утаскивало страницу на 351 px: карта, по которой человек только что
+   * попал пальцем, уезжала вверх из вида.
+   *
+   * Поэтому двигаем ТОЛЬКО собственную прокрутку ленты, руками. Страница
+   * не трогается вовсе — замер: `scrollY` до и после совпадает.
+   */
   useEffect(() => {
     if (!activeId) return
-    const el = box.current?.querySelector<HTMLElement>(`[data-point="${CSS.escape(activeId)}"]`)
-    el?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+    const wrap = box.current
+    const el = wrap?.querySelector<HTMLElement>(`[data-point="${CSS.escape(activeId)}"]`)
+    if (!wrap || !el) return
+    /* Своя прокрутка может быть не у самой ленты, а у обёртки-карточки. */
+    let pane: HTMLElement | null = wrap
+    while (pane && pane.scrollHeight <= pane.clientHeight + 1) pane = pane.parentElement
+    if (!pane) return
+    const top = el.offsetTop - pane.offsetTop
+    const bottom = top + el.offsetHeight
+    if (top < pane.scrollTop) pane.scrollTop = top
+    else if (bottom > pane.scrollTop + pane.clientHeight) pane.scrollTop = bottom - pane.clientHeight
   }, [activeId, activeAt])
 
   const patch = (id: string, f: (p: RoutePoint) => void) =>

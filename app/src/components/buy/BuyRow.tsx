@@ -4,6 +4,7 @@ import type { Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { counted, sumOf, unitOf } from '@/lib/buyx'
 import { DataCell, DataRow, InlineNum, InlineText, RowAction, RowActions } from '@/components/flops'
+import { SpendShareEdit } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
 import {
   buyerQty, descText, digitsOf, foldStatus, setBuyer, type BuyItem,
@@ -83,6 +84,18 @@ export function BuyRow({
                 })
               }
               className="text-note text-muted"
+            />
+            {/* Круг делящих: «мясо берём только на троих». Плательщик здесь
+                не спрашивается — им работают колонки людей справа (`Buy.o`),
+                и второй орган для того же был бы дублем (У-58). */}
+            <SpendShareEdit
+              S={S}
+              can={canEdit}
+              circleOnly
+              payer={p.payer}
+              sp={p.sp}
+              what={p.n || 'Позиция'}
+              onSp={(ids) => onPatch((x) => { x.sp = ids })}
             />
           </span>
         </span>

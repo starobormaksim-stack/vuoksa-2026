@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import {
   DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, litresTotal, refuelLitres,
 } from './roadx'
+import { SpendShareEdit } from './SpendShare'
 
 /**
  * «Расчёт дороги» — ОДНА таблица на весь лист «Логистика» заказчика.
@@ -51,6 +52,8 @@ interface Line {
   /** итог группы: плотнее и крупнее */
   total?: boolean
   title: ReactNode
+  /** «кто платит и на кого делится» — под названием, в той же липкой колонке */
+  share?: ReactNode
   cells: [ReactNode, ReactNode, ReactNode, ReactNode, ReactNode]
   actions?: ReactNode
   /** только что добавленная строка */
@@ -404,6 +407,28 @@ export function RoadCalc({
             can={canEdit}
           />
         ),
+        /* Кто выложил деньги за это топливо и между кем оно делится —
+           прямо в строке, без шторки (постулат 2). Пустое = как было. */
+        share: (
+          <SpendShareEdit
+            S={S}
+            can={canEdit}
+            payer={t.payer}
+            sp={t.sp}
+            fallback={t.owner}
+            what={t.calcT || t.n || 'Топливо'}
+            onPayer={(id) =>
+              patchTr(t.i, (x) => {
+                x.payer = id
+              })
+            }
+            onSp={(ids) =>
+              patchTr(t.i, (x) => {
+                x.sp = ids
+              })
+            }
+          />
+        ),
         cells: [
           t.rateU === 'lh' ? (
             <InlineNum
@@ -558,6 +583,25 @@ export function RoadCalc({
           }
           warn={r.warn}
           can={canEdit}
+        />
+      ),
+      share: (
+        <SpendShareEdit
+          S={S}
+          can={canEdit}
+          payer={r.payer}
+          sp={r.sp}
+          what={r.calcT || r.n || 'Аренда'}
+          onPayer={(id) =>
+            patchRn(r.i, (x) => {
+              x.payer = id
+            })
+          }
+          onSp={(ids) =>
+            patchRn(r.i, (x) => {
+              x.sp = ids
+            })
+          }
         />
       ),
       cells: [
@@ -809,6 +853,7 @@ export function RoadCalc({
               ) : (
                 l.title
               )}
+              {l.share}
             </span>
             {l.actions}
           </span>

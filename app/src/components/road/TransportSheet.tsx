@@ -8,7 +8,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { fmtNum, MDASH, NBSP } from '@/format'
 import {
-  fuelName, kindName, legName, litresLabel, RATE_HINTS, RATE_TITLES, transportSub,
+  fuelName, kindName, legName, litresLabel, NO_FUEL, RATE_HINTS, RATE_TITLES, transportSub,
 } from './roadx'
 
 /**
@@ -184,7 +184,12 @@ export function TransportSheet({ item, S, canEdit, onPatch, onClose }: Props) {
           .map((k) => ({
             id: k.i,
             title: k.t,
-            hint: `расход считаем ${RATE_TITLES[k.rateU] ?? k.rateU}`,
+            /* У поезда и автобуса топлива нет вовсе, и молчать об этом нельзя:
+               человек завёл бы вид и не понял, почему в бюджете ноль. Деньги
+               за билет живут строкой в «Аренде», где есть цена и количество. */
+            hint: NO_FUEL.has(k.i)
+              ? 'топлива нет — стоимость билетов заводится строкой в «Аренде»'
+              : `расход считаем ${RATE_TITLES[k.rateU] ?? k.rateU}`,
           }))}
         onPick={(id) =>
           onPatch((t) => {
@@ -192,6 +197,16 @@ export function TransportSheet({ item, S, canEdit, onPatch, onClose }: Props) {
             const k = S.kinds.find((x) => x.i === id)
             /* Вид задаёт и то, как считается расход: у мотора это часы, у пилы — объём. */
             if (k) t.rateU = k.rateU
+            /* У поезда и автобуса топлива нет. Числа прежнего вида надо обнулить:
+               иначе техника, у которой стояло «5 л», после смены вида молча
+               продолжила бы считать пять литров бензина вопреки подписи
+               «топлива нет» — а `litres()` при `fix` берёт ровно `t.litres`. */
+            if (NO_FUEL.has(id)) {
+              t.litres = 0
+              t.rate = 0
+              t.hours = 0
+              t.carry = false
+            }
           })
         }
       />

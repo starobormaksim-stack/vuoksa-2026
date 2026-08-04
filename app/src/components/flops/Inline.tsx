@@ -34,10 +34,27 @@ const FIELD =
    Текст
    ────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Второе поле, которое появляется только в правке.
+ *
+ * Заведено под подпись раздела: с экрана она убрана по слову заказчика, но из
+ * документа НЕ выброшена (`S.secTitles[].sub`, уроки У-04 и У-08). Раз значение
+ * есть, а править его негде — это дефект по постулату 1. Отдельного органа
+ * ради одного поля не заводим: правка названия и правка подписи — одно
+ * действие человека, поэтому второе поле живёт внутри того же `InlineText`.
+ */
+export interface InlineSecond {
+  value: string
+  label: string
+  placeholder?: string
+  /** строка-правило под полем: почему значения не видно на экране */
+  note?: string
+}
+
 interface InlineTextProps {
   value: string
   /** сохранить; вызывается только когда значение действительно изменилось */
-  onSave: (v: string) => void
+  onSave: (v: string, second?: string) => void
   /** есть ли право правки; нет — рисуется обычный текст без намёка на действие */
   can: boolean
   /** что именно правим — читает скринридер и видит человек в подсказке поля */
@@ -60,6 +77,8 @@ interface InlineTextProps {
    * текста, и надпись становится нечитаемой ровно в момент наведения.
    */
   onPhoto?: boolean
+  /** второе поле, видимое только в правке (подпись раздела) */
+  second?: InlineSecond
 }
 
 /** Подсветка наведения: на странице — поверхность чередования, на снимке — крем. */
@@ -71,18 +90,28 @@ function hoverSkin(onPhoto?: boolean) {
 
 export function InlineText({
   value, onSave, can, label, multiline, required, placeholder, className,
-  autoEdit, onEditEnd, onPhoto,
+  autoEdit, onEditEnd, onPhoto, second,
 }: InlineTextProps) {
   const [edit, setEdit] = useState(!!autoEdit && can)
   const [draft, setDraft] = useState(value)
+  const [draft2, setDraft2] = useState(second?.value ?? '')
   const [why, setWhy] = useState('')
   const errId = useId()
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  /* Оба поля правки живут в одной коробке: уход фокуса ВНУТРИ неё — это переход
+     с названия на подпись, а не окончание правки. Без этой проверки первый же
+     Tab закрывал бы правку раньше, чем человек дошёл до второго поля. */
+  const box = useRef<HTMLSpanElement | null>(null)
+  const second2 = second?.value ?? ''
 
   /* Значение могло измениться у соседа по документу, пока строка не правится. */
   useEffect(() => {
     if (!edit) setDraft(value)
   }, [value, edit])
+
+  useEffect(() => {
+    if (!edit) setDraft2(second2)
+  }, [second2, edit])
 
   useEffect(() => {
     if (!edit) return
@@ -121,12 +150,18 @@ export function InlineText({
       ref.current?.focus()
       return
     }
-    if (next !== value) onSave(next)
+    if (second) {
+      const sub = draft2.trim()
+      /* Второе поле правится вместе с первым: если изменилось любое из двух,
+         записываем оба — иначе подпись потерялась бы при правке одного названия. */
+      if (next !== value || sub !== second.value) onSave(next, sub)
+    } else if (next !== value) onSave(next)
     close()
   }
 
   const cancel = () => {
     setDraft(value)
+    setDraft2(second2)
     close()
   }
 
@@ -152,11 +187,17 @@ export function InlineText({
   }
 
   if (edit) {
+    /* Уход фокуса на соседнее поле той же правки правкой не заканчивает. */
+    const leave = (e: { relatedTarget: EventTarget | null }) => {
+      const to = e.relatedTarget as Node | null
+      if (to && box.current?.contains(to)) return
+      commit(true)
+    }
     const common = {
       ref: ref as never,
       value: draft,
       onChange: (e: { target: { value: string } }) => setDraft(e.target.value),
-      onBlur: () => commit(true),
+      onBlur: leave,
       onKeyDown: keys,
       'aria-label': label,
       'aria-describedby': why ? errId : undefined,
@@ -164,8 +205,28 @@ export function InlineText({
       className: cn(FIELD, multiline && 'resize-none leading-snug'),
     }
     return (
-      <span className="block">
+      <span className="block" ref={box}>
         {multiline ? <textarea {...common} rows={2} /> : <input {...common} type="text" />}
+        {second ? (
+          <span className="mt-2 block">
+            <span className="mb-1 block text-micro font-semibold text-muted">{second.label}</span>
+            <input
+              type="text"
+              value={draft2}
+              onChange={(e) => setDraft2(e.target.value)}
+              onBlur={leave}
+              onKeyDown={keys}
+              aria-label={second.label}
+              placeholder={second.placeholder}
+              /* Поле мельче соседнего (у того кегль названия раздела), поэтому
+                 высоту добираем до цели касания явно: 31 px пальцем не берётся. */
+              className={cn(FIELD, 'min-h-11 text-field font-normal')}
+            />
+            {second.note ? (
+              <span className="mt-1 block text-micro text-muted">{second.note}</span>
+            ) : null}
+          </span>
+        ) : null}
         {why ? (
           <span id={errId} role="alert" className="mt-1 block text-micro text-accent-text">
             {why}
