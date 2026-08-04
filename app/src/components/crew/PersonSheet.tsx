@@ -1,12 +1,24 @@
 import { useState } from 'react'
-import { Backpack, Check, Link2, UserMinus, X } from 'lucide-react'
+import { Backpack, Camera, Check, ImageOff, Link2, UserMinus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Person } from '@/lib/types'
 import type { Perm, Perms } from '@/lib/perm'
 import { linkFor, permName, permRights } from '@/lib/perm'
-import { Btn, PickSheet, ResponsiveSheet, SheetRow, TextSheet, type PickOption } from '@/components/flops'
+import type { PersonTone } from '@/lib/people'
+import {
+  Btn,
+  PersonMark,
+  PhotoCropSheet,
+  PickSheet,
+  ResponsiveSheet,
+  SheetRow,
+  TextSheet,
+  usePhotoPick,
+  type PickOption,
+} from '@/components/flops'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { cn } from '@/lib/utils'
 import { initialOf, newKey } from './ids'
 
 /**
@@ -57,24 +69,47 @@ const PERM_OPTIONS: PickOption[] = [
   },
 ]
 
+/** Перечисление словами: «машину или роль, описание и фотографию». */
+function listRu(parts: string[]): string {
+  if (parts.length < 2) return parts[0] || ''
+  return parts.slice(0, -1).join(', ') + ' и ' + parts[parts.length - 1]
+}
+
 interface Props {
   person: Person
   perms: Perms
+  /** личная метка — та же, что на карточке в сетке (lib/people.ts) */
+  tone: PersonTone
   ready: { done: number; total: number; pct: number }
+  /** человека только что завели: вместо пустой готовности показываем, что дозаполнить */
+  fresh?: boolean
   onPatch: (f: (p: Person) => void) => void
   onDelete: () => void
   onClose: () => void
 }
 
-export function PersonSheet({ person, perms, ready, onPatch, onDelete, onClose }: Props) {
+export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDelete, onClose }: Props) {
   const [lvl, setLvl] = useState<Level2>(null)
   const back = () => setLvl(null)
+
+  /* Выбранный снимок ждёт кадрирования: пока он есть — открыт экран кадра, а не карточка. */
+  const [src, setSrc] = useState<string | null>(null)
+  const { pick, input } = usePhotoPick((dataUrl) => setSrc(dataUrl))
 
   const canEdit = perms.canEditPerson(person)
   const canSetPerm = perms.canSetPerm(person)
   const rights = permRights(person.perm)
   const cans = rights.filter((t) => !NEGATIVE.test(t))
   const cants = [...rights.filter((t) => NEGATIVE.test(t)), ...CANT[person.perm]]
+
+  /** Чего в карточке ещё нет — этим и заменяется пустая готовность у нового человека. */
+  const missing = [
+    !person.car && !person.role ? 'машину или роль' : '',
+    !person.desc ? 'описание' : '',
+    !person.photo ? 'фотографию' : '',
+  ].filter(Boolean)
+  /* Новому человеку «0 % · собрано 0 из 0» ничего не сообщает: сборов ещё нет вовсе. */
+  const hintInstead = !!fresh && ready.total === 0
 
   const copyLink = async () => {
     try {
@@ -85,40 +120,114 @@ export function PersonSheet({ person, perms, ready, onPatch, onDelete, onClose }
     }
   }
 
+  /* Снимок убирается сразу, без вопроса: возврат — кнопкой в тосте (правило 2.4 UX-проекта). */
+  const dropPhoto = () => {
+    const prev = person.photo
+    onPatch((p) => {
+      p.photo = ''
+    })
+    toast('Фотография убрана', {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          onPatch((p) => {
+            p.photo = prev
+          }),
+      },
+    })
+  }
+
+  const photoBody = person.photo ? (
+    <img src={person.photo} alt="" aria-hidden className="size-full object-cover" />
+  ) : (
+    <span
+      className="grid size-full place-items-center text-[56px] leading-none font-bold text-muted"
+      aria-hidden
+    >
+      {initialOf(person.name, person.ini)}
+    </span>
+  )
+  /* 3 : 4 — та же пропорция, что у карточки в сетке: снимок нигде не переобрезается. */
+  const photoBox = 'mx-auto block aspect-[3/4] w-40 overflow-hidden rounded-2xl border border-line bg-zebra'
+
   return (
     <>
       <ResponsiveSheet
-        open={lvl === null}
+        open={lvl === null && !src}
         onOpenChange={(v) => !v && onClose()}
         title={person.name}
-        subtitle={permName(person.perm)}
+        subtitle={
+          <span className="inline-flex items-center gap-1.5">
+            <PersonMark tone={tone} size={10} />
+            {permName(person.perm)}
+          </span>
+        }
         footer={
           <Btn scale="lg" className="w-full" onClick={onClose}>
             Готово
           </Btn>
         }
       >
-        {/* Фотография — заглушка с инициалом, пока её не поставили */}
-        <div className="mx-auto aspect-[3/4] w-40 overflow-hidden rounded-2xl border border-line bg-zebra">
-          {person.photo ? (
-            <img src={person.photo} alt="" aria-hidden className="size-full object-cover" />
-          ) : (
-            <span className="grid size-full place-items-center text-[56px] leading-none font-bold text-muted" aria-hidden>
-              {initialOf(person.name, person.ini)}
-            </span>
-          )}
-        </div>
+        {/* Фотография — заглушка с инициалом, пока её не поставили.
+            Право есть — сам снимок и есть кнопка: тап открывает выбор файла и кадр.
+            Права нет — это просто картинка, серой кнопки не показываем. */}
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={pick}
+            aria-label={
+              person.photo
+                ? `Заменить фотографию: ${person.name}`
+                : `Поставить фотографию: ${person.name}`
+            }
+            className={cn(photoBox, 'transition-shadow hover:shadow-md')}
+          >
+            {photoBody}
+          </button>
+        ) : (
+          <div className={photoBox}>{photoBody}</div>
+        )}
 
-        {/* Готовность сборов — та же цифра, что на карточке в сетке */}
-        <div className="mt-4 rounded-2xl bg-accent-soft p-4">
-          <div className="flex items-baseline gap-2">
-            <span className="tnum text-[28px] leading-none font-bold text-ink">{ready.pct}%</span>
-            <span className="text-sm text-ink">
-              собрано {ready.done} из {ready.total}
-            </span>
+        {canEdit && (
+          <div className="mt-3 flex flex-col gap-2">
+            <Btn tone="secondary" className="w-full justify-start" onClick={pick}>
+              <Camera size={18} strokeWidth={1.5} aria-hidden />
+              {person.photo ? 'Заменить фотографию' : 'Поставить фотографию'}
+            </Btn>
+            {person.photo && (
+              <Btn tone="secondary" className="w-full justify-start" onClick={dropPhoto}>
+                <ImageOff size={18} strokeWidth={1.5} aria-hidden />
+                Убрать фотографию
+              </Btn>
+            )}
           </div>
-          <Progress value={ready.pct} aria-hidden className="mt-3 h-1 bg-line" />
-        </div>
+        )}
+
+        {hintInstead ? (
+          /* Готовности ещё нет — вместо нуля пишем, чем карточку дозаполнить */
+          <div className="mt-4 rounded-2xl bg-accent-soft p-4">
+            <div className="text-[15px] leading-snug font-semibold text-ink">
+              Карточка только заведена
+            </div>
+            <p className="mt-1 text-sm leading-snug text-ink">
+              {missing.length
+                ? `Осталось вписать ${listRu(missing)}. `
+                : 'Всё вписано. '}
+              Готовность сборов появится, когда в снаряжении будет что отмечать.
+            </p>
+          </div>
+        ) : (
+          /* Готовность сборов — та же цифра, что на карточке в сетке */
+          <div className="mt-4 rounded-2xl bg-accent-soft p-4">
+            <div className="flex items-baseline gap-2">
+              <span className="tnum text-[28px] leading-none font-bold text-ink">{ready.pct}%</span>
+              <span className="text-sm text-ink">
+                собрано {ready.done} из {ready.total}
+              </span>
+            </div>
+            <Progress value={ready.pct} aria-hidden className="mt-3 h-1 bg-line" />
+          </div>
+        )}
 
         {canEdit ? (
           <div className="mt-3">
@@ -284,6 +393,26 @@ export function PersonSheet({ person, perms, ready, onPatch, onDelete, onClose }
           )
         }}
       />
+
+      {/* Кадрирование: что видно в рамке — то и ложится в person.photo */}
+      {src && (
+        <PhotoCropSheet
+          src={src}
+          ratio={0.75}
+          out={800}
+          title={`Фотография · ${person.name}`}
+          subtitle="Портрет 3 : 4 — как в карточке команды"
+          okLabel="Поставить"
+          onDone={(url) =>
+            onPatch((p) => {
+              p.photo = url
+            })
+          }
+          onClose={() => setSrc(null)}
+        />
+      )}
+      {/* скрытое поле выбора файла — живёт вне шторок, иначе исчезает вместе с ними */}
+      {input}
     </>
   )
 }

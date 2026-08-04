@@ -6,6 +6,7 @@ import type { Perms } from '@/lib/perm'
 import {
   cantOf, holders, holdersLine, qtyLabel, ST_NAME, statusOf, totalQty,
 } from '@/lib/gearx'
+import { orderedPeople } from '@/lib/people'
 import {
   AddRow, Btn, NumberSheet, PickSheet, ResponsiveSheet, SheetRow, StatusDial, TextSheet,
 } from '@/components/flops'
@@ -46,8 +47,10 @@ export function GearItemSheet({
   const back = () => setLvl(null)
 
   const sec = S.gearSections.find((x) => x.i === item.sec)
-  const crew = holders(item, S.people)
-  const free = S.people.filter((p) => (item.o?.[p.id] || 0) <= 0)
+  /* читатель видит себя первым — и среди тех, кто везёт, и в списке «кто ещё повезёт» */
+  const people = orderedPeople(S.people, perms.me)
+  const crew = holders(item, people)
+  const free = people.filter((p) => (item.o?.[p.id] || 0) <= 0)
   const whoPerson = S.people.find((p) => p.id === who) ?? null
   /* кому адресована кнопка «Не могу взять»: человек открытой вкладки, иначе я сам */
   const target = S.people.find((p) => p.id === (focus || perms.me)) ?? null
@@ -80,7 +83,11 @@ export function GearItemSheet({
       >
         {item.c ? <p className="text-sm leading-snug text-ink">{item.c}</p> : null}
 
-        <div className="mt-3 text-[13px] font-semibold text-muted">Кто везёт</div>
+        <div className="mt-3 text-[13px] font-semibold text-muted">Кто везёт и сколько</div>
+        {/* Заказчик не находил, где правятся заведённые количества, — говорим об этом прямо */}
+        <p className="mt-0.5 text-[13px] leading-snug text-muted">
+          Тап по количеству меняет его, тап по кружку — состояние сборов.
+        </p>
         <div className="mt-1 overflow-hidden rounded-2xl border border-line">
           {crew.length === 0 ? (
             <p className="px-3 py-4 text-sm text-muted">
@@ -105,6 +112,7 @@ export function GearItemSheet({
         </div>
 
         <div className="mt-3">
+          <SheetRow label="Всего по вещи" value={qtyLabel(totalQty(item))} />
           <SheetRow label="Название" value={item.n} onClick={() => setLvl('name')} />
           <SheetRow
             label="Примечание"

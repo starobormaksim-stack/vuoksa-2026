@@ -4,8 +4,9 @@ import { toast } from 'sonner'
 import type { Person } from '@/lib/types'
 import { permName } from '@/lib/perm'
 import { readyOf } from '@/lib/gearx'
+import { orderedPeople, toneOf, type PersonTone } from '@/lib/people'
 import { useTrip, touch } from '@/store'
-import { EmptyState, SectionHead, TextSheet } from '@/components/flops'
+import { EmptyState, PersonMark, SectionHead, TextSheet } from '@/components/flops'
 import { NBSP } from '@/format'
 import { Progress } from '@/components/ui/progress'
 import { PersonSheet } from './PersonSheet'
@@ -24,6 +25,8 @@ export function CrewSection() {
   const { S, update, perms, isHere } = useTrip()
   const [sheet, setSheet] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  /* Кого только что завели: его карточка встречает подсказкой, а не пустой готовностью. */
+  const [fresh, setFresh] = useState<string | null>(null)
 
   const patch = (id: string, f: (p: Person) => void) =>
     update((s) => {
@@ -55,6 +58,8 @@ export function CrewSection() {
       })
     })
     toast(`${name} в команде`)
+    /* Карточка открывается сразу: имя — только начало, остальное дозаполняется здесь же. */
+    setFresh(id)
     setSheet(id)
   }
 
@@ -97,12 +102,16 @@ export function CrewSection() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-          {S.people.map((p) => (
+          {/* Порядок только на экране: сам себя читатель видит первым, S.people не переставляем.
+              Метка же считается от исходного S.people — иначе она переезжала бы с человека
+              на человека при смене читателя (lib/people.ts). */}
+          {orderedPeople(S.people, perms.me).map((p) => (
             <CrewCard
               key={p.id}
               person={p}
               me={perms.me}
               here={isHere(p.id)}
+              tone={toneOf(S.people, p.id)}
               ready={readyOf(S, p.id)}
               onOpen={() => setSheet(p.id)}
             />
@@ -129,10 +138,15 @@ export function CrewSection() {
         <PersonSheet
           person={current}
           perms={perms}
+          tone={toneOf(S.people, current.id)}
           ready={readyOf(S, current.id)}
+          fresh={fresh === current.id}
           onPatch={(f) => patch(current.id, f)}
           onDelete={() => removePerson(current)}
-          onClose={() => setSheet(null)}
+          onClose={() => {
+            setSheet(null)
+            setFresh(null)
+          }}
         />
       )}
 
@@ -168,12 +182,14 @@ function CrewCard({
   person,
   me,
   here,
+  tone,
   ready,
   onOpen,
 }: {
   person: Person
   me: string
   here: boolean
+  tone: PersonTone
   ready: { done: number; total: number; pct: number }
   onOpen: () => void
 }) {
@@ -214,6 +230,8 @@ function CrewCard({
 
       <span className="absolute inset-x-0 bottom-0 block px-3 pt-2 pb-3">
         <span className="flex items-center gap-1.5">
+          {/* личная метка: янтарь разной насыщенности и формы, новых цветов не заводим */}
+          <PersonMark tone={tone} size={12} />
           <span className="min-w-0 flex-1 truncate text-[17px] leading-tight font-[650] text-brand-cream">
             {person.name}
           </span>

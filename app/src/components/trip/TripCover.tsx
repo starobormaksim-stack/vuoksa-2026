@@ -1,6 +1,10 @@
-import { CalendarDays, MapPin, TentTree } from 'lucide-react'
+import { useState } from 'react'
+import { CalendarDays, Camera, MapPin, TentTree } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Trip, TripPlace } from '../../lib/types'
 import { countdown } from '../../format'
+import { update } from '../../store'
+import { PhotoCropSheet, usePhotoPick } from '../flops'
 
 interface Props {
   trip: Trip
@@ -23,6 +27,12 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: 
   const extra = places.length - 1
   const chip =
     'flex min-h-11 items-center gap-2 rounded-xl bg-brand-dark/45 px-3 backdrop-blur-sm'
+
+  /* Обложка меняется тем же кадрированием, что и фотографии людей (flops/PhotoSheet).
+     Раньше её нельзя было поменять никак — в первой версии это работало, во второй
+     пропало, и заказчик на это отдельно жаловался. */
+  const [src, setSrc] = useState<string | null>(null)
+  const { pick, input } = usePhotoPick(setSrc)
 
   return (
     <div className="relative overflow-hidden rounded-2xl shadow-md aspect-[4/3] sm:aspect-[16/9] lg:aspect-square">
@@ -47,6 +57,39 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: 
         }}
         aria-hidden
       />
+
+      {/* Сменить обложку. Участнику кнопки нет вовсе — не серой, а отсутствующей. */}
+      {canEdit && (
+        <button
+          type="button"
+          onClick={pick}
+          aria-label={trip.hero ? 'Сменить обложку поездки' : 'Поставить обложку поездки'}
+          className="absolute top-3 right-3 grid size-11 place-items-center rounded-xl bg-brand-dark/45 text-brand-cream backdrop-blur-sm transition-colors hover:bg-brand-dark/70"
+        >
+          <Camera size={20} strokeWidth={1.5} aria-hidden />
+        </button>
+      )}
+      {input}
+
+      {src && (
+        <PhotoCropSheet
+          src={src}
+          ratio={1}
+          out={1400}
+          quality={0.74}
+          title="Обложка поездки"
+          subtitle="Подвиньте фотографию, чтобы главное встало в кадр"
+          frameHint="Так обложка и будет выглядеть на телефоне."
+          okLabel="Поставить"
+          onDone={(url) => {
+            update((s) => {
+              s.trip.hero = url
+            })
+            toast('Обложка обновлена')
+          }}
+          onClose={() => setSrc(null)}
+        />
+      )}
 
       <div className="absolute inset-x-0 bottom-0 p-5 text-brand-cream lg:p-6">
         <span className="rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-dark">

@@ -5,6 +5,8 @@ import type { Buy, BuyStatus, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { money } from '@/lib/calc'
 import { buyLine, priceOf, statusName, statusOptions, sumOf, unitOf } from '@/lib/buyx'
+import type { StatusOption } from '@/lib/buyx'
+import { orderedPeople } from '@/lib/people'
 import {
   Btn, NumberSheet, PickSheet, ResponsiveSheet, SheetRow, TextSheet,
   type PickOption,
@@ -41,10 +43,24 @@ export function BuyItemSheet({ item, S, perms, personal, onPatch, onDelete, onCl
   const qtyLocked = !perms.canEditQty(item)
   const assigner = S.people.find((p) => p.id === perms.assignerOf(item))
 
+  /* читатель видит себя первым — и в выборе покупателя, и среди «уже есть у …» */
+  const people = orderedPeople(S.people, perms.me)
+
   const peopleOptions: PickOption[] = [
     { id: '', title: 'Никто', hint: 'позиция ничья — возьмёт, кто окажется в магазине' },
-    ...S.people.map((p) => ({ id: p.id, title: p.name, hint: p.role })),
+    ...people.map((p) => ({ id: p.id, title: p.name, hint: p.role })),
   ]
+
+  /* Пункты «Есть у …» переставляем под читателя, «Купить», «Под вопросом» и
+     «Не берём» остаются на своих местах — их порядок задаёт statusOptions. */
+  const stAll = statusOptions(item, S)
+  const stFixed = stAll.filter((o) => !o.id.startsWith('has_'))
+  const stHas: StatusOption[] = []
+  for (const p of people) {
+    const o = stAll.find((x) => x.id === `has_${p.id}`)
+    if (o) stHas.push(o)
+  }
+  const stOptions = [...stFixed.slice(0, 1), ...stHas, ...stFixed.slice(1)]
 
   return (
     <>
@@ -206,7 +222,7 @@ export function BuyItemSheet({ item, S, perms, personal, onPatch, onDelete, onCl
         title="Статус"
         subtitle={item.n}
         value={item.st}
-        options={statusOptions(item, S)}
+        options={stOptions}
         onPick={(id) => {
           onPatch((p) => { p.st = id as BuyStatus })
           const goes = id === 'buy'

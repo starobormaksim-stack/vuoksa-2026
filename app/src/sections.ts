@@ -41,3 +41,27 @@ export function splitForBottomNav(sections: SectionDef[]): {
     overflow: sections.slice(BOTTOM_NAV_LIMIT - 1),
   }
 }
+
+/* ─────────── единый лендинг ─────────── */
+
+/**
+ * Якорь раздела на странице. Разделы больше не подменяют друг друга: они идут один
+ * за другим сверху вниз, а меню к ним прокручивает (заказчик, 04.08.2026).
+ */
+export function anchorOf(id: string): string {
+  return 'sec-' + id
+}
+
+/**
+ * Прокрутить к разделу. Отступ под прилипающую шапку задан в разметке через
+ * `scroll-margin-top`, поэтому здесь достаточно обычного scrollIntoView.
+ * Плавность отключается, если человек попросил систему не анимировать.
+ */
+export function scrollToSection(id: string): void {
+  const el = document.getElementById(anchorOf(id))
+  if (!el) return
+  const calm =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' })
+}

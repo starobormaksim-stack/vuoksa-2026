@@ -3,6 +3,7 @@ import type { State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { fmtRange, withDate } from '@/format'
+import { TripMap } from '../map/TripMap'
 import { TripCover } from './TripCover'
 import { ReadyRing } from './ReadyRing'
 import { MoneyTiles } from './MoneyTiles'
@@ -45,8 +46,11 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)] lg:items-start lg:gap-6">
-      <div className="flex flex-col gap-4 lg:contents">
+    <div className="flex flex-col gap-4 lg:gap-6">
+      {/* Заглавная фотография, а сразу за ней — карта: так попросил заказчик 04.08.2026.
+          Раньше карта пряталась во вкладке «Маршрут» в самом низу «Дороги», и он её
+          попросту не находил. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,560px)] lg:items-stretch lg:gap-6">
         <TripCover
           trip={S.trip}
           places={places}
@@ -54,14 +58,15 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
           onEditDates={() => setCalOpen(true)}
           onShowPlaces={() => setPlacesOpen(true)}
         />
-
-        <div className="flex flex-col gap-4">
-          <ReadyRing S={S} />
-          <MoneyTiles S={S} />
-        </div>
+        <TripMap S={S} perms={perms} />
       </div>
 
-      <div className="flex flex-col gap-4 lg:col-span-2 lg:grid lg:grid-cols-2 lg:items-start">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
+        <ReadyRing S={S} />
+        <MoneyTiles S={S} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
         <WeatherStrip S={S} />
         <CrewReady S={S} />
       </div>

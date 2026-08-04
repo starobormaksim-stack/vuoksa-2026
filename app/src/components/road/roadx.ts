@@ -236,6 +236,19 @@ export function coordLabel(p: { lat?: number; lon?: number }): string {
   return `${p.lat.toFixed(4).replace('.', ',')}, ${p.lon.toFixed(4).replace('.', ',')}`
 }
 
+/**
+ * Третья строка точки в ленте «Тайминга»: метка · как добираемся · расстояние.
+ * Без координат: они переехали в отдельную строку-кнопку «показать на карте».
+ */
+export function pointMeta(p: RoutePoint): string {
+  const parts: string[] = []
+  const lab = labelName(p)
+  if (lab) parts.push(lab)
+  if (p.mode && p.mode !== 'road') parts.push(legName(p.mode))
+  if (p.leg > 0) parts.push(kmLabel(p.leg))
+  return parts.join(' · ')
+}
+
 /** Третья строка точки маршрута: метка · расстояние · координаты. */
 export function pointLine(p: RoutePoint): string {
   const parts: string[] = []

@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Check, ShoppingCart } from 'lucide-react'
+import { Check, ChevronsDownUp, Pencil, ShoppingCart, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Buy } from '@/lib/types'
+import type { Buy, BuySection as BuySec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { buyLine, counted, sumLabel } from '@/lib/buyx'
 import {
-  AddRow, EmptyState, Group, ItemRow, SectionHead, TextSheet,
+  AddRow, Btn, EmptyState, Group, ItemRow, ResponsiveSheet, SectionHead, TextSheet,
 } from '@/components/flops'
 import { BuyTotals } from './BuyTotals'
 import { BuyItemSheet } from './BuyItemSheet'
@@ -26,6 +26,9 @@ export function BuySection() {
   const [sheet, setSheet] = useState<string | null>(null)
   const [shop, setShop] = useState(false)
   const [addTo, setAddTo] = useState<string | null>(null)
+  /** открытая шторка действий раздела и её второй уровень «переименовать» */
+  const [menu, setMenu] = useState<string | null>(null)
+  const [rename, setRename] = useState(false)
 
   const bySec = useMemo(() => {
     const m: Record<string, Buy[]> = {}
@@ -63,7 +66,35 @@ export function BuySection() {
     setSheet(id)
   }
 
+  /* ─── действия над разделом (только редактору) ─── */
+
+  const renameSec = (secId: string, t: string) =>
+    update((s) => {
+      const sec = s.buySections.find((x) => x.i === secId)
+      if (sec) {
+        sec.t = t
+        sec.ua = Date.now()
+      }
+    })
+
+  const delSec = (sec: BuySec) => {
+    setMenu(null)
+    remove('buySections', sec.i)
+    toast(`Раздел «${sec.t}» удалён`, {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            if (s.del) delete s.del['buySections:' + sec.i]
+            if (!s.buySections.some((x) => x.i === sec.i))
+              s.buySections.push({ ...sec, ua: Date.now() })
+          }),
+      },
+    })
+  }
+
   const current = sheet ? S.buy.find((p) => p.i === sheet) : null
+  const menuSec = menu ? S.buySections.find((s) => s.i === menu) ?? null : null
   const personalIds = new Set(S.buySections.filter((s) => s.personal).map((s) => s.i))
 
   return (
@@ -88,6 +119,7 @@ export function BuySection() {
               total={rows.length}
               open={!!open[sec.i]}
               onToggle={() => setOpen((o) => ({ ...o, [sec.i]: !o[sec.i] }))}
+              onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
               badge={
                 sec.personal ? (
                   <span className="shrink-0 rounded-lg border border-accent-text px-2 py-0.5 text-[11px] font-bold text-accent-text">
@@ -191,6 +223,62 @@ export function BuySection() {
           setAddTo(null)
         }}
       />
+
+      {menuSec && (
+        <ResponsiveSheet
+          open={!rename}
+          onOpenChange={(v) => !v && setMenu(null)}
+          title="Действия раздела"
+          subtitle={menuSec.t}
+          footer={
+            <Btn scale="lg" className="w-full" onClick={() => setMenu(null)}>
+              Готово
+            </Btn>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            <Btn tone="secondary" className="w-full justify-start" onClick={() => setRename(true)}>
+              <Pencil size={18} strokeWidth={1.5} aria-hidden />
+              Переименовать
+            </Btn>
+            <Btn
+              tone="secondary"
+              className="w-full justify-start"
+              onClick={() => {
+                setOpen({})
+                setMenu(null)
+              }}
+            >
+              <ChevronsDownUp size={18} strokeWidth={1.5} aria-hidden />
+              Свернуть все
+            </Btn>
+            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем (12.2) */}
+            {(bySec[menuSec.i] ?? []).length === 0 ? (
+              <Btn tone="danger" className="w-full justify-start" onClick={() => delSec(menuSec)}>
+                <Trash2 size={18} strokeWidth={1.5} aria-hidden />
+                Удалить раздел
+              </Btn>
+            ) : (
+              <p className="mt-1 text-[13px] leading-snug text-muted">
+                Раздел удаляется, когда в нём не осталось ни одной позиции.
+              </p>
+            )}
+          </div>
+        </ResponsiveSheet>
+      )}
+
+      {menuSec && (
+        <TextSheet
+          open={rename}
+          onOpenChange={(v) => !v && setRename(false)}
+          onBack={() => setRename(false)}
+          title="Название раздела"
+          subtitle="Закупка"
+          value={menuSec.t}
+          placeholder="Например, Продукты"
+          onDone={(v) => v && renameSec(menuSec.i, v)}
+        />
+      )}
     </div>
   )
 

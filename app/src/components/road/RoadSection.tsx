@@ -8,18 +8,16 @@ import {
   AddRow, EditNum, EmptyState, Group, ItemRow, NumberSheet, ResultNum,
   SectionHead, SentenceCard, TextSheet,
 } from '@/components/flops'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { fmtNum, NBSP, plural } from '@/format'
 import { cn } from '@/lib/utils'
 import { RoadCover } from './RoadCover'
-import { RouteMap } from './RouteMap'
 import { RouteTiming } from './RouteTiming'
 import { RoutePointSheet } from './RoutePointSheet'
 import { TransportSheet } from './TransportSheet'
 import { RentSheet } from './RentSheet'
 import { IdeaSheet } from './IdeaSheet'
 import {
-  canRowOf, kindIcon, kmLabel, litresLabel, litresTotal, litreWord, mapCenter, mapPoints,
+  canRowOf, kindIcon, kmLabel, litresLabel, litresTotal, litreWord, mapPoints,
   refuelLitres, rentIcon, rentLine, transportLine, transportTitle,
 } from './roadx'
 
@@ -42,7 +40,6 @@ export function RoadSection() {
   const { S, update, remove, perms } = useTrip()
   const canEdit = perms.isEditor()
 
-  const [tab, setTab] = useState('time')
   const [open, setOpen] = useState<Record<string, boolean>>({
     fuel: true, rent: true, cans: true, ideas: false,
   })
@@ -61,7 +58,6 @@ export function RoadSection() {
   const transport = [...S.transport].sort((a, b) => a.ord - b.ord)
   const rent = [...S.rent].sort((a, b) => a.ord - b.ord)
   const onMap = mapPoints(S)
-  const center = mapCenter(S)
   const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
 
   /* Топлива показываем те, которыми реально кто-то заправляется: справочник
@@ -207,28 +203,18 @@ export function RoadSection() {
         hint="Сверху — куда и когда едем, ниже — во сколько это встаёт"
       />
 
-      {/* ─── два квадрата: картинка поездки и лист маршрута ─── */}
+      {/* ─── два квадрата: картинка поездки и лента тайминга ───
+          Карта отсюда уехала в «Поездку», к заглавной фотографии (заказчик 04.08.2026).
+          Вкладки «Тайминг / Маршрут» вместе с ней стали не нужны: осталась одна лента,
+          а тап по адресу точки в ней прокручивает страницу к карте наверху. */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
         <RoadCover trip={S.trip} points={S.route.length} onMap={onMap.length} km={c.km} />
 
-        <Tabs
-          value={tab}
-          onValueChange={setTab}
-          className="flex flex-col gap-0 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm lg:aspect-square"
-        >
-          <TabsList
-            variant="line"
-            className="h-auto w-full shrink-0 gap-2 border-b border-line bg-transparent p-2"
-          >
-            <TabsTrigger value="time" className="h-11 flex-1 text-[15px] font-semibold">
-              Тайминг
-            </TabsTrigger>
-            <TabsTrigger value="map" className="h-11 flex-1 text-[15px] font-semibold">
-              Маршрут
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="time" className="min-h-0 flex-1 overflow-y-auto">
+        <section className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm lg:aspect-square">
+          <h3 className="shrink-0 border-b border-line px-4 py-3 text-[17px] font-[650] text-ink">
+            Тайминг
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <RouteTiming
               points={S.route}
               canEdit={canEdit}
@@ -240,41 +226,8 @@ export function RoadSection() {
               onOpen={setPtSheet}
               onAdd={() => setAdding('point')}
             />
-          </TabsContent>
-
-          <TabsContent value="map" className="min-h-0 flex-1 overflow-hidden">
-            <div className="flex h-[280px] flex-col lg:h-full">
-              <RouteMap
-                points={onMap}
-                centerLat={center.lat}
-                centerLon={center.lon}
-                canEdit={canEdit}
-                className="min-h-0 flex-1"
-                onAdd={(lat, lon) => {
-                  const id = addPoint('Новая точка', lat, lon)
-                  toast('Точка поставлена', {
-                    action: {
-                      label: 'Отменить',
-                      onClick: () => remove('route', id),
-                    },
-                  })
-                }}
-                onMove={(id, lat, lon) => {
-                  patchPt(id, (p) => {
-                    p.lat = lat
-                    p.lon = lon
-                  })
-                }}
-                onOpen={setPtSheet}
-              />
-              <p className="shrink-0 border-t border-line px-4 py-2 text-[13px] text-muted">
-                {canEdit
-                  ? 'Тап по карте ставит точку, маркер можно перетащить'
-                  : 'Маршрут ведут владелец и редактор'}
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </section>
       </div>
 
       {/* ─── Техника ─── */}

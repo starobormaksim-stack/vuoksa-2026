@@ -8,7 +8,8 @@
  */
 
 import type { Gear, Person, QtyAsk, State } from './types.ts'
-import { NBSP } from '../format.ts'
+import { orderedPeople } from './people.ts'
+import { NBSP, plural } from '../format.ts'
 
 /** Названия состояний по индексу. */
 export const ST_NAME = ['не взято', 'в процессе', 'упаковано', 'в машине'] as const
@@ -128,6 +129,132 @@ export function readyOfGroup(
     }
   }
   return { done, total }
+}
+
+/* ─── Разбор готовности: что именно осталось и у кого ─────────────────────── */
+
+/**
+ * Сборы одного человека, разложенные по корзинам.
+ * Проценты те же, что у readyOf: done — это ровно «упаковано» и «в машине».
+ */
+export interface ReadyBreakdown {
+  /** упаковано или в машине */
+  done: Gear[]
+  /** в процессе */
+  inWork: Gear[]
+  /** не взято */
+  todo: Gear[]
+  /** отмечено «не могу взять» */
+  cant: Gear[]
+  /** всего позиций у человека — вместе с теми, что он взять не может */
+  total: number
+  pct: number
+}
+
+/**
+ * Разбор сборов человека: что готово, что в работе, что не начато, от чего он отказался.
+ * Позиция считается его, если он везёт хотя бы штуку (g.o[personId] > 0).
+ *
+ * «Не могу взять» вынимает позицию из «осталось» и «собирает», но не из total:
+ * отказ — это не выполненная работа, и процент от него не растёт.
+ * Единственное исключение — позиция, уже доведённая до «упаковано»/«в машине»:
+ * она остаётся в «Готово», иначе разбор показал бы процент ниже, чем полоса
+ * и кольцо, которые считает readyOf. Отметка отказа поверх упакованной вещи —
+ * след прошлого, а не текущее положение дел.
+ */
+export function breakdownOf(S: State, personId: string): ReadyBreakdown {
+  const b: ReadyBreakdown = { done: [], inWork: [], todo: [], cant: [], total: 0, pct: 0 }
+  for (const g of S.gear) {
+    if ((g.o?.[personId] || 0) <= 0) continue
+    b.total++
+    const st = statusOf(g, personId)
+    if (isReady(st)) b.done.push(g)
+    else if (cantOf(g, personId)) b.cant.push(g)
+    else if (st === 1) b.inWork.push(g)
+    else b.todo.push(g)
+  }
+  b.pct = b.total > 0 ? Math.round((b.done.length / b.total) * 100) : 0
+  return b
+}
+
+/** Разбор одного человека внутри разбора команды. */
+export interface CrewReadyRow {
+  person: Person
+  b: ReadyBreakdown
+}
+
+/** Сборы всей команды: разбор по каждому плюс общие цифры. */
+export interface CrewBreakdown {
+  /** по людям, в порядке S.people */
+  people: CrewReadyRow[]
+  /** несобранных позиций всего: не взято + в процессе + не могу взять */
+  left: number
+  /** у скольких человек ещё есть несобранное */
+  leftPeople: number
+  total: number
+  pct: number
+}
+
+/** Разбор по всей команде — та же арифметика, что у readyAll, плюс списки. */
+export function breakdownAll(S: State): CrewBreakdown {
+  const people: CrewReadyRow[] = S.people.map((person) => ({
+    person,
+    b: breakdownOf(S, person.id),
+  }))
+  let done = 0
+  let total = 0
+  let left = 0
+  let leftPeople = 0
+  for (const r of people) {
+    done += r.b.done.length
+    total += r.b.total
+    const n = r.b.total - r.b.done.length
+    left += n
+    if (n > 0) leftPeople++
+  }
+  return { people, left, leftPeople, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 }
+}
+
+/**
+ * Порядок людей в разборе готовности: читатель первым (он пришёл по своей ссылке),
+ * дальше — по возрастанию процента, чтобы тот, кто тормозит сборы, оказался наверху.
+ * Сам документ S.people не переставляется.
+ */
+export function rankedPeople(S: State): Person[] {
+  const list = orderedPeople(S.people, S.me)
+  const meFirst = S.me && list[0]?.id === S.me ? 1 : 0
+  const rest = list.slice(meFirst)
+  const pct = new Map(rest.map((p) => [p.id, readyOf(S, p.id).pct]))
+  const sorted = [...rest].sort((a, b) => (pct.get(a.id) ?? 0) - (pct.get(b.id) ?? 0))
+  return [...list.slice(0, meFirst), ...sorted]
+}
+
+/** Хвост строки человека в «Кто уже собрался»: «осталось 4 · не может взять 1». */
+export function restLineOf(b: ReadyBreakdown): string {
+  if (b.total === 0) return 'ничего не поручено'
+  const left = b.total - b.done.length
+  if (left === 0) return 'всё собрано'
+  const head = `осталось ${left}`
+  return b.cant.length > 0 ? `${head} · не может взять ${b.cant.length}` : head
+}
+
+/** Фраза под кольцом: «Осталось 12 позиций у троих». */
+export function restLineAll(c: CrewBreakdown): string {
+  if (c.total === 0) return 'В сборах пока нет ни одной позиции'
+  if (c.left === 0) return 'Собрано всё — ничего не осталось'
+  const items =
+    c.left === 1
+      ? 'Осталась 1 позиция'
+      : `Осталось ${c.left} ${plural(c.left, 'позиция', 'позиции', 'позиций')}`
+  if (c.leftPeople === 1) {
+    const one = c.people.find((r) => r.b.total - r.b.done.length > 0)
+    if (one) return `${items} у ${nameGen(one.person.name)}`
+  }
+  const who =
+    c.leftPeople <= 7
+      ? ofCollective(c.leftPeople)
+      : `${c.leftPeople} ${plural(c.leftPeople, 'человека', 'человек', 'человек')}`
+  return `${items} у ${who}`
 }
 
 /**

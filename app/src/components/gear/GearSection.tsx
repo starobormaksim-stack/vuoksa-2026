@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react'
-import { Backpack } from 'lucide-react'
+import { Backpack, ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Gear, Person } from '@/lib/types'
+import type { Gear, GearSection as GearSec, Person } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import {
   cantOf, crewLine, crewSegments, cycleStatus, myLine, qtyLabel,
   readyOf, readyOfGroup, statusOf, totalQty,
 } from '@/lib/gearx'
+import { orderedPeople } from '@/lib/people'
 import {
-  AddRow, EmptyState, Group, ItemRow, SectionHead, StatusDial, TextSheet, useIsDesktop,
+  AddRow, Btn, EmptyState, Group, ItemRow, ResponsiveSheet, SectionHead, StatusDial, TextSheet,
+  useIsDesktop,
 } from '@/components/flops'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { GearAddSheet } from './GearAddSheet'
 import { GearAvatar } from './GearAvatar'
 import { GearCrewBar } from './GearCrewBar'
 import { GearDeniedSheet } from './GearDeniedSheet'
@@ -42,6 +45,13 @@ export function GearSection() {
   const [addTo, setAddTo] = useState<string | null>(null)
   const [legend, setLegend] = useState(false)
   const [denied, setDenied] = useState<{ item: Gear; person: Person } | null>(null)
+  /** открытая шторка действий раздела и её второй уровень «переименовать» */
+  const [menu, setMenu] = useState<string | null>(null)
+  const [rename, setRename] = useState(false)
+
+  /* Человек, пришедший по своей ссылке, видит себя первым во всех списках.
+     Сам документ (S.people) при этом не переставляется. */
+  const people = useMemo(() => orderedPeople(S.people, perms.me), [S.people, perms.me])
 
   const bySec = useMemo(() => {
     const m: Record<string, Gear[]> = {}
@@ -122,27 +132,67 @@ export function GearSection() {
     toast(`${p.name} увидит просьбу отметить «${item.n}»`)
   }
 
-  const addItem = (secId: string, name: string) => {
+  /**
+   * Завести вещь сразу с раскладкой «кому сколько» — её собрал мастер добавления.
+   * Пустая раскладка допустима: позиция остаётся ничьей, как было раньше.
+   */
+  const addItem = (secId: string, name: string, qty: Record<string, number>) => {
     const id = 'g' + Date.now().toString(36)
-    const holder = person?.id ?? ''
+    const ids = Object.keys(qty).filter((k) => (qty[k] || 0) > 0)
+    const o: Record<string, number> = {}
+    const oby: Record<string, string> = {}
+    for (const pid of ids) {
+      o[pid] = qty[pid]
+      oby[pid] = perms.me || ''
+    }
     update((s) => {
       s.gear.push({
         i: id,
         sec: secId,
         n: name,
-        o: holder ? { [holder]: 1 } : {},
+        o,
         c: '',
         by: perms.me || '',
         q: {},
-        oby: holder ? { [holder]: perms.me || '' } : {},
+        oby,
         s: {},
         as: perms.me || '',
         ord: (s.gear.length + 1) * 10,
         ua: Date.now(),
       })
     })
-    toast(`«${name}» в списке`)
-    setSheet(id)
+    const names = ids
+      .map((pid) => S.people.find((p) => p.id === pid)?.name)
+      .filter(Boolean)
+      .join(', ')
+    toast(names ? `«${name}» в списке ${MDASH} везёт ${names}` : `«${name}» в списке`)
+  }
+
+  /* ─── действия над разделом (только редактору) ─── */
+
+  const renameSec = (secId: string, t: string) =>
+    update((s) => {
+      const sec = s.gearSections.find((x) => x.i === secId)
+      if (sec) {
+        sec.t = t
+        sec.ua = Date.now()
+      }
+    })
+
+  const delSec = (sec: GearSec) => {
+    setMenu(null)
+    remove('gearSections', sec.i)
+    toast(`Раздел «${sec.t}» удалён`, {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            if (s.del) delete s.del['gearSections:' + sec.i]
+            if (!s.gearSections.some((x) => x.i === sec.i))
+              s.gearSections.push({ ...sec, ua: Date.now() })
+          }),
+      },
+    })
   }
 
   const del = (item: Gear) => {
@@ -153,10 +203,12 @@ export function GearSection() {
   }
 
   const current = sheet ? S.gear.find((g) => g.i === sheet) : null
+  const menuSec = menu ? sections.find((s) => s.i === menu) ?? null : null
 
+  /* «Все» остаётся первой вкладкой, дальше люди в порядке читателя */
   const tabs = [
     { id: ALL, label: 'Все', person: null as Person | null },
-    ...S.people.map((p) => ({
+    ...people.map((p) => ({
       id: p.id,
       label: `${p.name} ${readyOf(S, p.id).pct}${NBSP}%`,
       person: p,
@@ -167,7 +219,7 @@ export function GearSection() {
   const body =
     person === null && desktop ? (
       <GearMatrix
-        people={S.people}
+        people={people}
         perms={perms}
         sections={sections}
         rowsOf={rowsOf}
@@ -192,6 +244,7 @@ export function GearSection() {
             total={r.total}
             open={!!open[sec.i]}
             onToggle={() => setOpen((o) => ({ ...o, [sec.i]: !o[sec.i] }))}
+            onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
           >
             {rows.length === 0 ? (
               <EmptyState
@@ -294,18 +347,72 @@ export function GearSection() {
 
       <GearLegendSheet open={legend} onOpenChange={setLegend} />
 
-      <TextSheet
+      <GearAddSheet
         open={addTo !== null}
         onOpenChange={(v) => !v && setAddTo(null)}
-        title="Что везём"
-        subtitle={S.gearSections.find((s) => s.i === addTo)?.t}
-        value=""
-        placeholder="Например, спальник"
-        onDone={(v) => {
-          if (v && addTo) addItem(addTo, v)
-          setAddTo(null)
+        sectionName={S.gearSections.find((s) => s.i === addTo)?.t}
+        people={people}
+        preselect={person?.id}
+        onAdd={(name, qty) => {
+          if (addTo) addItem(addTo, name, qty)
         }}
       />
+
+      {menuSec && (
+        <ResponsiveSheet
+          open={!rename}
+          onOpenChange={(v) => !v && setMenu(null)}
+          title="Действия раздела"
+          subtitle={menuSec.t}
+          footer={
+            <Btn scale="lg" className="w-full" onClick={() => setMenu(null)}>
+              Готово
+            </Btn>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            <Btn tone="secondary" className="w-full justify-start" onClick={() => setRename(true)}>
+              <Pencil size={18} strokeWidth={1.5} aria-hidden />
+              Переименовать
+            </Btn>
+            <Btn
+              tone="secondary"
+              className="w-full justify-start"
+              onClick={() => {
+                setOpen({})
+                setMenu(null)
+              }}
+            >
+              <ChevronsDownUp size={18} strokeWidth={1.5} aria-hidden />
+              Свернуть все
+            </Btn>
+            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем (12.2) */}
+            {(bySec[menuSec.i] ?? []).length === 0 ? (
+              <Btn tone="danger" className="w-full justify-start" onClick={() => delSec(menuSec)}>
+                <Trash2 size={18} strokeWidth={1.5} aria-hidden />
+                Удалить раздел
+              </Btn>
+            ) : (
+              <p className="mt-1 text-[13px] leading-snug text-muted">
+                Раздел удаляется, когда в нём не осталось ни одной вещи.
+              </p>
+            )}
+          </div>
+        </ResponsiveSheet>
+      )}
+
+      {menuSec && (
+        <TextSheet
+          open={rename}
+          onOpenChange={(v) => !v && setRename(false)}
+          onBack={() => setRename(false)}
+          title="Название раздела"
+          subtitle="Сборы"
+          value={menuSec.t}
+          placeholder="Например, Общее снаряжение"
+          onDone={(v) => v && renameSec(menuSec.i, v)}
+        />
+      )}
     </div>
   )
 

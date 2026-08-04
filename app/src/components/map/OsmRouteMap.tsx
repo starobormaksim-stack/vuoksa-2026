@@ -1,21 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import * as LeafletModule from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { WifiOff } from 'lucide-react'
 import type { RoutePoint } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { coordLabel } from './roadx'
 
 /**
- * Карта маршрута (docs/v2-ux-redesign.md, 10.6) — OpenStreetMap через Leaflet.
+ * Карта маршрута на OpenStreetMap (Leaflet).
  *
- * Редактор ставит точку тапом по карте и двигает её перетаскиванием маркера;
- * участник карту только смотрит — обработчиков правки ему не выдаём вовсе
- * (правило 12.2: кнопки нет, а не «серая»).
+ * Запасной путь: пока не выдан ключ Google Maps — или если Google не поднялся —
+ * маршрут показывается здесь. Поведение то же, что у Google-карты: редактор ставит
+ * точку тапом и двигает маркер перетаскиванием, участник только смотрит.
  *
- * Тайлы — сеть. Без сети карту не рисуем и честно пишем об этом, показывая
- * координаты точек текстом: иначе человек смотрит в серый квадрат и решает,
- * что приложение сломалось.
+ * Раньше этот файл лежал в components/road/RouteMap.tsx. Карта переехала в «Поездку»
+ * (заказчик: «сначала заглавная фотография, за ней сразу карта»), поэтому и файл
+ * переехал в общую папку map/: им пользуются оба раздела.
  */
 
 /* Leaflet 1.9 отдаётся UMD-сборкой: одни сборщики кладут её в пространство имён,
@@ -24,18 +22,17 @@ const L =
   (LeafletModule as unknown as { default?: typeof LeafletModule }).default ?? LeafletModule
 
 interface Props {
-  /** только точки с координатами */
   points: RoutePoint[]
-  /** куда смотреть, если точек на карте ещё нет */
   centerLat: number
   centerLon: number
   canEdit: boolean
-  /** тап по карте — поставить точку */
   onAdd: (lat: number, lon: number) => void
-  /** маркер перетащили — обновить координаты точки */
   onMove: (id: string, lat: number, lon: number) => void
-  /** тап по маркеру — открыть карточку точки */
   onOpen: (id: string) => void
+  /** к какой точке подвести карту (просьба из «Тайминга») */
+  focusId?: string | null
+  /** метка времени просьбы: одна и та же точка может понадобиться дважды */
+  focusAt?: number
   className?: string
 }
 
@@ -52,31 +49,13 @@ function pinIcon(n: number, done: boolean) {
   })
 }
 
-/** Живая метка «есть сеть» — от неё зависит, рисуем карту или объяснение. */
-function useOnline(): boolean {
-  const [on, setOn] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine !== false,
-  )
-  useEffect(() => {
-    const up = () => setOn(true)
-    const down = () => setOn(false)
-    window.addEventListener('online', up)
-    window.addEventListener('offline', down)
-    return () => {
-      window.removeEventListener('online', up)
-      window.removeEventListener('offline', down)
-    }
-  }, [])
-  return on
-}
-
-export function RouteMap({
-  points, centerLat, centerLon, canEdit, onAdd, onMove, onOpen, className,
+export function OsmRouteMap({
+  points, centerLat, centerLon, canEdit, onAdd, onMove, onOpen, focusId, focusAt, className,
 }: Props) {
-  const online = useOnline()
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<ReturnType<typeof L.map> | null>(null)
   const layer = useRef<ReturnType<typeof L.layerGroup> | null>(null)
+  const marks = useRef<Map<string, ReturnType<typeof L.marker>>>(new Map())
   const fitted = useRef(false)
 
   /* Обработчики меняются на каждой перерисовке, а карта создаётся один раз —
@@ -86,7 +65,8 @@ export function RouteMap({
 
   /* ── создание карты ── */
   useEffect(() => {
-    if (!online || !box.current || map.current) return
+    if (!box.current || map.current) return
+    const bag = marks.current
     const m = L.map(box.current, { scrollWheelZoom: false, zoomControl: true })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -109,8 +89,9 @@ export function RouteMap({
       m.remove()
       map.current = null
       layer.current = null
+      bag.clear()
     }
-  }, [online])
+  }, [])
 
   /* ── маркеры ──
      Зависимость — строка-слепок: пересобирать слой на каждой перерисовке нельзя,
@@ -121,6 +102,14 @@ export function RouteMap({
     const g = layer.current
     if (!m || !g) return
     g.clearLayers()
+    marks.current.clear()
+
+    if (points.length > 1) {
+      L.polyline(
+        points.map((p) => [p.lat as number, p.lon as number]),
+        { color: '#A74612', weight: 3, opacity: 0.85 },
+      ).addTo(g)
+    }
 
     points.forEach((p, idx) => {
       const marker = L.marker([p.lat as number, p.lon as number], {
@@ -136,6 +125,7 @@ export function RouteMap({
         cb.current.onMove(p.i, ll.lat, ll.lng)
       })
       marker.addTo(g)
+      marks.current.set(p.i, marker)
     })
 
     /* Подгоняем вид один раз: дальше человек сам решает, куда смотреть. */
@@ -153,38 +143,17 @@ export function RouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, canEdit, centerLat, centerLon])
 
-  if (!online) {
-    return (
-      <div className={className}>
-        <div className="flex h-full flex-col items-center justify-center gap-3 bg-zebra px-6 py-8 text-center">
-          <span className="grid size-16 place-items-center rounded-full bg-surface text-muted">
-            <WifiOff size={28} strokeWidth={1.5} aria-hidden />
-          </span>
-          <div>
-            <div className="text-base font-[650] text-ink">Карта показывается в онлайне</div>
-            <p className="mx-auto mt-1 max-w-72 text-sm text-balance text-muted">
-              Сейчас сети нет. Точки маршрута никуда не делись — вот их координаты.
-            </p>
-          </div>
-          {points.length > 0 && (
-            <ul className="w-full max-w-80 text-left">
-              {points.map((p, idx) => (
-                <li key={p.i} className="flex min-h-11 items-center gap-3 border-t border-line">
-                  <span className="tnum grid size-7 shrink-0 place-items-center rounded-full bg-accent-fill text-[13px] font-bold text-on-accent">
-                    {idx + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">
-                    {p.n}
-                  </span>
-                  <span className="tnum shrink-0 text-[13px] text-muted">{coordLabel(p)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    )
-  }
+  /* ── просьба из «Тайминга»: подвести карту к точке и открыть её подпись ── */
+  useEffect(() => {
+    const m = map.current
+    if (!m || !focusId) return
+    const mk = marks.current.get(focusId)
+    if (!mk) return
+    m.setView(mk.getLatLng(), Math.max(m.getZoom(), 12), { animate: true })
+    mk.openTooltip()
+    const t = window.setTimeout(() => mk.closeTooltip(), 2200)
+    return () => window.clearTimeout(t)
+  }, [focusId, focusAt, sig])
 
   /* isolate: панели Leaflet живут на z-index 400 и без своего слоя лезут поверх шторок. */
   return <div ref={box} className={cn('isolate bg-zebra', className)} />

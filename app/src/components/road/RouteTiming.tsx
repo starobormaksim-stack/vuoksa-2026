@@ -1,16 +1,22 @@
-import { Check, Route } from 'lucide-react'
+import { Check, MapPin, MapPinPlus, Route } from 'lucide-react'
 import type { RoutePoint } from '@/lib/types'
 import { AddRow, EmptyState } from '@/components/flops'
+import { askMap } from '@/lib/mapfocus'
 import { cn } from '@/lib/utils'
-import { pointLine } from './roadx'
+import { coordLabel, pointMeta } from './roadx'
 
 /**
  * Тайминг поездки (docs/v2-ux-redesign.md, 10.6) — вертикальная лента точек:
- * кружок «этап пройден», время, название, заметка и третья строка с меткой,
- * расстоянием и координатами.
+ * кружок «этап пройден», время, название, заметка и третья строка с меткой и расстоянием.
+ *
+ * Новое (заказчик 04.08.2026): у каждой точки своя строка адреса, и тап по ней
+ * прокручивает страницу к карте в «Поездке» и наводит её на эту точку. Если координат
+ * ещё нет — та же строка предлагает поставить точку тапом по карте, после чего название
+ * и адрес подставляются сами (см. lib/mapfocus.ts и components/map/TripMap.tsx).
  *
  * Участнику лента показывается целиком, но без единой кнопки правки: ни кружка,
- * ни «добавить» — их просто нет в разметке (правило 12.2).
+ * ни «добавить» — их просто нет в разметке (правило 12.2). Строка «показать на карте»
+ * при этом остаётся: смотреть можно всем, это не правка.
  */
 interface Props {
   points: RoutePoint[]
@@ -27,7 +33,7 @@ export function RouteTiming({ points, canEdit, onToggle, onOpen, onAdd }: Props)
       <EmptyState
         icon={Route}
         title="Маршрута пока нет"
-        text="Добавьте первую точку — или поставьте её тапом по карте"
+        text="Добавьте первую точку — или поставьте её тапом по карте наверху, в «Поездке»"
         action={canEdit ? { label: 'Добавить точку', onClick: onAdd } : undefined}
       />
     )
@@ -37,7 +43,6 @@ export function RouteTiming({ points, canEdit, onToggle, onOpen, onAdd }: Props)
     <div>
       <ol className="py-1">
         {points.map((p, idx) => {
-          const line3 = pointLine(p)
           const last = idx === points.length - 1
           return (
             <li key={p.i} className="relative">
@@ -63,11 +68,10 @@ export function RouteTiming({ points, canEdit, onToggle, onOpen, onAdd }: Props)
                   </span>
                 )}
 
-                <Body
-                  point={p}
-                  line3={line3}
-                  onOpen={canEdit ? () => onOpen(p.i) : undefined}
-                />
+                <div className="min-w-0 flex-1 pb-1">
+                  <Body point={p} onOpen={canEdit ? () => onOpen(p.i) : undefined} />
+                  <PlaceRow point={p} canEdit={canEdit} />
+                </div>
               </div>
             </li>
           )
@@ -94,16 +98,48 @@ function Dot({ done }: { done: boolean }) {
   )
 }
 
+/**
+ * Строка места: адрес (или координаты) — кнопка «показать на карте».
+ * Координат нет и правка разрешена — предлагаем поставить точку.
+ * Координат нет и правки нет — строки нет вовсе: показывать нечего.
+ */
+function PlaceRow({ point, canEdit }: { point: RoutePoint; canEdit: boolean }) {
+  const coord = coordLabel(point)
+  const shown = point.addr || coord
+
+  if (!coord) {
+    if (!canEdit) return null
+    return (
+      <button
+        type="button"
+        onClick={() => askMap(point.i, 'place')}
+        className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-xl pr-2 text-left text-[13px] font-semibold text-accent-text transition-colors hover:bg-zebra/60"
+      >
+        <MapPinPlus size={17} strokeWidth={1.75} aria-hidden className="shrink-0" />
+        <span className="min-w-0 flex-1">Поставить на карте</span>
+      </button>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => askMap(point.i, 'show')}
+      aria-label={`${point.n}: показать на карте`}
+      className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-xl pr-2 text-left transition-colors hover:bg-zebra/60"
+    >
+      <MapPin size={17} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
+      <span className="tnum min-w-0 flex-1 truncate text-[13px] font-medium text-muted">
+        {shown}
+      </span>
+      <span className="shrink-0 text-[13px] font-semibold text-accent-text">на карте</span>
+    </button>
+  )
+}
+
 /** Тело этапа. Без обработчика — обычный блок текста, а не кнопка. */
-function Body({
-  point,
-  line3,
-  onOpen,
-}: {
-  point: RoutePoint
-  line3: string
-  onOpen?: () => void
-}) {
+function Body({ point, onOpen }: { point: RoutePoint; onOpen?: () => void }) {
+  const meta = pointMeta(point)
   const inner = (
     <>
       <span className="flex items-baseline gap-2">
@@ -122,22 +158,22 @@ function Body({
       {point.c ? (
         <span className="mt-0.5 block text-[13px] leading-snug text-muted">{point.c}</span>
       ) : null}
-      {line3 ? (
+      {meta ? (
         <span className="tnum mt-1 block text-[12px] leading-snug font-medium text-muted">
-          {line3}
+          {meta}
         </span>
       ) : null}
     </>
   )
 
-  if (!onOpen) return <div className="min-h-16 min-w-0 flex-1 py-3">{inner}</div>
+  if (!onOpen) return <div className="min-h-16 w-full pt-3 pb-1">{inner}</div>
 
   return (
     <button
       type="button"
       onClick={onOpen}
       className={cn(
-        'min-h-16 min-w-0 flex-1 rounded-xl py-3 pr-2 text-left transition-colors hover:bg-zebra/60',
+        'min-h-16 w-full rounded-xl pt-3 pr-2 pb-1 text-left transition-colors hover:bg-zebra/60',
         point.done && 'opacity-60',
       )}
     >

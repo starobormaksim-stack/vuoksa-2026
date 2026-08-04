@@ -61,14 +61,53 @@ export interface UrlUser {
   key: string
 }
 
-/** Разобрать адресную строку. Пусто — в адресе ничего нет. */
-export function readUrlUser(searchStr?: string): UrlUser | null {
+/**
+ * Разобрать адрес. Понимает два вида:
+ *
+ *   1. `?u=<slug>&k=<ключ>` — прежний, разосланный людям. РАБОТАЕТ КАК РАБОТАЛ.
+ *   2. `/<поездка>/<имя>`   — красивый путь для собственного домена
+ *      (pine-to-pine.com/vuoksa2026/maks). Ключа в пути нет: он берётся
+ *      из `?k=`, если он там есть, а иначе — из запомненного в браузере.
+ *      Поэтому первый заход человек делает по полной ссылке с ключом,
+ *      а дальше ему хватает короткого адреса.
+ *
+ * Старый вид проверяется первым: у людей уже разосланы ссылки, и подменять
+ * личность путём, когда в запросе явно написано `?u=`, нельзя.
+ */
+export function readUrlUser(searchStr?: string, pathStr?: string): UrlUser | null {
   const s = searchStr ?? (typeof location === 'undefined' ? '' : location.search || '')
-  const m = s.match(/[?&]u=([^&]*)/)
-  if (!m) return null
-  const who = decodeURIComponent(m[1]).replace(/\+/g, ' ').trim().toLowerCase()
   const mk = s.match(/[?&]k=([^&]*)/)
-  return { who, key: mk ? decodeURIComponent(mk[1]).trim() : '' }
+  const key = mk ? decodeURIComponent(mk[1]).trim() : ''
+
+  const m = s.match(/[?&]u=([^&]*)/)
+  if (m) {
+    const who = decodeURIComponent(m[1]).replace(/\+/g, ' ').trim().toLowerCase()
+    return { who, key }
+  }
+
+  const who = whoFromPath(pathStr)
+  if (who) return { who, key }
+  return null
+}
+
+/**
+ * Имя человека из пути. Приложение может жить в подкаталоге (на GitHub Pages это
+ * `/vuoksa-2026/`), поэтому базовый кусок отрезаем — иначе им же и представимся.
+ * Берём последний осмысленный кусок: `/vuoksa2026/maks` → `maks`.
+ * Не нашли такого человека — checkAuth() просто никого не выберет, вреда нет.
+ */
+function whoFromPath(pathStr?: string): string {
+  const raw = pathStr ?? (typeof location === 'undefined' ? '' : location.pathname || '')
+  if (!raw) return ''
+  let p = raw
+  const base = typeof import.meta.env?.BASE_URL === 'string' ? import.meta.env.BASE_URL : '/'
+  if (base && base !== '/' && p.startsWith(base)) p = p.slice(base.length)
+  const parts = p
+    .split('/')
+    .map((x) => decodeURIComponent(x).trim())
+    .filter((x) => x && !/\.(html?|js|css)$/i.test(x))
+  if (parts.length === 0) return ''
+  return parts[parts.length - 1].toLowerCase()
 }
 
 /** Найти человека по тому, что стоит в `?u=`: slug, id или имя (регистр не важен). */
