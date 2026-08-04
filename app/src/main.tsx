@@ -18,7 +18,10 @@ createRoot(document.getElementById('root')!).render(
  */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
+    /* Путь от корня сборки, а не от страницы: по красивому адресу
+       `/vuoksa2026/Maks` относительный './sw.js' искался бы в несуществующей
+       папке `/vuoksa2026/` и работник не поднимался бы вовсе. */
+    navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {
       /* без работника приложение просто работает как обычный сайт */
     })
   })

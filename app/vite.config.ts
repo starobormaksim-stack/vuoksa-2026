@@ -22,11 +22,23 @@ function stripOnlineLinks(): Plugin {
 }
 
 // Две сборки из одного исходника, как и в первой версии:
-//   npm run build           — онлайн-версия (GitHub Pages), обычные чанки
+//   npm run build           — онлайн-версия, обычные чанки
 //   npm run build:offline   — один самодостаточный HTML-файл без внешних загрузок
-// base './' обязателен: страница живёт в подкаталоге Pages и должна открываться по file://
 export default defineConfig(({ mode }) => ({
-  base: './',
+  /**
+   * Откуда страница берёт свои файлы.
+   *
+   * На Cloudflare Pages — абсолютный '/', и это обязательно. Относительный путь
+   * ломает красивые адреса: страница `/vuoksa2026/Maks` ищет `./assets/index.js`
+   * по адресу `/vuoksa2026/assets/index.js`, получает от `_redirects` тот же
+   * index.html вместо кода — и остаётся белой. Проверено на живом домене 04.08.2026.
+   *
+   * Везде ещё — относительный './'. Он обязателен на GitHub Pages (страница живёт
+   * в подкаталоге `/vuoksa-2026/`) и в офлайн-копии, которую открывают по file://.
+   *
+   * CF_PAGES=1 Cloudflare выставляет сам во время сборки — от нас настроек не нужно.
+   */
+  base: process.env.CF_PAGES ? '/' : './',
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
