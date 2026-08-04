@@ -47,10 +47,13 @@ interface Here {
 
 export function PresenceStack({ people, variant = 'inline' }: Props) {
   const { presence, perms } = useTrip()
-  if (presence.length === 0) return null
 
   const myId = perms.mePerson?.id
-  const here: Here[] = presence.map((p) => {
+  /* ⚠️ Себя в ряду НЕ показываем. Рядом стоит строка «Вы — Макс · владелец»
+     с тем же лицом, и два одинаковых квадрата подряд читались как ошибка
+     (заказчик 04.08.2026: «зачем-то дважды написано»). Ряд отвечает на вопрос
+     «кто ЕЩЁ сейчас здесь»; никого больше нет — ряда нет вовсе. */
+  const here: Here[] = presence.filter((p) => p.id !== myId).map((p) => {
     const known = people.find((x) => x.id === p.id)
     const name = known?.name || p.name || 'без имени'
     return {
@@ -61,8 +64,7 @@ export function PresenceStack({ people, variant = 'inline' }: Props) {
       mine: p.id === myId,
     }
   })
-  /* Свой квадрат — первым: человек ищет себя первым делом. */
-  here.sort((a, b) => Number(b.mine) - Number(a.mine))
+  if (here.length === 0) return null
 
   const shown = here.slice(0, MAX)
   const rest = here.length - shown.length
@@ -123,8 +125,7 @@ export function PresenceStack({ people, variant = 'inline' }: Props) {
 
 /** Фраза словами: «Вы и Костя — сейчас на листе». */
 function sentence(here: Here[]): string {
-  if (here.length === 1 && here[0].mine) return 'Лист сейчас смотрите только вы'
-  const names = here.map((p) => (p.mine ? 'Вы' : p.name))
+  const names = here.map((p) => p.name)
   const last = names.pop() as string
   const list = names.length ? `${names.join(', ')} и ${last}` : last
   return `${list} — сейчас на листе`

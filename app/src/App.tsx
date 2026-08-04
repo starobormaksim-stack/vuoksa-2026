@@ -14,6 +14,8 @@ import { MobileHeader } from './components/MobileHeader'
 import { NetNotice } from './components/NetNotice'
 import { PermNotice } from './components/PermNotice'
 import { BottomNav } from './components/BottomNav'
+import { WhoAmI } from './components/WhoAmI'
+import { PresenceStack } from './components/PresenceStack'
 import { Placeholder } from './components/Placeholder'
 import { SearchCommand } from './components/SearchCommand'
 import { TripSection } from './components/trip/TripSection'
@@ -143,6 +145,15 @@ function App() {
       />
 
       <main className="mx-auto w-full max-w-[1280px] px-4 py-6 pb-28 lg:px-6 lg:py-8 lg:pb-12">
+        {/* Кто ты и кто ещё сейчас на листе — строкой над разделами, на всех ширинах.
+            ⚠️ В полосе меню этой строке не место: она съедала ширину у названий
+            разделов, и на десктопе они превращались в «Поез…», «Кома…», «Сб…»
+            (заказчик 04.08.2026: «пункты меню не видны»). */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <WhoAmI />
+          <PresenceStack people={S.people} variant="strip" />
+        </div>
+
         {/* Выход к списку поездок. Поездок у заказчика будет много, и попасть
             из одной в другую надо с любой страницы, не разыскивая меню.
             В офлайн-копии этого выхода нет: она про одну поездку и только. */}

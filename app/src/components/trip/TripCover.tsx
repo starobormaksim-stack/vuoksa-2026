@@ -258,6 +258,15 @@ export function TripCover({ S, perms, onEditDates }: Props) {
               )}
             </div>
 
+            {/* Десктоп: суммы и погода — в потоке, СРАЗУ ПОД датами и местами.
+                ⚠️ Абсолютным слоем их класть нельзя: панель с названием тоже
+                прижата к низу снимка, и слой ложился ПОВЕРХ заголовка — название
+                читалось сквозь цифры (заказчик 04.08.2026: «всё перекрыто,
+                переделано, перерезано»). */}
+            <div className="mt-2 hidden lg:block">
+              <MoneyTiles S={S} perms={perms} />
+              <WeatherRow S={S} open={wDay} onOpen={setWDay} />
+            </div>
           </div>
         </div>
 
@@ -270,9 +279,10 @@ export function TripCover({ S, perms, onEditDates }: Props) {
             снимком; на десктопе, где квадрат ~700 px, он абсолютом ложится
             на низ снимка — как и просил заказчик, «всё на фотографии».
             Подложка одна и та же, поэтому кремовый текст читается в обоих местах. */}
-        <div
-          className={`relative z-10 px-4 pt-3 pb-4 ${SCRIM} ${ONPHOTO} lg:absolute lg:inset-x-0 lg:bottom-0 lg:px-6 lg:pt-0 lg:pb-5`}
-        >
+        {/* Телефон: суммы и погода уходят ПОД снимок — на 390 px они занимали
+            356 px из 357 и фотографии не оставалось вовсе (замерено 04.08.2026).
+            На десктопе этого блока нет: там те же суммы стоят в потоке выше. */}
+        <div className={`relative z-10 px-4 pt-3 pb-4 ${SCRIM} ${ONPHOTO} lg:hidden`}>
           <MoneyTiles S={S} perms={perms} />
           <WeatherRow S={S} open={wDay} onOpen={setWDay} />
         </div>

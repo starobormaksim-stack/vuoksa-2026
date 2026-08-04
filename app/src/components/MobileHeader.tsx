@@ -1,8 +1,6 @@
 import { Search } from 'lucide-react'
-import { useTrip } from '@/store'
 import { Logo } from './Logo'
-import { PresenceStack } from './PresenceStack'
-import { WhoAmI } from './WhoAmI'
+
 import { ThemeToggle } from './ThemeToggle'
 import { MoreMenu } from './MoreMenu'
 
@@ -52,7 +50,6 @@ export function MobileHeader({
   /* Ряд присутствия встаёт ВНУТРИ полосы кнопок, а не отдельной строкой под ней:
      высота шапки и высота распорки обязаны совпадать, а ряд появляется и пропадает
      сам собой. Отдельная строка двигала бы всё содержимое страницы вниз. */
-  const { S } = useTrip()
 
   return (
     <>
@@ -105,11 +102,7 @@ export function MobileHeader({
           и три кнопки занимают её целиком на 390 px), а второй ЭТАЖ самой шапки
           развёл бы высоту шапки с высотой распорки — ту самую поломку, ради
           которой шапка и стала `fixed`. Пока никого не видно — строки нет. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3 lg:hidden">
-        {/* Кто ты — первым делом. От этого зависит, что вообще можно делать. */}
-        <WhoAmI />
-        <PresenceStack people={S.people} variant="strip" />
-      </div>
+
     </>
   )
 }

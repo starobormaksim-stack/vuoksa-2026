@@ -4,7 +4,6 @@ import type { Person } from '../lib/types'
 import type { SectionDef } from '../sections'
 import { Logo } from './Logo'
 import { PresenceStack } from './PresenceStack'
-import { WhoAmI } from './WhoAmI'
 import { ThemeToggle } from './ThemeToggle'
 import { MoreMenu } from './MoreMenu'
 
@@ -83,10 +82,6 @@ export function TopNav({
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
-          {/* Кто ты — на видном месте, а не в окне «О сервисе» (заказчик, 04.08.2026). */}
-          <span className="mr-3 hidden max-w-56 lg:inline-flex">
-            <WhoAmI />
-          </span>
           <span className="mr-1 hidden xl:inline-flex">
             <PresenceStack people={people} />
           </span>
