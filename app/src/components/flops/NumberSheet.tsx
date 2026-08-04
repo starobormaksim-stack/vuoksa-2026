@@ -5,7 +5,6 @@ import { ResponsiveSheet } from './ResponsiveSheet'
 import { Btn } from './Btn'
 import { fmtNum, MDASH, NBSP } from '@/format'
 import { nameAcc } from '@/lib/gearx'
-import { cn } from '@/lib/utils'
 
 /**
  * Правка одного числа (docs/v2-ux-redesign.md, 4.3).
@@ -176,11 +175,11 @@ export function NumberSheet(props: NumberSheetProps) {
           </Btn>
         }
       >
-        <div className="tnum py-4 text-center text-[40px] leading-none font-bold text-muted">
+        <div className="tnum py-4 text-center text-hero font-bold text-muted">
           {fmtNum(value, def.frac)}
-          {unit ? <span className="ml-1 text-2xl font-semibold">{unit}</span> : null}
+          {unit ? <span className="ml-1 text-head font-semibold">{unit}</span> : null}
         </div>
-        <div className="text-[13px] font-semibold text-muted">Сколько нужно?</div>
+        <div className="text-note font-semibold text-muted">Сколько нужно?</div>
         <Stepper
           value={want}
           frac={def.frac}
@@ -189,12 +188,13 @@ export function NumberSheet(props: NumberSheetProps) {
           onPlus={() => setWant(clamp(want + def.step))}
         />
         <label className="mt-4 block">
-          <span className="text-[13px] font-semibold text-muted">Почему</span>
+          <span className="text-note font-semibold text-muted">Почему</span>
+          {/* 16 px у поля ввода — не украшение: на меньшем iOS сам зумит страницу при фокусе */}
           <input
             value={why}
             onChange={(e) => setWhy(e.target.value)}
             placeholder="Нужно на смену"
-            className="mt-1 h-12 w-full rounded-xl border border-line-strong bg-surface px-3 text-[15px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="mt-2 h-12 w-full rounded-lg border border-line-strong bg-surface px-3 text-[16px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
         </label>
       </ResponsiveSheet>
@@ -229,7 +229,7 @@ export function NumberSheet(props: NumberSheetProps) {
             key={`${p.t}${p.v}`}
             type="button"
             onClick={() => onChange(clamp(p.t === 'set' ? p.v : value + p.v))}
-            className="tnum h-11 min-w-16 rounded-full border border-line-strong bg-surface px-4 text-[15px] font-semibold text-ink transition-colors hover:bg-zebra"
+            className="tnum h-11 min-w-16 rounded-full border border-line-strong bg-surface px-4 text-body font-semibold text-ink transition-colors hover:bg-zebra"
           >
             {p.t === 'set' ? fmtNum(p.v, def.frac) : (p.v > 0 ? '+' : MINUS) + fmtNum(Math.abs(p.v), 0)}
           </button>
@@ -246,7 +246,7 @@ export function NumberSheet(props: NumberSheetProps) {
             onKeyDown={(e) => e.key === 'Enter' && applyExact()}
             placeholder={fmtNum(value, def.frac)}
             aria-label={`${title}: точное значение`}
-            className="tnum h-12 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface px-3 text-[17px] font-semibold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="tnum h-12 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-[16px] font-semibold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
           <Btn tone="secondary" onClick={applyExact}>
             Поставить
@@ -256,14 +256,14 @@ export function NumberSheet(props: NumberSheetProps) {
         <button
           type="button"
           onClick={() => setExact(true)}
-          className="mx-auto mt-4 flex h-11 items-center rounded-xl px-4 text-[15px] font-semibold text-accent-text hover:bg-zebra"
+          className="mx-auto mt-4 flex h-11 items-center rounded-md px-4 text-body font-semibold text-accent-text transition-colors hover:bg-zebra"
         >
           Ввести точно
         </button>
       )}
 
       {hint ? (
-        <p className="mt-4 text-center text-sm text-muted" aria-live="polite">
+        <p className="mt-4 text-center text-note text-muted" aria-live="polite">
           {hint(value)}
         </p>
       ) : null}
@@ -291,7 +291,7 @@ function Stepper({
   onRelease?: () => void
 }) {
   const btn =
-    'grid size-14 shrink-0 place-items-center rounded-2xl border border-line-strong bg-surface text-ink transition-colors hover:bg-zebra active:bg-zebra'
+    'grid size-14 shrink-0 place-items-center rounded-lg border border-line-strong bg-surface text-ink transition-colors hover:bg-zebra active:bg-zebra'
   const rel = onRelease
     ? { onPointerUp: onRelease, onPointerLeave: onRelease, onPointerCancel: onRelease }
     : {}
@@ -300,11 +300,9 @@ function Stepper({
       <button type="button" aria-label="Меньше" className={btn} onPointerDown={onMinus} {...rel}>
         <Minus size={26} strokeWidth={1.75} aria-hidden />
       </button>
-      <div className="min-w-[140px] text-center" aria-live="polite">
-        <span className={cn('tnum text-[40px] leading-none font-bold text-ink')}>
-          {fmtNum(value, frac)}
-        </span>
-        {unit ? <span className="ml-1 text-2xl font-semibold text-muted">{unit}</span> : null}
+      <div className="min-w-36 text-center" aria-live="polite">
+        <span className="tnum text-hero font-bold text-ink">{fmtNum(value, frac)}</span>
+        {unit ? <span className="ml-1 text-head font-semibold text-muted">{unit}</span> : null}
       </div>
       <button type="button" aria-label="Больше" className={btn} onPointerDown={onPlus} {...rel}>
         <Plus size={26} strokeWidth={1.75} aria-hidden />

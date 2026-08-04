@@ -43,7 +43,7 @@ export function PickSheet({
       title={title}
       subtitle={subtitle}
     >
-      <ul role="radiogroup" aria-label={title} className="pb-2">
+      <ul role="radiogroup" aria-label={title}>
         {options.map((o) => {
           const on = o.id === value
           return (
@@ -57,7 +57,7 @@ export function PickSheet({
                   onOpenChange(false)
                 }}
                 className={cn(
-                  'flex min-h-14 w-full items-center gap-3 rounded-xl px-2 text-left transition-colors hover:bg-zebra',
+                  'flex min-h-14 w-full items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-zebra',
                   on && 'bg-accent-soft',
                 )}
               >
@@ -72,9 +72,9 @@ export function PickSheet({
                 </span>
                 {o.lead}
                 <span className="min-w-0 flex-1 py-2">
-                  <span className="block text-[15px] font-semibold text-ink">{o.title}</span>
+                  <span className="block text-body font-semibold text-ink">{o.title}</span>
                   {o.hint ? (
-                    <span className="mt-0.5 block text-[13px] leading-snug text-muted">{o.hint}</span>
+                    <span className="mt-0.5 block text-note text-muted">{o.hint}</span>
                   ) : null}
                 </span>
               </button>

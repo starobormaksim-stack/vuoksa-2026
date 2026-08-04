@@ -81,7 +81,11 @@
   --loaded: #F9F3D4;    /* в тёмной «в машине» инвертируется в крем */
   --danger: #E9A288;
   --on-accent: #262513;
-  --accent-text: #DD9A4E;
+  /* Мелкий акцентный текст в тёмной теме. #DD9A4E на поверхности карточки #3A4726
+     даёт лишь 4.17 : 1 — ниже нормы 4.5 : 1 для текста. Здесь тот же янтарь,
+     подмешанный кремом чуть сильнее (≈ 4.6 : 1 на карточке, 5.9 : 1 на фоне).
+     Новых цветов нет: это смесь янтаря #BC6C25 и крема #F9F3D4. */
+  --accent-text: #DBA76C;
   --accent-fill: #DD9A4E;
 
   --sh-sm: 0 1px 2px rgba(0, 0, 0, .28);
@@ -119,6 +123,29 @@
   --shadow-md: var(--sh-md);
   --shadow-lg: var(--sh-lg);
 
+  /* ── Единая типографическая шкала: 12 · 13 · 15,5 · 20 · 24 · 32 ──
+     Других размеров в общих компонентах нет. 15,5 — это же значение стоит
+     у body, поэтому text-body совпадает с «просто текстом» страницы.
+     Поля ввода намеренно вне шкалы (16 px): всё, что мельче, iOS встречает
+     принудительным зумом страницы при фокусе. */
+  --text-micro: 12px;
+  --text-micro--line-height: 16px;
+  --text-note: 13px;
+  --text-note--line-height: 18px;
+  --text-body: 15.5px;
+  --text-body--line-height: 22px;
+  --text-head: 20px;
+  --text-head--line-height: 26px;
+  --text-title: 24px;
+  --text-title--line-height: 30px;
+  --text-hero: 32px;
+  --text-hero--line-height: 36px;
+
+  /* Спокойная анимация по умолчанию: 200 мс — середина коридора 180–240 мс.
+     Утилиты transition-* без явной длительности берут это значение. */
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+
   --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-heading: var(--font-sans);
   /* Название сервиса набирается ТОЛЬКО этим шрифтом — решение заказчика 04.08.2026. */
@@ -142,13 +169,17 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* ── Единая шкала скруглений: 4 · 8 · 12 · 16 · круг ──
+     Прежние значения считались как доли от 12 и давали дробные 7,2 / 9,6 / 16,8 / 21,6 —
+     шесть разных скруглений на экране вместо трёх. rounded-xl и rounded-2xl теперь
+     одно и то же: 16 — потолок шкалы, крупнее в проекте не бывает. */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 16px;
+  --radius-3xl: 16px;
+  --radius-4xl: 9999px;
 }
 
 /* ── База ── */
@@ -217,8 +248,33 @@ body {
    прямо в стиль элемента, а такое правило обычным селектором не перебить. */
 [data-vaul-overlay][data-state='closed'],
 [data-slot='drawer-overlay'][data-state='closed'],
-[data-slot='dialog-overlay'][data-state='closed'] {
+[data-slot='dialog-overlay'][data-state='closed'],
+[data-slot='sheet-overlay'][data-state='closed'] {
   pointer-events: none !important;
+}
+
+/* Само полотно закрывающейся шторки/окна — та же беда, что и с подложкой.
+   Оно тоже висит поверх страницы, пока идёт анимация ухода, и на телефоне
+   закрывает нижнюю треть экрана. Закрытому полотну нажатия не нужны. */
+[data-slot='drawer-content'][data-state='closed'],
+[data-slot='dialog-content'][data-state='closed'],
+[data-slot='sheet-content'][data-state='closed'] {
+  pointer-events: none !important;
+}
+
+/* ── Последний рубеж: страница не имеет права остаться «мёртвой» ──
+   Пока модальное окно открыто, библиотека пишет body { pointer-events: none }
+   прямо в стиль элемента и снимает это по окончании анимации ухода. Не доиграла —
+   и вся страница перестаёт отзываться на касания, хотя ничего не видно.
+   Здесь мы возвращаем нажатия телу страницы, НО только когда в разметке нет
+   ни одной открытой подложки и ни одного всплывающего слоя, — то есть закрывать
+   по-настоящему открытое окно это правило не мешает.
+   Браузеры без :has() просто пропустят правило; прежняя защита подложек выше
+   работает и без него. */
+body:not(:has([data-slot$='-overlay'][data-state='open'])):not(
+    :has([data-radix-popper-content-wrapper])
+  ) {
+  pointer-events: auto !important;
 }
 
 /* ── Уважение к prefers-reduced-motion (Motion отключается в коде через useReducedMotion) ── */
@@ -226,7 +282,10 @@ body {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

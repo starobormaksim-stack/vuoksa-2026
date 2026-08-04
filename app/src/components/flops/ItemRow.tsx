@@ -79,11 +79,17 @@ export function ItemRow({
           <Trash2 size={22} strokeWidth={1.5} />
         </span>
       )}
-      {alarm && <span className="absolute inset-y-0 left-0 w-[3px] bg-accent-text" aria-hidden />}
+      {alarm && <span className="absolute inset-y-0 left-0 w-1 bg-accent-text" aria-hidden />}
 
       <div
         className="relative flex items-center gap-3 px-4"
-        style={{ transform: dx ? `translateX(${dx}px)` : undefined, transition: dx ? undefined : 'transform .18s' }}
+        /* Пока палец ведёт строку — никакой анимации, иначе она отстаёт от руки.
+           Возврат на место — те же 200 мс, что и у остального движения в проекте;
+           правило prefers-reduced-motion в index.css гасит и эту длительность. */
+        style={{
+          transform: dx ? `translateX(${dx}px)` : undefined,
+          transition: dx ? undefined : 'transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+        }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -96,28 +102,33 @@ export function ItemRow({
           onClick={onOpen}
           disabled={!onOpen}
           className={cn(
+            /* 64 px на телефоне — минимум строки списка, ниже опускаться нельзя.
+               На десктопе, где курсор точнее пальца, хватает 56. */
             'flex min-h-16 min-w-0 flex-1 items-center gap-3 py-2 text-left lg:min-h-14',
-            done && 'opacity-55',
+            /* Сделанное приглушается до 70 %, а не до 55: на 55 % зачёркнутое
+               название давало 3,6 : 1 к фону в светлой теме и 4,0 : 1 в тёмной —
+               ниже нормы 4,5 : 1. На 70 % это 5,6 : 1 и 5,3 : 1. */
+            done && 'opacity-70',
             !onOpen && 'cursor-default',
           )}
         >
           <span className="min-w-0 flex-1">
             <span
               className={cn(
-                'block text-[16px] leading-snug font-semibold text-ink text-pretty',
+                'block text-body font-semibold text-ink text-pretty',
                 done && 'line-through',
               )}
             >
               {title}
             </span>
             {line2 ? (
-              <span className="mt-0.5 block text-[13px] leading-snug text-muted">{line2}</span>
+              <span className="mt-0.5 block text-note text-muted">{line2}</span>
             ) : null}
             {line3 ? <span className="mt-1 block">{line3}</span> : null}
           </span>
 
           {right != null ? (
-            <span className="tnum shrink-0 text-[17px] font-bold text-ink">{right}</span>
+            <span className="tnum shrink-0 text-body font-bold text-ink">{right}</span>
           ) : null}
         </button>
       </div>

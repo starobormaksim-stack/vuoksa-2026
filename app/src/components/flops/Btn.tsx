@@ -10,17 +10,20 @@ import { cn } from '@/lib/utils'
 export type BtnTone = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type BtnSize = 'sm' | 'md' | 'lg'
 
+/* Заливка главной кнопки говорит сама за себя — тень под ней была украшением
+   и рядом с плоскими карточками читалась как чужая деталь. */
 const TONE: Record<BtnTone, string> = {
-  primary: 'bg-accent-fill text-on-accent shadow-sm hover:opacity-90 border-transparent',
-  secondary: 'bg-zebra text-ink border-transparent hover:bg-line/60',
+  primary: 'bg-accent-fill text-on-accent hover:opacity-90 border-transparent',
+  secondary: 'bg-zebra text-ink border-transparent hover:bg-line',
   ghost: 'bg-transparent text-muted hover:bg-zebra hover:text-ink border-transparent',
   danger: 'bg-transparent text-accent-text border border-accent-text hover:bg-accent-soft',
 }
 
+/* Высоты 36 · 44 · 52 и радиусы 8 · 12 · 12 — из общей шкалы проекта. */
 const SIZE: Record<BtnSize, string> = {
-  sm: 'h-9 px-3 text-sm gap-2 rounded-[10px]',
-  md: 'h-11 px-4 text-[15px] gap-2 rounded-xl',
-  lg: 'h-13 px-5 text-base gap-2 rounded-xl',
+  sm: 'h-9 px-3 text-note gap-2 rounded-md',
+  md: 'h-11 px-4 text-body gap-2 rounded-lg',
+  lg: 'h-13 px-5 text-body gap-2 rounded-lg',
 }
 
 interface Props extends Omit<ComponentProps<typeof Button>, 'variant' | 'size'> {
@@ -32,7 +35,14 @@ export function Btn({ tone = 'primary', scale = 'md', className, ...rest }: Prop
   return (
     <Button
       variant="ghost"
-      className={cn('font-semibold transition-all', TONE[tone], SIZE[scale], className)}
+      /* Перечисляем свойства поимённо: transition-all анимировал заодно размеры
+         и положение, и кнопка «плыла» при любом пересчёте разметки. */
+      className={cn(
+        'font-semibold transition-[color,background-color,border-color,opacity]',
+        TONE[tone],
+        SIZE[scale],
+        className,
+      )}
       {...rest}
     />
   )

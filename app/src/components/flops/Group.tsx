@@ -84,7 +84,9 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
   }
 
   return (
-    <section className={cn('overflow-hidden rounded-2xl border border-line bg-surface shadow-sm', className)}>
+    /* Рамка карточки — единственное, что отделяет группу от фона. Тень отсюда убрана:
+       она ничего не сообщала, а рядом с волосяной линией читалась как вторая граница. */
+    <section className={cn('overflow-hidden rounded-2xl border border-line bg-surface', className)}>
       <h3 className="relative flex items-stretch">
         <button
           type="button"
@@ -96,14 +98,15 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
           onPointerCancel={stopPress}
           aria-expanded={open}
           className={cn(
-            'flex min-h-14 flex-1 items-center gap-3 px-4 text-left transition-colors hover:bg-zebra/60',
+            /* 56 px — высота заголовка группы во всех разделах */
+            'flex min-h-14 flex-1 items-center gap-3 px-4 text-left transition-colors hover:bg-zebra',
             onMenu && 'pr-1 select-none',
           )}
         >
-          <span className="min-w-0 flex-1 truncate text-[17px] font-[650] text-ink">{title}</span>
+          <span className="min-w-0 flex-1 truncate text-body font-[650] text-ink">{title}</span>
           {badge}
           {total != null && total > 0 && (
-            <span className="tnum shrink-0 text-[15px] font-semibold text-muted">
+            <span className="tnum shrink-0 text-note font-semibold text-muted">
               {done ?? 0} / {total}
             </span>
           )}
@@ -119,16 +122,19 @@ export function Group({ title, done, total, open, onToggle, badge, onMenu, child
             type="button"
             onClick={onMenu}
             aria-label="Действия раздела"
-            className="my-auto mr-2 grid size-11 shrink-0 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
+            className="my-auto mr-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
           >
             <MoreHorizontal size={20} strokeWidth={1.5} aria-hidden />
           </button>
         )}
-        {total != null && total > 0 && (
-          <span className="absolute inset-x-0 bottom-0 h-[3px] bg-line/70" aria-hidden>
+        {/* Полоса под заголовком одна и та же всегда: без счётчика это просто линия,
+            отделяющая заголовок от содержимого, со счётчиком — она же показывает долю
+            сделанного. Отдельного разделителя поэтому нигде не нужно. */}
+        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-line" aria-hidden>
+          {total != null && total > 0 && (
             <span className="block h-full bg-accent transition-[width]" style={{ width: `${pct}%` }} />
-          </span>
-        )}
+          )}
+        </span>
       </h3>
       {seen.current && <div className={open ? 'block' : 'hidden'}>{children}</div>}
     </section>

@@ -202,17 +202,17 @@ export function PhotoCropSheet({
         </div>
       }
     >
-      <p className="text-[15px] leading-snug text-muted">
-        Подвиньте снимок пальцем или мышью, ползунок — масштаб.
-      </p>
-
+      {/* Подписи «подвиньте снимок пальцем, ползунок — масштаб» здесь больше нет:
+          рамку двигают, потому что она двигается, а ползунок подписан словом «Масштаб».
+          Остаётся только та строка внизу, которая сообщает правило: что попало в рамку,
+          то и увидят остальные. */}
       <div
         ref={box}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        className="relative mx-auto mt-3 w-full max-w-72 cursor-grab touch-none overflow-hidden rounded-2xl border border-line bg-zebra select-none active:cursor-grabbing"
+        className="relative mx-auto w-full max-w-72 cursor-grab touch-none overflow-hidden rounded-2xl border border-line bg-zebra select-none active:cursor-grabbing"
         style={{ aspectRatio: String(ratio) }}
       >
         {/* Картинка позиционируется абсолютно: её левый верхний угол считает draw(). */}
@@ -235,8 +235,8 @@ export function PhotoCropSheet({
         />
       </div>
 
-      <label className="mt-3 flex min-h-11 items-center gap-3">
-        <span className="shrink-0 text-[13px] font-semibold text-muted">Масштаб</span>
+      <label className="mt-4 flex min-h-11 items-center gap-3">
+        <span className="shrink-0 text-note font-semibold text-muted">Масштаб</span>
         <input
           type="range"
           min={1}
@@ -253,7 +253,7 @@ export function PhotoCropSheet({
         />
       </label>
 
-      <p className="mt-2 text-[13px] leading-snug text-muted">{frameHint}</p>
+      <p className="mt-2 text-note text-muted">{frameHint}</p>
     </ResponsiveSheet>
   )
 }

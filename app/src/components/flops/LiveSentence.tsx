@@ -35,7 +35,7 @@ export function EditNum({
 
 /** Итог фразы: считается сам, поэтому не кнопка и без пунктира. */
 export function ResultNum({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn('tnum text-[20px] font-bold text-ink', className)}>{children}</span>
+  return <span className={cn('tnum text-head font-bold text-ink', className)}>{children}</span>
 }
 
 /** Карточка с живой фразой: заголовок, кнопка «Изменить», текст. */
@@ -54,22 +54,23 @@ export function SentenceCard({
   note?: string
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+    /* Карточка держится на одной линии — тень отсюда убрана вслед за Group. */
+    <section className="rounded-2xl border border-line bg-surface p-4">
       <div className="flex min-h-11 items-center gap-3">
-        <h3 className="min-w-0 flex-1 text-[15px] font-[650] text-ink">{title}</h3>
-        {sum != null && <span className="tnum text-[17px] font-bold text-ink">{sum}</span>}
+        <h3 className="min-w-0 flex-1 text-body font-[650] text-ink">{title}</h3>
+        {sum != null && <span className="tnum text-body font-bold text-ink">{sum}</span>}
         {onEdit && (
           <button
             type="button"
             onClick={onEdit}
-            className="h-11 shrink-0 rounded-xl px-3 text-[15px] font-semibold text-accent-text hover:bg-zebra"
+            className="-mr-3 h-11 shrink-0 rounded-md px-3 text-body font-semibold text-accent-text transition-colors hover:bg-zebra"
           >
             Изменить
           </button>
         )}
       </div>
-      <div className="mt-1 text-[16px] leading-relaxed text-ink text-pretty">{children}</div>
-      {note ? <p className="mt-2 text-[13px] leading-snug text-muted">{note}</p> : null}
+      <div className="mt-2 text-body leading-relaxed text-ink text-pretty">{children}</div>
+      {note ? <p className="mt-2 text-note text-muted">{note}</p> : null}
     </section>
   )
 }
