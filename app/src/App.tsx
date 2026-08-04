@@ -54,6 +54,11 @@ function App() {
     return () => window.clearTimeout(t)
   })
 
+  /* Тап по знаку — возврат к началу страницы (и на мобильном, и на десктопе). */
+  const goHome = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' })
+  }, [reduce])
+
   /* Ctrl/⌘+K — привычная горячая клавиша поиска на десктопе. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -76,10 +81,16 @@ function App() {
         dark={dark}
         onToggleTheme={toggle}
         onSearch={() => setSearch(true)}
+        onHome={goHome}
       />
-      <MobileHeader dark={dark} onToggleTheme={toggle} onSearch={() => setSearch(true)} />
+      <MobileHeader
+        dark={dark}
+        onToggleTheme={toggle}
+        onSearch={() => setSearch(true)}
+        onHome={goHome}
+      />
 
-      <main className="mx-auto max-w-[1120px] px-4 py-6 pb-28 lg:px-6 lg:py-8 lg:pb-12">
+      <main className="mx-auto w-full max-w-[1280px] px-4 py-6 pb-28 lg:px-6 lg:py-8 lg:pb-12">
         {/* Без AnimatePresence mode="wait": там смена раздела ждёт окончания
             анимации ухода, и если кадры не рисуются (фоновая вкладка, экономия
             батареи), переключение просто зависает. Въезд нового раздела — есть,

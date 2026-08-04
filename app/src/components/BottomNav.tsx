@@ -19,7 +19,9 @@ export function BottomNav({ sections, active, onSelect }: Props) {
   return (
     <nav
       aria-label="Разделы"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-line/70 bg-surface/95 backdrop-blur lg:hidden"
+      /* Фон непрозрачный: содержимое должно уезжать под панель и там пропадать,
+         а не просвечивать сквозь неё. */
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-line/70 bg-surface lg:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <div
