@@ -30,7 +30,12 @@ function InlineSvg({ raw, className }: { raw: string; className: string }) {
   return <span ref={ref} className={className} />
 }
 
-export function Logo({ height = 44 }: { height?: number }) {
+/**
+ * Высота знака в шапке: 26 px на мобильном, 28 px на десктопе. Это тот диапазон,
+ * в котором логотип с эмблемой читается и не давит на содержимое — крупнее знак
+ * начинает конкурировать с заголовками экрана.
+ */
+export function Logo({ height = 28 }: { height?: number }) {
   return (
     <span className="inline-flex shrink-0" style={{ height }}>
       <InlineSvg raw={logoLight} className="logo logo-light h-full" />

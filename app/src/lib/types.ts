@@ -110,7 +110,20 @@ export interface RoutePoint {
   /** расстояние от предыдущей точки, км (из OSRM) */
   leg: number
   legSrc: 'osrm' | 'hand' | ''
+  ord?: number
   ua?: number
+  nw?: number
+}
+
+/** S.ideas[] — «что не забыть» (коллекция из v1, живёт и в v2). */
+export interface Idea {
+  i: string
+  n: string
+  why: string
+  who: string
+  done: boolean
+  ua?: number
+  nw?: number
 }
 
 /** Точка назначения поездки (trip.places[]). */
@@ -256,8 +269,13 @@ export interface Gear {
   q: Record<string, QtyAsk | string>
   /** кто назначил количество этому человеку */
   oby: Record<string, string>
+  /** статусы по людям: 0 — не начато … 3 — взято (см. v1 ST_*) */
+  s?: Record<string, number>
   as?: string
+  ord?: number
   ua?: number
+  /** позиция приехала слиянием и на экране ещё не показывалась */
+  nw?: number
 }
 
 /** Статус позиции закупки: 'buy' — покупаем; 'has_<personId>' — уже есть. */
@@ -284,7 +302,11 @@ export interface Buy {
   qby: string
   qask?: { by: string; want: number; why: string; ua?: number }
   as?: string
+  ord?: number
+  /** старое поле «куплено» из документов v1 — читается ради совместимости */
+  b?: boolean
   ua?: number
+  nw?: number
 }
 
 /** S.people[] — участник (в объёме, нужном расчётам). */
@@ -301,15 +323,28 @@ export interface Person {
   key: string
   ua: number
   desc: string
+  nw?: number
 }
 
 /** Корневой документ S (v2) — поля, используемые расчётным ядром. */
 export interface State {
   v?: number
   schemaV?: number
-  updatedAt?: number
-  me?: string
-  theme?: string
+  /**
+   * Метка последней правки документа целиком, ISO-строка (как в сиде и на сервере).
+   * Сравнивается строкой: у ISO лексикографический порядок совпадает с хронологическим.
+   */
+  updatedAt?: string
+  /** кто сейчас за документом; в онлайне подставляется из личной ссылки */
+  me?: string | null
+  theme?: string | null
+  /** имя того, кто записал документ последним (уходит в колонку author) */
+  author?: string
+  /**
+   * Метки удалений: ключ «коллекция:i» → время удаления.
+   * Нужны слиянию, иначе удалённая позиция вернётся с чужой копии.
+   */
+  del?: Record<string, number>
   trip: Trip
   people: Person[]
   gearSections: GearSection[]
@@ -326,4 +361,10 @@ export interface State {
   rateUnits: RateUnit[]
   units: Unit[]
   doc: Doc
+  /** разделы, которые расчёты не трогают, но слияние обязано сохранять */
+  ideas?: Idea[]
+  menu?: unknown[]
+  weather?: Record<string, unknown>
+  tileLabels?: string[]
+  secTitles?: Record<string, string>
 }

@@ -7,7 +7,7 @@ export function MobileHeader({ dark, onToggleTheme }: { dark: boolean; onToggleT
   return (
     <header className="sticky top-0 z-40 border-b border-line/70 bg-bg/90 backdrop-blur lg:hidden">
       <div className="flex h-14 items-center justify-between px-4">
-        <Logo height={44} />
+        <Logo height={26} />
         <div className="flex items-center gap-1">
           <ThemeToggle dark={dark} onToggle={onToggleTheme} />
           <button

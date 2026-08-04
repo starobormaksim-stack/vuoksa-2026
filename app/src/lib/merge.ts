@@ -1,0 +1,400 @@
+/**
+ * Слияние двух копий документа — перенос mergeInto из боевой версии (src/app.template.html)
+ * плюс новые коллекции v2 (docs/v2-architecture.md, раздел 2.4).
+ *
+ * Как это работает словами: документ на сервере один, но правки вливаются не «кто последний,
+ * тот и прав», а по позициям. Каждая позиция сопоставляется по полю `i`; у кого метка времени
+ * `ua` свежее — тот и прав. Отметки при равных метках берутся более продвинутые (включённая
+ * галочка не гаснет от чужой старой копии). Удалённое помнится в `S.del` («коллекция:i» → когда
+ * убрали) и не воскресает.
+ *
+ * Объектные поля (`nt`, `blocks`, `o`, `q`, `oby`, `qask`) сравниваются через JSON.stringify —
+ * так же, как в v1: отдельных меток времени у них нет, а посимвольная разница не нужна.
+ *
+ * Функции меняют переданный документ на месте: вызывающий сам делает клон, если ему нужна
+ * неизменяемость (так делает store.ts).
+ */
+
+import type { State } from './types.ts'
+
+/** Позиция коллекции глазами слияния. */
+interface Item {
+  i: string
+  ua?: number
+  nw?: number
+  [k: string]: unknown
+}
+
+/** Документ глазами слияния — коллекции по имени. */
+type Bag = Record<string, unknown>
+
+/** Сколько чего приехало. */
+export interface MergeResult {
+  /** изменившихся отметок */
+  marks: number
+  /** изменившихся полей */
+  edits: number
+  /** новых позиций */
+  news: number
+  /** убранных позиций */
+  gone: number
+  total: number
+}
+
+/** Глубокая копия (документ — обычный JSON). */
+export function clone<T>(x: T): T {
+  return x === undefined ? x : (JSON.parse(JSON.stringify(x)) as T)
+}
+
+/** Запомнить удаление: слияние не вернёт позицию обратно. */
+export function forget(S: State, kind: string, i: string): void {
+  if (!S.del) S.del = {}
+  S.del[kind + ':' + i] = Date.now()
+}
+
+/** Отменить удаление. */
+export function revive(S: State, kind: string, i: string): void {
+  if (S.del) delete S.del[kind + ':' + i]
+}
+
+/* ─────────── таблица коллекций ───────────
+   Простые коллекции: сравниваем перечисленные поля, побеждает более свежий `ua`.
+   Списки полей — из docs/v2-architecture.md, раздел 2.4. */
+const PLAIN: Record<string, string[]> = {
+  transport: [
+    'n', 'kind', 'kindT', 'fuel', 'rate', 'rateU', 'hours', 'litres',
+    'carry', 'owner', 'leg', 'calcT', 'c', 'ord', 'by', 'as',
+  ],
+  rent: ['n', 'cat', 'price', 'unit', 'qty', 'count', 'calcT', 'c', 'warn', 'ord', 'by', 'as'],
+  fuelPrices: ['n', 'price', 'u', 'c', 'ord'],
+  gearSections: ['t', 'ord'],
+  buySections: ['t', 'personal', 'ord'],
+  units: ['t', 'full', 'ord'],
+  kinds: ['t', 'rateU', 'icon', 'ord'],
+  rentCats: ['t', 'ord'],
+  canRows: ['t', 'c', 'fuel', 'ord'],
+}
+
+/** Поля-объекты: сравнение через JSON.stringify. */
+const PLAIN_JSON: Record<string, string[]> = {
+  transport: ['nt'],
+  rent: ['blocks', 'nt'],
+  fuelPrices: ['nt'],
+}
+
+/** Поля карточки участника, которые слияние переносит. */
+const PERSON_FIELDS = ['name', 'ini', 'car', 'role', 'desc', 'color', 'perm', 'key', 'slug', 'photo']
+
+/**
+ * Общие блоки без собственных меток времени: решаются по свежести всего документа.
+ * Из v1-списка ушли ставшие коллекциями log/boat/calcRows/canRows/logNotes/buySections,
+ * добавился doc (валюта и единицы).
+ */
+const WHOLE_DOC = ['menu', 'weather', 'tileLabels', 'secTitles', 'trip', 'doc']
+
+/** Влить входящий документ `inc` в `S`. Меняет `S` на месте. */
+export function mergeInto(S: State, inc: Partial<State> | null | undefined): MergeResult {
+  let marks = 0
+  let news = 0
+  let edits = 0
+  let gone = 0
+  const src = (inc || {}) as Bag
+  const dst = S as unknown as Bag
+
+  if (!S.del) S.del = {}
+  const del = S.del
+  const idel = (src.del || {}) as Record<string, number>
+  Object.keys(idel).forEach((k) => {
+    if ((idel[k] || 0) > (del[k] || 0)) del[k] = idel[k]
+  })
+
+  /* ── участники: сопоставление по id, а не по i ── */
+  const people = (dst.people || []) as unknown as Item[]
+  const incPeople = (src.people || []) as unknown as Item[]
+  incPeople.forEach((ip) => {
+    const id = String(ip.id)
+    let mine: Item | null = null
+    people.forEach((p) => {
+      if (p.id === id) mine = p
+    })
+    const have = mine as Item | null
+    if (!have) {
+      if ((del['people:' + id] || 0) >= (ip.ua || 0)) return
+      people.push(clone(ip))
+      news++
+      return
+    }
+    if ((ip.ua || 0) > (have.ua || 0)) {
+      PERSON_FIELDS.forEach((f) => {
+        if (ip[f] != null && ip[f] !== have[f]) {
+          have[f] = clone(ip[f])
+          edits++
+        }
+      })
+      have.ua = ip.ua
+    } else if (!have.photo && ip.photo) {
+      have.photo = ip.photo
+      edits++
+    }
+  })
+  for (let pj = people.length - 1; pj >= 0; pj--) {
+    const t = del['people:' + String(people[pj].id)] || 0
+    if (t && t > (people[pj].ua || 0) && people.length > 1) {
+      people.splice(pj, 1)
+      gone++
+    }
+  }
+
+  /** Перенести перечисленные поля; вернуть число изменившихся. */
+  function fields(a: Item, b: Item, list: string[]): number {
+    let e = 0
+    list.forEach((f) => {
+      if (b[f] !== undefined && b[f] !== a[f]) {
+        a[f] = clone(b[f])
+        e++
+      }
+    })
+    return e
+  }
+
+  /** То же, но для объектных полей: сравнение через JSON.stringify. */
+  function jsonFields(a: Item, b: Item, list: string[]): number {
+    let e = 0
+    list.forEach((f) => {
+      if (b[f] === undefined) return
+      if (JSON.stringify(b[f]) !== JSON.stringify(a[f])) {
+        a[f] = clone(b[f])
+        e++
+      }
+    })
+    return e
+  }
+
+  /** Пройти коллекцию: добавить новое, слить общее, убрать удалённое. */
+  function pick(k: string, cmp: (a: Item, b: Item) => { marks: number; edits: number }): void {
+    if (!Array.isArray(dst[k])) {
+      if (Array.isArray(src[k])) dst[k] = clone(src[k])
+      else return
+    }
+    const list = dst[k] as unknown as Item[]
+    const byId: Record<string, Item> = {}
+    list.forEach((x) => {
+      byId[x.i] = x
+    })
+    const incoming = (src[k] || []) as unknown as Item[]
+    incoming.forEach((x) => {
+      const mine = byId[x.i]
+      if (!mine) {
+        if ((del[k + ':' + x.i] || 0) >= (x.ua || 0)) return
+        const c = clone(x)
+        c.nw = 1
+        list.push(c)
+        byId[c.i] = c
+        news++
+        return
+      }
+      const r = cmp(mine, x)
+      marks += r.marks
+      edits += r.edits
+    })
+    for (let j = list.length - 1; j >= 0; j--) {
+      const it = list[j]
+      const t = del[k + ':' + it.i] || 0
+      if (t && t > (it.ua || 0)) {
+        list.splice(j, 1)
+        gone++
+      }
+    }
+  }
+
+  /* ── сборы: статусы по людям + количества, просьбы и «кто назначил» ── */
+  pick('gear', (a, b) => {
+    let m = 0
+    let e = 0
+    const bs = (b.s || {}) as Record<string, number>
+    const as = (a.s || (a.s = {})) as Record<string, number>
+    Object.keys(bs).forEach((p) => {
+      const av = as[p] || 0
+      const bv = bs[p] || 0
+      /* при равных метках берём более продвинутый статус — чужая старая копия его не гасит */
+      const take = (b.ua || 0) > (a.ua || 0) ? bv : Math.max(av, bv)
+      if (take !== av) {
+        as[p] = take
+        m++
+      }
+    })
+    if ((b.ua || 0) > (a.ua || 0)) {
+      e += fields(a, b, ['n', 'c', 'sec', 'by', 'as', 'ord'])
+      e += jsonFields(a, b, ['o', 'q', 'oby'])
+      a.ua = b.ua
+    }
+    return { marks: m, edits: e }
+  })
+
+  /* ── закупка ── */
+  pick('buy', (a, b) => {
+    let m = 0
+    let e = 0
+    /* старое поле «куплено» из документов v1: включённое не гаснет */
+    if (b.b !== undefined && !!b.b !== !!a.b) {
+      if ((b.ua || 0) >= (a.ua || 0) || b.b) {
+        a.b = !!b.b
+        m++
+      }
+    }
+    if ((b.ua || 0) > (a.ua || 0)) {
+      e += fields(a, b, [
+        'n', 'q', 'pr', 'prf', 'st', 'u', 'uid', 'who', 'sec', 'c', 'by', 'as', 'qby', 'ord',
+      ])
+      e += jsonFields(a, b, ['qask'])
+      a.ua = b.ua
+    }
+    return { marks: m, edits: e }
+  })
+
+  /* ── маршрут: галочка «пройдено» + расширенный набор полей v2 ── */
+  pick('route', (a, b) => {
+    let m = 0
+    let e = 0
+    if (!!b.done !== !!a.done) {
+      if ((b.ua || 0) >= (a.ua || 0) || b.done) {
+        a.done = !!b.done
+        m++
+      }
+    }
+    if ((b.ua || 0) > (a.ua || 0)) {
+      e += fields(a, b, [
+        'n', 'time', 'c', 'lat', 'lon', 'addr', 'lab', 'labT', 'mode', 'leg', 'legSrc', 'ord',
+      ])
+      a.ua = b.ua
+    }
+    return { marks: m, edits: e }
+  })
+
+  /* ── «что не забыть» ── */
+  pick('ideas', (a, b) => {
+    let m = 0
+    let e = 0
+    if (!!b.done !== !!a.done) {
+      if ((b.ua || 0) >= (a.ua || 0) || b.done) {
+        a.done = !!b.done
+        m++
+      }
+    }
+    if ((b.ua || 0) > (a.ua || 0)) {
+      e += fields(a, b, ['n', 'why', 'who'])
+      a.ua = b.ua
+    }
+    return { marks: m, edits: e }
+  })
+
+  /* ── новые коллекции v2 и справочники ── */
+  Object.keys(PLAIN).forEach((k) => {
+    const list = PLAIN[k]
+    const jlist = PLAIN_JSON[k] || []
+    pick(k, (a, b) => {
+      if ((b.ua || 0) <= (a.ua || 0)) return { marks: 0, edits: 0 }
+      const e = fields(a, b, list) + jsonFields(a, b, jlist)
+      a.ua = b.ua
+      return { marks: 0, edits: e }
+    })
+  })
+
+  /* ── общие блоки без собственных меток: по свежести всего документа ── */
+  if ((inc?.updatedAt || '') > (S.updatedAt || '')) {
+    WHOLE_DOC.forEach((f) => {
+      if (src[f] !== undefined && src[f] !== null) dst[f] = clone(src[f])
+    })
+    if (src.theme !== undefined) S.theme = src.theme as string | null
+  }
+
+  return { marks, edits, news, gone, total: marks + edits + news + gone }
+}
+
+/**
+ * Привести документ в рабочий вид: собрать недостающие коллекции, объекты и метки.
+ * Аналог normalize() из v1; ничего не выдумывает, только заполняет пустое.
+ */
+export function normalizeDoc(S: State): State {
+  const d = S as unknown as Bag
+  if (!S.del) S.del = {}
+  const LISTS = [
+    'people', 'gear', 'gearSections', 'buy', 'buySections', 'route', 'ideas',
+    'transport', 'fuelPrices', 'rent', 'rentCats', 'kinds', 'rateUnits', 'units', 'canRows',
+  ]
+  LISTS.forEach((k) => {
+    if (!Array.isArray(d[k])) d[k] = []
+  })
+  if (typeof S.updatedAt === 'number') S.updatedAt = new Date(S.updatedAt).toISOString()
+  S.gear.forEach((g) => {
+    if (!g.o) g.o = {}
+    if (!g.q) g.q = {}
+    if (!g.oby) g.oby = {}
+    if (!g.s) g.s = {}
+    g.ua = g.ua || 0
+  })
+  S.buy.forEach((p) => {
+    if (p.who == null) p.who = ''
+    p.ua = p.ua || 0
+  })
+  S.route.forEach((r) => {
+    r.ua = r.ua || 0
+  })
+  S.people.forEach((p) => {
+    if (p.photo == null) p.photo = ''
+    if (!p.perm) p.perm = 'member'
+    p.ua = p.ua || 0
+  })
+  return S
+}
+
+/**
+ * Добрать из сида то, чего нет в документе: новые позиции и людей.
+ * Ссылки и ключи прав держим одинаковыми во всех копиях — берём их из сида, если своих нет.
+ */
+export function mergeSeed(doc: State, seed: State): State {
+  const out = clone(doc)
+  const od = out as unknown as Bag
+  const sd = seed as unknown as Bag
+  const COLLECTIONS = [
+    'gear', 'buy', 'route', 'ideas', 'gearSections', 'buySections',
+    'transport', 'fuelPrices', 'rent', 'rentCats', 'kinds', 'rateUnits', 'units', 'canRows',
+  ]
+  COLLECTIONS.forEach((k) => {
+    if (!Array.isArray(od[k])) od[k] = []
+    const list = od[k] as unknown as Item[]
+    const have: Record<string, number> = {}
+    list.forEach((x) => {
+      have[x.i] = 1
+    })
+    const from = (sd[k] || []) as unknown as Item[]
+    from.forEach((x) => {
+      /* убранное вручную не возвращаем */
+      if ((out.del || {})[k + ':' + x.i]) return
+      if (!have[x.i]) list.push(clone(x))
+    })
+  })
+  const hp: Record<string, { slug?: string; key?: string }> = {}
+  out.people.forEach((p) => {
+    hp[p.id] = p
+  })
+  seed.people.forEach((p) => {
+    const m = hp[p.id]
+    if (!m) {
+      if (!(out.del || {})['people:' + p.id]) out.people.push(clone(p))
+      return
+    }
+    if (!m.slug && p.slug) m.slug = p.slug
+    if (!m.key && p.key) m.key = p.key
+  })
+  if (!out.trip) out.trip = clone(seed.trip)
+  else
+    Object.keys(seed.trip).forEach((k) => {
+      const t = out.trip as unknown as Bag
+      if (t[k] === undefined) t[k] = clone((seed.trip as unknown as Bag)[k])
+    })
+  if (!out.doc) out.doc = clone(seed.doc)
+  if (!out.weather) out.weather = clone(seed.weather)
+  if (!out.menu) out.menu = clone(seed.menu)
+  return out
+}

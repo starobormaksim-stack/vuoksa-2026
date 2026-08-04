@@ -21,7 +21,7 @@ export function TopNav({ sections, active, onSelect, people, dark, onToggleTheme
   return (
     <header className="sticky top-0 z-40 hidden border-b border-line/70 bg-bg/90 backdrop-blur lg:block">
       <div className="mx-auto flex h-16 max-w-[1120px] items-center gap-8 px-6">
-        <Logo height={44} />
+        <Logo height={28} />
 
         <nav aria-label="Разделы" className="flex h-full min-w-0 flex-1 items-stretch gap-1">
           {sections.map((s) => {
