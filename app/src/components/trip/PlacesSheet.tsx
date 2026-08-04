@@ -28,7 +28,7 @@ export function PlacesSheet({ places, onClose }: { places: TripPlace[]; onClose:
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-brand-dark/40"
       />
-      <div className="relative w-full max-w-md rounded-t-2xl border border-line bg-card p-5 pb-8 shadow-lg sm:rounded-2xl sm:pb-5">
+      <div className="relative w-full max-w-md rounded-t-2xl border border-line bg-surface p-5 pb-8 shadow-lg sm:rounded-2xl sm:pb-5">
         {/* Ручка шторки на мобайле */}
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line sm:hidden" aria-hidden />
 

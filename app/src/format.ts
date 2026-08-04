@@ -5,6 +5,26 @@ export const NNBSP = ' '
 export const NDASH = '–'
 export const MDASH = '—'
 
+/**
+ * Число по-русски: дробная часть через запятую, разряды — узкий неразрывный пробел.
+ * fmtNum(34.7) → «34,7» · fmtNum(21385) → «21 385» · fmtNum(10.5, 1) → «10,5»
+ */
+export function fmtNum(n: number, maxFrac = 1): string {
+  const neg = n < 0
+  const abs = Math.abs(n)
+  const r = Math.round(abs * 10 ** maxFrac) / 10 ** maxFrac
+  const int = Math.floor(r)
+  const frac = r - int
+  let out = String(int).replace(/\B(?=(\d{3})+(?!\d))/g, NNBSP)
+  if (frac > 0) out += ',' + String(Math.round(frac * 10 ** maxFrac)).padStart(maxFrac, '0').replace(/0+$/, '')
+  return (neg ? '−' : '') + out
+}
+
+/** «34,7 л» — число и единица склеены неразрывным пробелом (правило типографики). */
+export function withUnit(n: number, unit: string, maxFrac = 1): string {
+  return `${fmtNum(n, maxFrac)}${NBSP}${unit}`
+}
+
 /** Родительный падеж месяцев для дат («10–14 августа»). */
 const MONTHS_GEN = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',

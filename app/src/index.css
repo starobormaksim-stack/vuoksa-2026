@@ -1,25 +1,34 @@
 @import "./fonts-manrope.css";
+@import "./fonts-chewy.css";
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /* Тёмная тема — класс .dark на <html> (личная настройка браузера, см. src/theme.ts). */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ── Семантические токены FLOPS ──────────────────────────────────────────
    Бренд — ровно четыре цвета (решение заказчика от 04.08.2026):
-     графит #161C10 · хвоя #2B391B · крем #FEFAE0 · янтарь #BC6C25
+     графит #262513 · хвоя #2B391A · крем #F9F3D4 · янтарь #BC6C25
    Всё остальное — их производные (смеси между собой). Ни одного постороннего
-   тона: прежние песочный #E4D0A5 и водный синий #3E6B7A выведены.        */
+   тона: прежние песочный #E4D0A5 и водный синий #3E6B7A выведены.
+
+   ВНИМАНИЕ: токен поверхности карточки называется --surface, а НЕ --card.
+   shadcn/ui объявляет свой --card и перезаписал бы наш (docs/v2-ux-redesign.md, 2.5).
+   Переменные shadcn ниже — только алиасы к токенам FLOPS, самостоятельных
+   значений у них нет.                                                     */
 :root {
   --bg: #F9F3D4;        /* крем логотипа — фон страницы */
-  --card: #FEFAE0;      /* на полтона светлее: карточки «светятся» на фоне */
+  --surface: #FEFAE0;   /* на полтона светлее: карточки «светятся» на фоне */
   --zebra: #EFE8C6;     /* крем + графит ~8 %: чередование строк */
   --line: #D9D2AF;      /* крем + графит ~20 % */
+  --line-strong: #C7C2A0; /* крем + графит ~28 %: рамка поля, контур «не взято» */
   --ink: #262513;       /* графит логотипа — основной текст */
   --muted: #565237;     /* вторичный тон логотипа */
-  --accent: #BC6C25;    /* янтарь */
+  --accent: #BC6C25;    /* янтарь: графика, границы, заливки-плашки */
   --accent-deep: #A74612;
   --accent-soft: #F2E3C0; /* крем + янтарь ~15 % */
-  --pine: #2B391A;      /* хвоя логотипа: «упаковано» */
+  --pine: #2B391A;      /* хвоя логотипа */
   --loaded: #262513;    /* графит: «в машине» — финальное состояние, самое плотное */
   --danger: #A74612;
   /* Текст поверх акцентной заливки (кнопки): контраст ≥ 4.5:1 в обеих темах. */
@@ -29,16 +38,37 @@
   /* Заливка кнопок: под кремовым текстом светлый янтарь даёт лишь 3.8:1. */
   --accent-fill: #A74612;
 
-  --sh-sm: 0 1px 2px rgba(22, 28, 16, .06);
-  --sh-md: 0 1px 2px rgba(22, 28, 16, .06), 0 10px 30px rgba(22, 28, 16, .09);
-  --sh-lg: 0 18px 44px rgba(22, 28, 16, .14);
+  --sh-sm: 0 1px 2px rgba(38, 37, 19, .06);
+  --sh-md: 0 1px 2px rgba(38, 37, 19, .06), 0 10px 30px rgba(38, 37, 19, .09);
+  --sh-lg: 0 18px 44px rgba(38, 37, 19, .14);
+
+  /* ── Переменные shadcn: только ссылки на токены FLOPS ── */
+  --radius: 12px;
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent-fill);
+  --primary-foreground: var(--on-accent);
+  --secondary: var(--zebra);
+  --secondary-foreground: var(--ink);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--ink);
+  --destructive: var(--accent-text);
+  --destructive-foreground: var(--on-accent);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--accent);
 }
 
 .dark {
   --bg: #2B391A;        /* хвоя логотипа */
-  --card: #3A4726;      /* хвоя + крем ~8 % */
+  --surface: #3A4726;   /* хвоя + крем ~8 % */
   --zebra: #222E14;     /* хвоя + графит ~25 % */
   --line: #4A5A33;
+  --line-strong: #67744C;
   --ink: #F9F3D4;       /* крем логотипа — основной текст */
   --muted: #B1B499;     /* вторичный тон логотипа */
   --accent: #DD9A4E;    /* янтарь, осветлённый кремом */
@@ -47,7 +77,7 @@
   --pine: #A6C287;      /* хвоя, сильно осветлённая кремом */
   --loaded: #F9F3D4;    /* в тёмной «в машине» инвертируется в крем */
   --danger: #E9A288;
-  --on-accent: #161C10;
+  --on-accent: #262513;
   --accent-text: #DD9A4E;
   --accent-fill: #DD9A4E;
 
@@ -59,9 +89,10 @@
 /* ── Маппинг токенов в утилиты Tailwind v4 ── */
 @theme inline {
   --color-bg: var(--bg);
-  --color-card: var(--card);
+  --color-surface: var(--surface);
   --color-zebra: var(--zebra);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
@@ -86,6 +117,35 @@
   --shadow-lg: var(--sh-lg);
 
   --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-sans);
+  /* Название сервиса набирается ТОЛЬКО этим шрифтом — решение заказчика 04.08.2026. */
+  --font-brand: "Chewy", "Manrope", cursive;
+
+  /* Утилиты shadcn (bg-background, text-foreground, border-border и т. д.) */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 /* ── База ── */
@@ -103,6 +163,8 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Мобильный приоритет: горизонтального скролла не бывает ни на одном экране. */
+  overflow-x: hidden;
 }
 
 /* Табличные цифры для сумм и дат. */
@@ -114,6 +176,15 @@ body {
   text-decoration-color: color-mix(in srgb, var(--accent) 65%, transparent);
   text-underline-offset: 4px;
   cursor: pointer;
+}
+
+/* Штриховка «не могу взять» — различие формой, а не цветом (WCAG 1.4.1). */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--accent-text) 26%, transparent) 0 2px,
+    transparent 2px 5px
+  );
 }
 
 /* Видимый фокус (WCAG): кольцо акцентом на любом интерактиве. */
@@ -138,5 +209,17 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }

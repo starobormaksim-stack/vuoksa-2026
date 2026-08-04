@@ -73,7 +73,7 @@ export function DateRangePicker({ start, end, onCancel, onDone }: Props) {
         onClick={onCancel}
         className="absolute inset-0 cursor-default bg-brand-dark/40"
       />
-      <div className="relative w-full max-w-[340px] rounded-2xl border border-line bg-card p-4 shadow-lg">
+      <div className="relative w-full max-w-[340px] rounded-2xl border border-line bg-surface p-4 shadow-lg">
         <div className="flex items-center justify-between">
           <button
             type="button"

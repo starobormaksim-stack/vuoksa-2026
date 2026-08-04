@@ -1,10 +1,11 @@
 import { motion, useReducedMotion } from 'motion/react'
-import { Ellipsis, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import type { Person } from '../lib/types'
 import type { SectionDef } from '../sections'
 import { Logo } from './Logo'
 import { PresenceStack } from './PresenceStack'
 import { ThemeToggle } from './ThemeToggle'
+import { MoreMenu } from './MoreMenu'
 
 interface Props {
   sections: SectionDef[]
@@ -13,10 +14,11 @@ interface Props {
   people: Person[]
   dark: boolean
   onToggleTheme: () => void
+  onSearch: () => void
 }
 
-/** Прилипающее верхнее меню (десктоп ≥1024): логотип · табы · присутствие · поиск · тема · «⋯». */
-export function TopNav({ sections, active, onSelect, people, dark, onToggleTheme }: Props) {
+/** Прилипающее верхнее меню (десктоп ≥1024): знак · табы · присутствие · поиск · тема · «⋯». */
+export function TopNav({ sections, active, onSelect, people, dark, onToggleTheme, onSearch }: Props) {
   const reduce = useReducedMotion()
   return (
     <header className="sticky top-0 z-40 hidden border-b border-line/70 bg-bg/90 backdrop-blur lg:block">
@@ -59,19 +61,14 @@ export function TopNav({ sections, active, onSelect, people, dark, onToggleTheme
           <PresenceStack people={people} />
           <button
             type="button"
-            aria-label="Поиск (скоро)"
+            aria-label="Поиск по листу"
+            onClick={onSearch}
             className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
           >
             <Search size={21} strokeWidth={1.5} aria-hidden />
           </button>
           <ThemeToggle dark={dark} onToggle={onToggleTheme} />
-          <button
-            type="button"
-            aria-label="Ещё действия (скоро)"
-            className="grid size-11 place-items-center rounded-xl text-muted transition-colors hover:bg-zebra hover:text-ink"
-          >
-            <Ellipsis size={21} strokeWidth={1.5} aria-hidden />
-          </button>
+          <MoreMenu />
         </div>
       </div>
     </header>

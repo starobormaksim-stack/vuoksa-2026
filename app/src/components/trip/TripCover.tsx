@@ -7,15 +7,22 @@ interface Props {
   places: TripPlace[]
   onEditDates: () => void
   onShowPlaces: () => void
+  /**
+   * Даты и места меняют только владелец и редактор. Участнику кнопки не рисуются
+   * вовсе (правило 12.2: «действие не положено — кнопки нет, а не серая»).
+   */
+  canEdit: boolean
 }
 
 /**
  * Обложка поездки: на десктопе квадрат слева, фото-hero с градиентной подложкой,
  * заголовок, подзаголовок, даты (тап — календарь), места (тап — шторка) и обратный отсчёт.
  */
-export function TripCover({ trip, places, onEditDates, onShowPlaces }: Props) {
+export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: Props) {
   const main = places.find((p) => p.main) ?? places[0]
   const extra = places.length - 1
+  const chip =
+    'flex min-h-11 items-center gap-2 rounded-xl bg-brand-dark/45 px-3 backdrop-blur-sm'
 
   return (
     <div className="relative overflow-hidden rounded-2xl shadow-md aspect-[4/3] sm:aspect-[16/9] lg:aspect-square">
@@ -51,30 +58,46 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces }: Props) {
         {trip.sub && <p className="mt-1 text-[15.5px] text-brand-cream/85">{trip.sub}</p>}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onEditDates}
-            className="flex min-h-11 items-center gap-2 rounded-xl bg-brand-dark/45 px-3 backdrop-blur-sm transition-colors hover:bg-brand-dark/65"
-            aria-label={`Даты поездки: ${trip.dates}. Изменить`}
-          >
-            <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
-            <span className="editable tnum text-sm font-semibold">{trip.dates}</span>
-          </button>
-
-          {main && (
+          {canEdit ? (
             <button
               type="button"
-              onClick={onShowPlaces}
-              className="flex min-h-11 items-center gap-2 rounded-xl bg-brand-dark/45 px-3 backdrop-blur-sm transition-colors hover:bg-brand-dark/65"
-              aria-label="Места поездки"
+              onClick={onEditDates}
+              className={`${chip} transition-colors hover:bg-brand-dark/65`}
+              aria-label={`Даты поездки: ${trip.dates}. Изменить`}
             >
-              <MapPin size={18} strokeWidth={1.5} aria-hidden />
-              <span className="editable max-w-56 truncate text-sm font-semibold">
-                {main.n}
-                {extra > 0 && ` +${extra}`}
-              </span>
+              <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
+              <span className="editable tnum text-sm font-semibold">{trip.dates}</span>
             </button>
+          ) : (
+            <span className={chip}>
+              <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
+              <span className="tnum text-sm font-semibold">{trip.dates}</span>
+            </span>
           )}
+
+          {main &&
+            (canEdit ? (
+              <button
+                type="button"
+                onClick={onShowPlaces}
+                className={`${chip} transition-colors hover:bg-brand-dark/65`}
+                aria-label="Места поездки"
+              >
+                <MapPin size={18} strokeWidth={1.5} aria-hidden />
+                <span className="editable max-w-56 truncate text-sm font-semibold">
+                  {main.n}
+                  {extra > 0 && ` +${extra}`}
+                </span>
+              </button>
+            ) : (
+              <span className={chip}>
+                <MapPin size={18} strokeWidth={1.5} aria-hidden />
+                <span className="max-w-56 truncate text-sm font-semibold">
+                  {main.n}
+                  {extra > 0 && ` +${extra}`}
+                </span>
+              </span>
+            ))}
         </div>
       </div>
     </div>

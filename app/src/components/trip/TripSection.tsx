@@ -1,10 +1,13 @@
 import { useState } from 'react'
-import type { State, TripPlace } from '../../lib/types'
-import type { DocUpdater } from '../../store'
-import { fmtRange, withDate } from '../../format'
+import type { State, TripPlace } from '@/lib/types'
+import type { Perms } from '@/lib/perm'
+import { update } from '@/store'
+import { fmtRange, withDate } from '@/format'
 import { TripCover } from './TripCover'
 import { ReadyRing } from './ReadyRing'
 import { MoneyTiles } from './MoneyTiles'
+import { CrewReady } from './CrewReady'
+import { WeatherStrip } from './WeatherStrip'
 import { DateRangePicker } from './DateRangePicker'
 import { PlacesSheet } from './PlacesSheet'
 
@@ -15,11 +18,17 @@ function tripPlaces(S: State): TripPlace[] {
   return []
 }
 
-/** Раздел «Поездка»: обложка, кольцо готовности, четыре денежные плитки. */
-export function TripSection({ S, update }: { S: State; update: DocUpdater }) {
+/**
+ * Раздел «Поездка»: обложка, отсчёт с кольцом готовности, деньги с разбором,
+ * погода гармошкой и «кто уже собрался».
+ *
+ * Даты и места меняют только владелец и редактор — в v2 это раньше мог кто угодно.
+ */
+export function TripSection({ S, perms }: { S: State; perms: Perms }) {
   const [calOpen, setCalOpen] = useState(false)
   const [placesOpen, setPlacesOpen] = useState(false)
   const places = tripPlaces(S)
+  const canEdit = perms.isEditor()
 
   const saveDates = (a: Date, b: Date) => {
     update((s) => ({
@@ -36,20 +45,28 @@ export function TripSection({ S, update }: { S: State; update: DocUpdater }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_384px] lg:items-start">
-      <TripCover
-        trip={S.trip}
-        places={places}
-        onEditDates={() => setCalOpen(true)}
-        onShowPlaces={() => setPlacesOpen(true)}
-      />
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)] lg:items-start lg:gap-6">
+      <div className="flex flex-col gap-4 lg:contents">
+        <TripCover
+          trip={S.trip}
+          places={places}
+          canEdit={canEdit}
+          onEditDates={() => setCalOpen(true)}
+          onShowPlaces={() => setPlacesOpen(true)}
+        />
 
-      <div className="flex flex-col gap-4">
-        <ReadyRing />
-        <MoneyTiles S={S} />
+        <div className="flex flex-col gap-4">
+          <ReadyRing S={S} />
+          <MoneyTiles S={S} />
+        </div>
       </div>
 
-      {calOpen && (
+      <div className="flex flex-col gap-4 lg:col-span-2 lg:grid lg:grid-cols-2 lg:items-start">
+        <WeatherStrip S={S} />
+        <CrewReady S={S} />
+      </div>
+
+      {calOpen && canEdit && (
         <DateRangePicker
           start={new Date(S.trip.start)}
           end={new Date(S.trip.end)}

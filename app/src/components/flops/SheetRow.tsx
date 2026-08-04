@@ -1,0 +1,56 @@
+import type { ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+/**
+ * Строка внутри карточки позиции: слева подпись, справа значение и шеврон.
+ * Это КНОПКА, а не поле (правило 1 UX-проекта). Пустое значение пишется словами
+ * («не вписана», «никто», «нет»), а не прочерком.
+ */
+interface Props {
+  label: string
+  value: ReactNode
+  /** нет обработчика — строка просто показывает значение, без шеврона */
+  onClick?: () => void
+  /** пояснение под строкой (например, nt.<поле>.c из данных) */
+  hint?: string
+  /** значение не задано — рисуем приглушённо */
+  empty?: boolean
+  className?: string
+}
+
+export function SheetRow({ label, value, onClick, hint, empty, className }: Props) {
+  const body = (
+    <>
+      <span className="shrink-0 text-[15px] font-medium text-muted">{label}</span>
+      <span className="flex min-w-0 flex-1 items-center justify-end gap-1 text-right">
+        <span
+          className={cn(
+            'truncate text-[15px] font-semibold',
+            empty ? 'font-medium text-muted' : 'text-ink',
+          )}
+        >
+          {value}
+        </span>
+        {onClick && <ChevronRight size={18} strokeWidth={1.5} className="shrink-0 text-muted" aria-hidden />}
+      </span>
+    </>
+  )
+
+  return (
+    <div className={cn('border-b border-line/70 last:border-b-0', className)}>
+      {onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex min-h-14 w-full items-center gap-3 rounded-lg px-1 text-left transition-colors hover:bg-zebra"
+        >
+          {body}
+        </button>
+      ) : (
+        <div className="flex min-h-14 w-full items-center gap-3 px-1">{body}</div>
+      )}
+      {hint ? <p className="-mt-1 pb-2.5 pl-1 text-[13px] leading-snug text-muted">{hint}</p> : null}
+    </div>
+  )
+}

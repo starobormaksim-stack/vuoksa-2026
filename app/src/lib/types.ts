@@ -1,5 +1,5 @@
 /**
- * Типы модели данных v2 (FLOPS).
+ * Типы модели данных v2 (Pine-to-Pine).
  * Соответствуют реальной структуре src/data/seed-v2.json
  * и спецификации docs/v2-architecture.md, часть 2.
  */
@@ -278,8 +278,14 @@ export interface Gear {
   nw?: number
 }
 
-/** Статус позиции закупки: 'buy' — покупаем; 'has_<personId>' — уже есть. */
-export type BuyStatus = 'buy' | `has_${string}`
+/**
+ * Статус позиции закупки:
+ *   'buy'            — покупаем, идёт в общую сумму;
+ *   'has_<personId>' — уже есть у человека, в сумму не идёт;
+ *   'ask'            — под вопросом, решим позже, в сумму не идёт;
+ *   'skip'           — не берём, остаётся в списке серым.
+ */
+export type BuyStatus = 'buy' | 'ask' | 'skip' | `has_${string}`
 
 /** S.buy[] — позиция закупки. */
 export interface Buy {
@@ -307,6 +313,36 @@ export interface Buy {
   b?: boolean
   ua?: number
   nw?: number
+}
+
+/** Блюдо в дне раскладки. */
+export interface MenuDish {
+  /**
+   * Собственный ключ блюда. В документах v1 его не было: блюда лежали безымянными
+   * объектами {n, q}. Раздаётся при первом чтении раздела «Меню».
+   */
+  i?: string
+  n: string
+  /** «сколько» — текст, а не число: «1 уп. хлеба, 2 уп. паштета, 100 г салями» */
+  q: string
+  /** приготовили; в v1 отметка стояла на дне целиком (см. done у дня) */
+  done?: boolean
+}
+
+/** S.menu[] — день раскладки. */
+export interface MenuDay {
+  i: string
+  t: string
+  /** приём пищи: «обедо-ужин», «завтрак» */
+  sub: string
+  /**
+   * Старое поле «день приготовлен» из документов v1 — читается ради совместимости
+   * и держится в согласии с блюдами: день готов, когда готовы все его блюда.
+   */
+  done?: boolean
+  dishes: MenuDish[]
+  ord?: number
+  ua?: number
 }
 
 /** S.people[] — участник (в объёме, нужном расчётам). */
@@ -363,7 +399,7 @@ export interface State {
   doc: Doc
   /** разделы, которые расчёты не трогают, но слияние обязано сохранять */
   ideas?: Idea[]
-  menu?: unknown[]
+  menu?: MenuDay[]
   weather?: Record<string, unknown>
   tileLabels?: string[]
   secTitles?: Record<string, string>

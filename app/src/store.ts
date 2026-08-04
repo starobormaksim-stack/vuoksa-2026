@@ -1,5 +1,5 @@
 /**
- * ═══════════════ Состояние документа FLOPS ═══════════════
+ * ═══════════════ Состояние документа Pine-to-Pine ═══════════════
  *
  * Один документ на всё приложение: живёт в модуле, компоненты подписываются хуком.
  * Здесь же собрано всё сетевое — загрузка с сервера, слияние, отправка, Realtime,
@@ -55,6 +55,16 @@ const SEED = seedJson as unknown as State
 
 function loadInitial(): State {
   let base: State | null = null
+  /* Офлайн-копия: владелец скачал файл, а мы вшили в него снимок документа
+     (см. lib/offline.ts). Он важнее того, что лежит в этом браузере. */
+  try {
+    const embedded = (window as unknown as { __PINE_DOC__?: State }).__PINE_DOC__
+    if (embedded && embedded.trip && Array.isArray(embedded.people)) {
+      return normalizeDoc(mergeSeed(normalizeDoc(clone(embedded)), SEED))
+    }
+  } catch {
+    /* окна нет (сборка/тесты) — идём дальше */
+  }
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
