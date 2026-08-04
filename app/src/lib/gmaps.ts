@@ -30,13 +30,13 @@ export const GOOGLE_MAPS_KEY = 'AIzaSyDIVMTSa86eoaOYSlkqGP6xEZXEQTtInAY'
  * маркеры. Старый `google.maps.Marker` обходился без Map ID, но он объявлен
  * устаревшим, и предупреждение об этом висело у заказчика в консоли.
  *
- * `DEMO_MAP_ID` — служебный идентификатор самого Google: работает без настройки
- * и без денег, но пишет в консоль пометку «для разработки».
- * ⚠️ Когда дойдут руки до кабинета Google Cloud, там надо завести свой Map ID
- * (Maps → Map management, тип «Raster», привязать к тому же проекту `pine-to-pine`)
- * и подставить его сюда. Ключ при этом не меняется.
+ * Свой Map ID заказчика, заведён 04.08.2026 в кабинете Google Cloud
+ * (проект `pine-to-pine`, Maps → Map management, тип JavaScript / Raster).
+ * До него здесь стоял служебный `DEMO_MAP_ID` самого Google: он работает
+ * без настройки и без денег, но пишет в консоль пометку «для разработки»
+ * и для боевого сайта не предназначен. Ключ при замене не меняется.
  */
-export const GOOGLE_MAP_ID = 'DEMO_MAP_ID'
+export const GOOGLE_MAP_ID = 'f1d79f071272cbb163518d34'
 
 /** Ключ выдан — можно показывать Google. Иначе остаётся OpenStreetMap. */
 export function hasGoogleKey(): boolean {
