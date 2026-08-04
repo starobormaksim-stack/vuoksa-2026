@@ -35,6 +35,8 @@ interface Props {
   focusId?: string | null
   /** метка времени просьбы: одна и та же точка может понадобиться дважды */
   focusAt?: number
+  /** метка «подгони вид под все точки заново» (после мастера «Разметить маршрут») */
+  fitAt?: number
   /** Google не поднялся — вызывающий откатится на OpenStreetMap */
   onFail?: () => void
   className?: string
@@ -42,7 +44,7 @@ interface Props {
 
 export function GoogleRouteMap({
   points, centerLat, centerLon, canEdit, onAdd, onMove, onOpen,
-  focusId, focusAt, onFail, className,
+  focusId, focusAt, fitAt, onFail, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<google.maps.Map | null>(null)
@@ -159,6 +161,29 @@ export function GoogleRouteMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, canEdit, ready, centerLat, centerLon])
+
+  /* ── «покажи весь маршрут заново» ──
+     Вид подгоняется один раз (см. выше), и это правильно: дальше человек сам решает,
+     куда смотреть. Но после мастера «Разметить маршрут» точек стало на восемь больше,
+     и почти все они за краем экрана — тут вид надо пересобрать. Точки читаем из ref:
+     иначе эффект пришлось бы вешать на слепок и он срабатывал бы на каждую правку. */
+  const ptsRef = useRef(points)
+  ptsRef.current = points
+  useEffect(() => {
+    const m = map.current
+    if (!m || !ready || !fitAt) return
+    const pts = ptsRef.current
+    if (pts.length === 0) return
+    if (pts.length === 1) {
+      m.setCenter({ lat: pts[0].lat as number, lng: pts[0].lon as number })
+      m.setZoom(12)
+      return
+    }
+    const maps = (window as unknown as { google: { maps: typeof google.maps } }).google.maps
+    const b = new maps.LatLngBounds()
+    pts.forEach((p) => b.extend({ lat: p.lat as number, lng: p.lon as number }))
+    m.fitBounds(b, 36)
+  }, [fitAt, ready])
 
   /* ── просьба из «Тайминга»: подвести карту к точке и качнуть маркер ── */
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Map as MapIcon, MapPin, WifiOff } from 'lucide-react'
+import { ChevronRight, Map as MapIcon, MapPin, MapPinned, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import type { RoutePoint, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
@@ -9,9 +9,10 @@ import { reversePlace } from '@/lib/geocode'
 import { onMapRequest, type MapRequest } from '@/lib/mapfocus'
 import { coordLabel, mapCenter, mapPoints } from '@/components/road/roadx'
 import { RoutePointSheet } from '@/components/road/RoutePointSheet'
-import { TextSheet } from '@/components/flops'
+import { Btn, TextSheet } from '@/components/flops'
 import { GoogleRouteMap } from './GoogleRouteMap'
 import { OsmRouteMap } from './OsmRouteMap'
+import { RouteMarkSheet } from './RouteMarkSheet'
 
 /**
  * Карта поездки — второй блок «Поездки», сразу за заглавной фотографией
@@ -76,6 +77,10 @@ export function TripMap({ S, perms }: Props) {
   const [rename, setRename] = useState<{ id: string; name: string } | null>(null)
   /** Google не поднялся — дальше показываем OpenStreetMap и не дёргаем его больше */
   const [googleDead, setGoogleDead] = useState(false)
+  /** открыт мастер «Разметить маршрут» */
+  const [wizard, setWizard] = useState(false)
+  /** метка «подгони вид под точки заново»: после разметки маршрут вылезает за экран */
+  const [fitAt, setFitAt] = useState(0)
 
   const patch = useCallback(
     (id: string, f: (p: RoutePoint) => void) =>
@@ -152,8 +157,21 @@ export function TripMap({ S, perms }: Props) {
     })
   }
 
+  /** Координаты, найденные мастером: адрес подставляем, только если своего нет. */
+  const setCoords = useCallback(
+    (id: string, lat: number, lon: number, addr: string) =>
+      patch(id, (p) => {
+        p.lat = lat
+        p.lon = lon
+        if (addr && !p.addr) p.addr = addr
+      }),
+    [patch],
+  )
+
   const current = sheet ? S.route.find((p) => p.i === sheet) : null
   const waiting = placing ? S.route.find((p) => p.i === placing) : null
+  /** Точки без места на карте — пока они есть, маршрута на карте не видно. */
+  const unplaced = S.route.filter((p) => typeof p.lat !== 'number' || typeof p.lon !== 'number')
 
   /* ── нет сети: карта не рисуется, но точки никуда не делись ── */
   if (!online) {
@@ -202,6 +220,7 @@ export function TripMap({ S, perms }: Props) {
     onOpen: setSheet,
     focusId: focus?.pointId ?? null,
     focusAt: focus?.at,
+    fitAt,
     className: 'min-h-0 flex-1',
   }
 
@@ -215,25 +234,50 @@ export function TripMap({ S, perms }: Props) {
             <OsmRouteMap {...mapProps} />
           )}
 
-          <p className="flex min-h-11 shrink-0 items-center gap-2 border-t border-line px-4 py-2 text-[13px] text-muted">
-            {waiting ? (
-              <>
-                <MapPin size={16} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
-                <span className="text-ink">
-                  Тапните по карте, где стоит «{waiting.n}» — название подставится само
+          {waiting ? (
+            <div className="flex min-h-13 shrink-0 items-center gap-2 border-t border-line px-4 py-2 text-[13px] text-muted">
+              <MapPin size={16} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
+              <span className="min-w-0 flex-1 text-ink">
+                Тапните по карте, где стоит «{waiting.n}» — название подставится само
+              </span>
+              {/* Передумал — из ожидания надо уметь выйти: иначе кнопка «Разметить
+                  маршрут» так и не вернётся, ведь строка внизу карты одна. */}
+              <Btn tone="ghost" className="shrink-0" onClick={() => setPlacing(null)}>
+                Отменить
+              </Btn>
+            </div>
+          ) : canEdit && unplaced.length > 0 ? (
+            /* Пока точки без координат, карта пустая или неполная — и это первое,
+               что надо сказать. Мастер проходит их списком: что нашлось по названию,
+               то подтверждают, остальное ставят пальцем. */
+            <button
+              type="button"
+              onClick={() => setWizard(true)}
+              className="flex min-h-13 w-full shrink-0 items-center gap-3 border-t border-line px-4 py-2 text-left hover:bg-zebra"
+            >
+              <MapPinned size={20} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] leading-tight font-semibold text-ink">
+                  Разметить маршрут
                 </span>
-              </>
-            ) : (
-              <>
-                <MapIcon size={16} strokeWidth={1.5} aria-hidden className="shrink-0" />
-                <span>
-                  {canEdit
-                    ? 'Тап по карте ставит точку, маркер можно перетащить'
-                    : 'Маршрут ведут владелец и редактор'}
+                <span className="block text-[13px] text-muted">
+                  {unplaced.length === S.route.length
+                    ? `Ни одна точка ещё не на карте: ${unplaced.length}`
+                    : `Точек без места на карте: ${unplaced.length}`}
                 </span>
-              </>
-            )}
-          </p>
+              </span>
+              <ChevronRight size={18} strokeWidth={1.5} aria-hidden className="shrink-0 text-muted" />
+            </button>
+          ) : (
+            <p className="flex min-h-11 shrink-0 items-center gap-2 border-t border-line px-4 py-2 text-[13px] text-muted">
+              <MapIcon size={16} strokeWidth={1.5} aria-hidden className="shrink-0" />
+              <span>
+                {canEdit
+                  ? 'Тап по карте ставит точку, маркер можно перетащить'
+                  : 'Маршрут ведут владелец и редактор'}
+              </span>
+            </p>
+          )}
         </div>
       </Card>
 
@@ -251,6 +295,25 @@ export function TripMap({ S, perms }: Props) {
           onClose={() => setSheet(null)}
         />
       )}
+
+      {/* Разовый мастер: точки без места — списком, с находками геокодера. */}
+      <RouteMarkSheet
+        open={wizard}
+        onOpenChange={(v) => {
+          setWizard(v)
+          /* Закрыли — показываем весь маршрут целиком: после разметки он вылезает
+             далеко за прежний вид (Петербург и Вуокса — 130 км друг от друга). */
+          if (!v) setFitAt(Date.now())
+        }}
+        route={S.route}
+        near={center}
+        onSet={setCoords}
+        onPlaceByHand={(id) => {
+          setWizard(false)
+          setPlacing(id)
+          toast('Тапните по карте, где это')
+        }}
+      />
 
       {/* Название, подставленное по координатам: сразу видно и сразу правится. */}
       <TextSheet

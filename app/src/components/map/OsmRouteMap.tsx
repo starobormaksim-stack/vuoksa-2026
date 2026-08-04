@@ -33,6 +33,8 @@ interface Props {
   focusId?: string | null
   /** метка времени просьбы: одна и та же точка может понадобиться дважды */
   focusAt?: number
+  /** метка «подгони вид под все точки заново» (после мастера «Разметить маршрут») */
+  fitAt?: number
   className?: string
 }
 
@@ -50,7 +52,8 @@ function pinIcon(n: number, done: boolean) {
 }
 
 export function OsmRouteMap({
-  points, centerLat, centerLon, canEdit, onAdd, onMove, onOpen, focusId, focusAt, className,
+  points, centerLat, centerLon, canEdit, onAdd, onMove, onOpen,
+  focusId, focusAt, fitAt, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<ReturnType<typeof L.map> | null>(null)
@@ -142,6 +145,22 @@ export function OsmRouteMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, canEdit, centerLat, centerLon])
+
+  /* ── «покажи весь маршрут заново» (после мастера «Разметить маршрут») ──
+     Точки читаем из ref: иначе эффект пришлось бы вешать на слепок, и вид
+     пересобирался бы на каждую правку, вырывая карту из-под пальца. */
+  const ptsRef = useRef(points)
+  ptsRef.current = points
+  useEffect(() => {
+    const m = map.current
+    if (!m || !fitAt) return
+    const pts = ptsRef.current
+    if (pts.length === 0) return
+    m.fitBounds(
+      L.latLngBounds(pts.map((p) => [p.lat as number, p.lon as number])),
+      { padding: [36, 36], maxZoom: 13 },
+    )
+  }, [fitAt])
 
   /* ── просьба из «Тайминга»: подвести карту к точке и открыть её подпись ── */
   useEffect(() => {
