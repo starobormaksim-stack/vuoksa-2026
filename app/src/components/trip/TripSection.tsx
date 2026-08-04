@@ -50,7 +50,15 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
           menu), поэтому `secId` не передаём: форму хранения трогать нельзя (У-04).
           Название поездки живёт на самой обложке и правится там же. */}
       <SectionHead title="Поездка" />
-      <TripCover S={S} perms={perms} onEditDates={() => setCalOpen(true)} />
+      {/* ⚠️ Потолок ширины на десктопе обязателен. Обложка — квадрат (`aspect-square`
+          в TripCover), и после снятия ReadyLeft она растянулась на все 1217 px
+          контейнера: раздел вырос с 603 до 1362 px, то есть 1,7 экрана под одну
+          фотографию. Это ровно тот «пустой скроллинг», ради которого список
+          несобранного и убирали. 560 px возвращают прежний масштаб обложки.
+          На мобильном потолка нет: там она и должна быть во всю ширину. */}
+      <div className="lg:max-w-[560px]">
+        <TripCover S={S} perms={perms} onEditDates={() => setCalOpen(true)} />
+      </div>
 
       {calOpen && canEdit && (
         <DateRangePicker

@@ -77,6 +77,7 @@ export function SectionHead({
   const есть = !!legend?.length
 
   return (
+    <>
     <div
       /* Полоса тянется до краёв контейнера контента: под ней не должно
          просвечивать содержимое по бокам от текста. */
@@ -84,7 +85,12 @@ export function SectionHead({
       style={{ top: 'var(--header-h)' }}
     >
       <div className="flex min-h-14 items-center gap-3">
-        <h2 className="min-w-0 flex-1 text-title font-[700] text-ink">
+        {/* ⚠️ Кнопку правки внутри `InlineText` до 44 px добирает обычно сама строка
+            таблицы (см. комментарий в `flops/Inline.tsx`) — в полосе раздела строки
+            нет, и цель касания получалась 34 px: `elementFromPoint` на ±21 px мимо.
+            Высоту добираем здесь, у вложенной кнопки, не трогая сам `InlineText`:
+            в таблицах она обязана остаться прежней. */}
+        <h2 className="min-w-0 flex-1 text-title font-[700] text-ink [&>button]:flex [&>button]:min-h-11 [&>button]:items-center">
           <InlineText
             value={шапка}
             onSave={saveTitle}
@@ -127,6 +133,11 @@ export function SectionHead({
           <button
             type="button"
             onClick={action.onClick}
+            /* На узком экране подпись прячется, чтобы не спорить за ширину с
+               названием раздела, — но кнопка не имеет права остаться безымянной:
+               без `aria-label` вслух она читалась просто «кнопка», а глазами
+               выглядела голым плюсом (постулат 4). */
+            aria-label={action.label}
             className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-4 text-body font-semibold text-on-accent transition-opacity hover:opacity-90"
           >
             <Plus size={18} strokeWidth={1.75} aria-hidden />
@@ -148,8 +159,13 @@ export function SectionHead({
         </ul>
       )}
 
-      {children}
     </div>
+    {/* ⚠️ `children` живёт СНАРУЖИ липкой полосы. Внутри неё пояснение участнику
+        («кружок нажимается только в своей колонке») прилипало к шапке навсегда
+        и съедало до 23,5 % экрана на 390 — оно читается один раз и обязано
+        уехать вместе со страницей. */}
+    {children}
+    </>
   )
 }
 
