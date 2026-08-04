@@ -3,6 +3,8 @@ import * as LeafletModule from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { RoutePoint } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { destPinHtml, pointPinHtml } from './marks'
+import type { MapDest } from './GoogleRouteMap'
 
 /**
  * Карта маршрута на OpenStreetMap (Leaflet).
@@ -28,43 +30,53 @@ interface Props {
   canEdit: boolean
   onAdd: (lat: number, lon: number) => void
   onMove: (id: string, lat: number, lon: number) => void
-  onOpen: (id: string) => void
-  /** к какой точке подвести карту (просьба из «Тайминга») */
+  /** тап по метке — показать эту точку в ленте рядом */
+  onSelect: (id: string) => void
+  /** конечная точка поездки (trip.places, main) */
+  dest?: MapDest | null
+  /** метку конечной перетащили */
+  onMoveDest?: (lat: number, lon: number) => void
+  /** к какой точке подвести карту (просьба из ленты) */
   focusId?: string | null
   /** метка времени просьбы: одна и та же точка может понадобиться дважды */
   focusAt?: number
   /** метка «подгони вид под все точки заново» (после мастера «Разметить маршрут») */
   fitAt?: number
+  /** навестись на произвольное место (находка строки поиска над картой) */
+  lookAt?: { lat: number; lon: number; at: number } | null
   className?: string
 }
 
-/** Свои маркеры: у Leaflet по умолчанию картинки, и в сборщиках они отваливаются. */
+/** Свои метки: у Leaflet по умолчанию картинки, и в сборщиках они отваливаются. */
 function pinIcon(n: number, done: boolean) {
-  const tone = done ? 'bg-ink text-bg' : 'bg-accent-fill text-on-accent'
   return L.divIcon({
     className: '',
-    html:
-      `<span class="grid size-7 place-items-center rounded-full border-2 border-surface ` +
-      `text-[13px] font-bold shadow-md ${tone}">${n}</span>`,
+    html: pointPinHtml(n, done),
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   })
 }
 
+/** Плашка конечной точки: ширина плавает, поэтому иконка нулевая, а плашка centered. */
+function destIcon(name: string) {
+  return L.divIcon({ className: '', html: destPinHtml(name), iconSize: [0, 0], iconAnchor: [0, 0] })
+}
+
 export function OsmRouteMap({
-  points, centerLat, centerLon, canEdit, onAdd, onMove, onOpen,
-  focusId, focusAt, fitAt, className,
+  points, centerLat, centerLon, canEdit, onAdd, onMove, onSelect,
+  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<ReturnType<typeof L.map> | null>(null)
   const layer = useRef<ReturnType<typeof L.layerGroup> | null>(null)
+  const destMark = useRef<ReturnType<typeof L.marker> | null>(null)
   const marks = useRef<Map<string, ReturnType<typeof L.marker>>>(new Map())
   const fitted = useRef(false)
 
   /* Обработчики меняются на каждой перерисовке, а карта создаётся один раз —
      держим свежие ссылки в ref, иначе Leaflet позовёт устаревшее замыкание. */
-  const cb = useRef({ canEdit, onAdd, onMove, onOpen })
-  cb.current = { canEdit, onAdd, onMove, onOpen }
+  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onMoveDest })
+  cb.current = { canEdit, onAdd, onMove, onSelect, onMoveDest }
 
   /* ── создание карты ── */
   useEffect(() => {
@@ -122,7 +134,7 @@ export function OsmRouteMap({
         keyboard: true,
       })
       marker.bindTooltip(`${idx + 1}. ${p.n || 'Точка без названия'}`, { direction: 'top' })
-      marker.on('click', () => cb.current.onOpen(p.i))
+      marker.on('click', () => cb.current.onSelect(p.i))
       marker.on('dragend', () => {
         const ll = marker.getLatLng()
         cb.current.onMove(p.i, ll.lat, ll.lng)
@@ -133,18 +145,41 @@ export function OsmRouteMap({
 
     /* Подгоняем вид один раз: дальше человек сам решает, куда смотреть. */
     if (!fitted.current) {
-      if (points.length > 0) {
-        m.fitBounds(
-          L.latLngBounds(points.map((p) => [p.lat as number, p.lon as number])),
-          { padding: [36, 36], maxZoom: 13 },
-        )
-      } else {
-        m.setView([centerLat, centerLon], 9)
-      }
+      fitView(m, points, dest, centerLat, centerLon)
       fitted.current = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, canEdit, centerLat, centerLon])
+
+  /* ── метка конечной точки ──
+     Живёт в trip.places, а не в route, и рисуется иначе: это цель поездки.
+     Зависимость слепком — иначе метка пересоздавалась бы на каждой перерисовке. */
+  const destRef = useRef(dest)
+  destRef.current = dest
+  const destSig = dest ? `${dest.lat}:${dest.lon}:${dest.n}` : ''
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    if (destMark.current) {
+      destMark.current.remove()
+      destMark.current = null
+    }
+    const d = destRef.current
+    if (!d) return
+    const mk = L.marker([d.lat, d.lon], {
+      draggable: canEdit,
+      icon: destIcon(d.n),
+      title: `Конечная точка: ${d.n}`,
+      /* Поверх номерков: цель поездки не должна прятаться за остановкой. */
+      zIndexOffset: 1000,
+    })
+    mk.on('dragend', () => {
+      const ll = mk.getLatLng()
+      cb.current.onMoveDest?.(ll.lat, ll.lng)
+    })
+    mk.addTo(m)
+    destMark.current = mk
+  }, [destSig, canEdit])
 
   /* ── «покажи весь маршрут заново» (после мастера «Разметить маршрут») ──
      Точки читаем из ref: иначе эффект пришлось бы вешать на слепок, и вид
@@ -154,13 +189,16 @@ export function OsmRouteMap({
   useEffect(() => {
     const m = map.current
     if (!m || !fitAt) return
-    const pts = ptsRef.current
-    if (pts.length === 0) return
-    m.fitBounds(
-      L.latLngBounds(pts.map((p) => [p.lat as number, p.lon as number])),
-      { padding: [36, 36], maxZoom: 13 },
-    )
+    fitView(m, ptsRef.current, destRef.current, centerLat, centerLon)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitAt])
+
+  /* ── находка строки поиска: просто наводимся, метку ставит вызывающий ── */
+  useEffect(() => {
+    const m = map.current
+    if (!m || !lookAt) return
+    m.setView([lookAt.lat, lookAt.lon], Math.max(m.getZoom(), 13), { animate: true })
+  }, [lookAt])
 
   /* ── просьба из «Тайминга»: подвести карту к точке и открыть её подпись ── */
   useEffect(() => {
@@ -176,4 +214,21 @@ export function OsmRouteMap({
 
   /* isolate: панели Leaflet живут на z-index 400 и без своего слоя лезут поверх шторок. */
   return <div ref={box} className={cn('isolate bg-zebra', className)} />
+}
+
+/** Собрать вид под всё, что на карте есть: точки маршрута и конечную. */
+function fitView(
+  m: ReturnType<typeof L.map>,
+  points: RoutePoint[],
+  dest: MapDest | null | undefined,
+  centerLat: number,
+  centerLon: number,
+): void {
+  const all: [number, number][] = points.map((p) => [p.lat as number, p.lon as number])
+  if (dest) all.push([dest.lat, dest.lon])
+  if (all.length === 0) {
+    m.setView([centerLat, centerLon], 9)
+    return
+  }
+  m.fitBounds(L.latLngBounds(all), { padding: [36, 36], maxZoom: 13 })
 }

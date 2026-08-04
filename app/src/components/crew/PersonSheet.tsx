@@ -147,8 +147,10 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
       {initialOf(person.name, person.ini)}
     </span>
   )
-  /* 3 : 4 — та же пропорция, что у карточки в сетке: снимок нигде не переобрезается. */
-  const photoBox = 'mx-auto block aspect-[3/4] w-40 overflow-hidden rounded-2xl border border-line bg-zebra'
+  /* Квадрат — та же пропорция, что у карточки в сетке: снимок нигде не переобрезается.
+     Портреты стали квадратными 04.08.2026 по просьбе заказчика; снятое до правки
+     (в данных это 3 : 4) `object-cover` кадрирует по центру, не растягивая. */
+  const photoBox = 'mx-auto block aspect-square w-40 overflow-hidden rounded-2xl border border-line bg-zebra'
 
   return (
     <>
@@ -158,7 +160,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
         title={person.name}
         subtitle={
           <span className="inline-flex items-center gap-1.5">
-            <PersonMark tone={tone} size={10} />
+            <PersonMark tone={tone} size={14} />
             {permName(person.perm)}
           </span>
         }
@@ -398,10 +400,10 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
       {src && (
         <PhotoCropSheet
           src={src}
-          ratio={0.75}
+          ratio={1}
           out={800}
           title={`Фотография · ${person.name}`}
-          subtitle="Портрет 3 : 4 — как в карточке команды"
+          subtitle="Квадрат — как в карточке команды"
           okLabel="Поставить"
           onDone={(url) =>
             onPatch((p) => {

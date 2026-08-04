@@ -23,6 +23,21 @@
  */
 export const GOOGLE_MAPS_KEY = 'AIzaSyDIVMTSa86eoaOYSlkqGP6xEZXEQTtInAY'
 
+/**
+ * Идентификатор карты (Map ID). Нужен не для красоты: без него
+ * `google.maps.marker.AdvancedMarkerElement` вообще не рисуется — Google пишет
+ * в консоль «The map is initialized without a valid Map ID» и молча выбрасывает
+ * маркеры. Старый `google.maps.Marker` обходился без Map ID, но он объявлен
+ * устаревшим, и предупреждение об этом висело у заказчика в консоли.
+ *
+ * `DEMO_MAP_ID` — служебный идентификатор самого Google: работает без настройки
+ * и без денег, но пишет в консоль пометку «для разработки».
+ * ⚠️ Когда дойдут руки до кабинета Google Cloud, там надо завести свой Map ID
+ * (Maps → Map management, тип «Raster», привязать к тому же проекту `pine-to-pine`)
+ * и подставить его сюда. Ключ при этом не меняется.
+ */
+export const GOOGLE_MAP_ID = 'DEMO_MAP_ID'
+
 /** Ключ выдан — можно показывать Google. Иначе остаётся OpenStreetMap. */
 export function hasGoogleKey(): boolean {
   return GOOGLE_MAPS_KEY.length > 0
@@ -183,6 +198,23 @@ export async function forwardGeocode(
   query: string,
   near: { lat: number; lon: number },
 ): Promise<GeoHit | null> {
+  const list = await forwardGeocodeAll(query, near, 1)
+  return list[0] ?? null
+}
+
+/**
+ * То же прямое геокодирование, но списком: строке поиска над картой мало одной
+ * находки. Человек должен увидеть, что нашлось, и выбрать сам — молча наводить
+ * карту на первый попавшийся ответ нельзя, у «Приозерск» их несколько.
+ *
+ * Пустой список — честное «не нашлось». Всё остальное (лимит, отозванный ключ,
+ * нет сети) улетает исключением: вызывающий по нему уходит на запасной путь.
+ */
+export async function forwardGeocodeAll(
+  query: string,
+  near: { lat: number; lon: number },
+  limit = 5,
+): Promise<GeoHit[]> {
   const maps = await loadGoogleMaps()
   const geo = new maps.Geocoder()
   const bounds = new maps.LatLngBounds(
@@ -194,18 +226,18 @@ export async function forwardGeocode(
     res = await geo.geocode({ address: query, bounds, region: 'ru' })
   } catch (e) {
     /* «Не нашлось» приезжает исключением, а не пустым списком. */
-    if ((e as { code?: string }).code === 'ZERO_RESULTS') return null
+    if ((e as { code?: string }).code === 'ZERO_RESULTS') return []
     throw e
   }
-  const r = res.results?.[0]
-  if (!r) return null
-  const loc = r.geometry.location
-  return {
-    lat: loc.lat(),
-    lon: loc.lng(),
-    addr: r.formatted_address || query,
-    precise: r.types.some((t) => !COARSE.has(t)) && r.partial_match !== true,
-  }
+  return (res.results ?? []).slice(0, limit).map((r) => {
+    const loc = r.geometry.location
+    return {
+      lat: loc.lat(),
+      lon: loc.lng(),
+      addr: r.formatted_address || query,
+      precise: r.types.some((t) => !COARSE.has(t)) && r.partial_match !== true,
+    }
+  })
 }
 
 /** Название покороче — по типам компонентов адреса, от частного к общему. */

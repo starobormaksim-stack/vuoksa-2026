@@ -93,7 +93,7 @@ export function ResponsiveSheet({
         <DialogContent
           showCloseButton
           className={cn(
-            'max-h-[86vh] gap-0 overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink sm:max-w-[480px]',
+            'max-h-[86dvh] gap-0 overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink sm:max-w-[480px]',
             className,
           )}
         >
@@ -101,11 +101,16 @@ export function ResponsiveSheet({
           <DialogDescription className="sr-only">
             {typeof subtitle === 'string' ? subtitle : 'Карточка позиции'}
           </DialogDescription>
-          <div className="pt-4">
+          {/* pr-10 — чтобы длинный заголовок не залезал под крестик закрытия */}
+          <div className="shrink-0 pt-4 pr-10">
             <Head title={title} subtitle={subtitle} onBack={onBack} />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
-          {footer ? <div className="border-t border-line bg-surface p-4">{footer}</div> : null}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+            {children}
+          </div>
+          {footer ? (
+            <div className="shrink-0 border-t border-line bg-surface p-4">{footer}</div>
+          ) : null}
         </DialogContent>
       </Dialog>
     )
@@ -113,9 +118,10 @@ export function ResponsiveSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
+      {/* Потолок высоты (88dvh) задан в ui/drawer.tsx — там у правила выше специфичность. */}
       <DrawerContent
         className={cn(
-          'max-h-[88vh] rounded-t-2xl border-line bg-surface text-ink [&>div:first-child]:bg-line-strong [&>div:first-child]:w-9',
+          'rounded-t-2xl border-line bg-surface text-ink [&>div:first-child]:bg-line-strong [&>div:first-child]:w-9',
           className,
         )}
       >
@@ -123,19 +129,26 @@ export function ResponsiveSheet({
         <DrawerDescription className="sr-only">
           {typeof subtitle === 'string' ? subtitle : 'Карточка позиции'}
         </DrawerDescription>
-        <div className="pt-3">
+        {/*
+         * shrink-0 у шапки и подвала обязателен: без него длинное содержимое сжимает
+         * подвал, кнопка «Готово» вылезает за низ шторки и срезается краем экрана.
+         * Сжиматься и прокручиваться должна только середина.
+         */}
+        <div className="shrink-0 pt-3">
           <Head title={title} subtitle={subtitle} onBack={onBack} />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2">
+          {children}
+        </div>
         {footer ? (
           <div
-            className="border-t border-line bg-surface px-4 pt-3"
+            className="shrink-0 border-t border-line bg-surface px-4 pt-3"
             style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}
           >
             {footer}
           </div>
         ) : (
-          <div style={{ height: 'calc(8px + env(safe-area-inset-bottom))' }} />
+          <div className="shrink-0" style={{ height: 'calc(8px + env(safe-area-inset-bottom))' }} />
         )}
       </DrawerContent>
     </Drawer>

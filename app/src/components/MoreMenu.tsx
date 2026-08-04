@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Copy, Download, Ellipsis, Info, Link2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Copy, Download, Ellipsis, Info, Link2, LogIn, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   DropdownMenu,
@@ -8,9 +8,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ResponsiveSheet, Btn } from '@/components/flops'
+import { OwnerLogin } from '@/components/auth/OwnerLogin'
 import { useTrip } from '@/store'
 import { linkFor, permName } from '@/lib/perm'
 import { saveOfflineCopy } from '@/lib/offline'
+import { currentSession, onAuthChange, signOut, type Session } from '@/lib/auth'
 import { BRAND } from './Logo'
 
 /**
@@ -21,7 +23,22 @@ export function MoreMenu() {
   const { S, perms } = useTrip()
   const [links, setLinks] = useState(false)
   const [about, setAbout] = useState(false)
+  const [login, setLogin] = useState(false)
   const chief = perms.isChief()
+
+  /* Кто вошёл почтой. Это НЕ права: права по-прежнему даёт личная ссылка (`lib/perm.ts`),
+     а вход — отдельное подтверждение, что за документом владелец. */
+  const [sess, setSess] = useState<Session | null>(currentSession)
+  useEffect(() => {
+    const off = onAuthChange((s) => {
+      setSess(s)
+      /* Вошли — шторке входа больше нечего показывать. */
+      if (s) setLogin(false)
+    })
+    return () => {
+      off()
+    }
+  }, [])
 
   const copy = async (text: string, msg: string) => {
     try {
@@ -60,6 +77,31 @@ export function MoreMenu() {
             >
               <Download size={18} strokeWidth={1.5} aria-hidden />
               Скачать офлайн-копию
+            </DropdownMenuItem>
+          )}
+          {sess ? (
+            <DropdownMenuItem
+              className="min-h-11 gap-2"
+              onSelect={() => {
+                /* Сеанс гаснет сразу, ещё до ответа сервера, — сообщать можно тут же. */
+                void signOut()
+                toast('Вы вышли')
+              }}
+            >
+              <LogOut size={18} strokeWidth={1.5} aria-hidden />
+              <span className="min-w-0">
+                <span className="block">Выйти</span>
+                {/* Адрес мог не доехать: в ссылке из письма приезжают только ключи,
+                    за личностью ходят отдельным запросом, и он может не ответить. */}
+                <span className="block truncate text-[12px] text-muted">
+                  {sess.email || 'Вход подтверждён'}
+                </span>
+              </span>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setLogin(true)}>
+              <LogIn size={18} strokeWidth={1.5} aria-hidden />
+              Вход владельца
             </DropdownMenuItem>
           )}
           <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setAbout(true)}>
@@ -101,6 +143,20 @@ export function MoreMenu() {
             </li>
           ))}
         </ul>
+      </ResponsiveSheet>
+
+      <ResponsiveSheet
+        open={login}
+        onOpenChange={setLogin}
+        title="Вход владельца"
+        subtitle="Ссылка придёт на почту — пароль не нужен"
+        footer={
+          <Btn tone="secondary" scale="lg" className="w-full" onClick={() => setLogin(false)}>
+            Закрыть
+          </Btn>
+        }
+      >
+        <OwnerLogin />
       </ResponsiveSheet>
 
       <ResponsiveSheet

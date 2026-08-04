@@ -3,7 +3,7 @@ import type { State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { fmtRange, withDate } from '@/format'
-import { TripMap } from '../map/TripMap'
+import { RouteBoard } from '../map/RouteBoard'
 import { TripCover } from './TripCover'
 import { ReadyRing } from './ReadyRing'
 import { MoneyTiles } from './MoneyTiles'
@@ -47,19 +47,22 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
-      {/* Заглавная фотография, а сразу за ней — карта: так попросил заказчик 04.08.2026.
-          Раньше карта пряталась во вкладке «Маршрут» в самом низу «Дороги», и он её
-          попросту не находил. */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,560px)] lg:items-stretch lg:gap-6">
-        <TripCover
-          trip={S.trip}
-          places={places}
-          canEdit={canEdit}
-          onEditDates={() => setCalOpen(true)}
-          onShowPlaces={() => setPlacesOpen(true)}
-        />
-        <TripMap S={S} perms={perms} />
-      </div>
+      {/* Обложка, лента точек и карта — один блок (см. map/RouteBoard.tsx).
+          Заказчик 04.08.2026: «тайминг и маршрут вместе… должно быть рядом с картой»,
+          а слева — информационная часть: обложка, даты, конечная точка. */}
+      <RouteBoard
+        S={S}
+        perms={perms}
+        cover={
+          <TripCover
+            trip={S.trip}
+            places={places}
+            canEdit={canEdit}
+            onEditDates={() => setCalOpen(true)}
+            onShowPlaces={() => setPlacesOpen(true)}
+          />
+        }
+      />
 
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
         <ReadyRing S={S} />

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Check, MapPin, MapPinPlus, Route } from 'lucide-react'
 import type { RoutePoint } from '@/lib/types'
 import { AddRow, EmptyState } from '@/components/flops'
@@ -9,10 +10,10 @@ import { coordLabel, pointMeta } from './roadx'
  * Тайминг поездки (docs/v2-ux-redesign.md, 10.6) — вертикальная лента точек:
  * кружок «этап пройден», время, название, заметка и третья строка с меткой и расстоянием.
  *
- * Новое (заказчик 04.08.2026): у каждой точки своя строка адреса, и тап по ней
- * прокручивает страницу к карте в «Поездке» и наводит её на эту точку. Если координат
- * ещё нет — та же строка предлагает поставить точку тапом по карте, после чего название
- * и адрес подставляются сами (см. lib/mapfocus.ts и components/map/TripMap.tsx).
+ * Лента стоит рядом с картой — это одна вещь, а не две (заказчик 04.08.2026:
+ * «тайминг и маршрут вместе… оно должно быть рядом с картой»). Связь двусторонняя
+ * и идёт через посредник lib/mapfocus.ts: тап по строке адреса наводит карту,
+ * а тап по метке на карте подсвечивает здесь нужную точку (activeId).
  *
  * Участнику лента показывается целиком, но без единой кнопки правки: ни кружка,
  * ни «добавить» — их просто нет в разметке (правило 12.2). Строка «показать на карте»
@@ -25,9 +26,26 @@ interface Props {
   onToggle: (id: string) => void
   onOpen: (id: string) => void
   onAdd: () => void
+  /** какую точку подсветить: по её метке только что тапнули на карте */
+  activeId?: string | null
+  /** метка времени просьбы: по одной метке можно тапнуть дважды подряд */
+  activeAt?: number
 }
 
-export function RouteTiming({ points, canEdit, onToggle, onOpen, onAdd }: Props) {
+export function RouteTiming({
+  points, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
+}: Props) {
+  const box = useRef<HTMLDivElement | null>(null)
+
+  /* Подсвеченная точка может оказаться за краем ленты — подводим её к глазам.
+     block:'nearest' и behavior:'auto': лента прокручивается внутри себя, дёргать
+     ради этого всю страницу нельзя, карта рядом должна остаться на месте. */
+  useEffect(() => {
+    if (!activeId) return
+    const el = box.current?.querySelector<HTMLElement>(`[data-point="${CSS.escape(activeId)}"]`)
+    el?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+  }, [activeId, activeAt])
+
   if (points.length === 0) {
     return (
       <EmptyState
@@ -40,18 +58,24 @@ export function RouteTiming({ points, canEdit, onToggle, onOpen, onAdd }: Props)
   }
 
   return (
-    <div>
+    <div ref={box}>
       <ol className="py-1">
         {points.map((p, idx) => {
           const last = idx === points.length - 1
+          const active = p.i === activeId
           return (
-            <li key={p.i} className="relative">
+            <li key={p.i} className="relative" data-point={p.i} aria-current={active || undefined}>
               {/* Нитка между кружками: рисуется под точкой, кроме последней. */}
               {!last && (
                 <span aria-hidden className="absolute top-10 bottom-0 left-[34px] w-px bg-line" />
               )}
 
-              <div className="flex items-start gap-3 px-3">
+              <div
+                className={cn(
+                  'flex items-start gap-3 rounded-xl px-3 transition-colors',
+                  active && 'bg-accent-soft',
+                )}
+              >
                 {canEdit ? (
                   <button
                     type="button"
@@ -69,7 +93,19 @@ export function RouteTiming({ points, canEdit, onToggle, onOpen, onAdd }: Props)
                 )}
 
                 <div className="min-w-0 flex-1 pb-1">
-                  <Body point={p} onOpen={canEdit ? () => onOpen(p.i) : undefined} />
+                  <Body
+                    point={p}
+                    onOpen={
+                      canEdit
+                        ? () => {
+                            /* Тап по точке в ленте заодно наводит карту рядом —
+                               без прокрутки страницы: карта и так на виду. */
+                            if (typeof p.lat === 'number') askMap(p.i, 'show', false)
+                            onOpen(p.i)
+                          }
+                        : undefined
+                    }
+                  />
                   <PlaceRow point={p} canEdit={canEdit} />
                 </div>
               </div>

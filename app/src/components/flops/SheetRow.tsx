@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +20,8 @@ interface Props {
 }
 
 export function SheetRow({ label, value, onClick, hint, empty, className }: Props) {
+  /* Пояснение лежит под кнопкой, поэтому связываем их явно — иначе скринридер его не прочтёт. */
+  const hintId = useId()
   const body = (
     <>
       <span className="shrink-0 text-[15px] font-medium text-muted">{label}</span>
@@ -43,6 +45,7 @@ export function SheetRow({ label, value, onClick, hint, empty, className }: Prop
         <button
           type="button"
           onClick={onClick}
+          aria-describedby={hint ? hintId : undefined}
           className="flex min-h-14 w-full items-center gap-3 rounded-lg px-1 text-left transition-colors hover:bg-zebra"
         >
           {body}
@@ -50,7 +53,11 @@ export function SheetRow({ label, value, onClick, hint, empty, className }: Prop
       ) : (
         <div className="flex min-h-14 w-full items-center gap-3 px-1">{body}</div>
       )}
-      {hint ? <p className="-mt-1 pb-2.5 pl-1 text-[13px] leading-snug text-muted">{hint}</p> : null}
+      {hint ? (
+        <p id={hintId} className="-mt-1 pb-2.5 pl-1 text-[13px] leading-snug text-muted">
+          {hint}
+        </p>
+      ) : null}
     </div>
   )
 }

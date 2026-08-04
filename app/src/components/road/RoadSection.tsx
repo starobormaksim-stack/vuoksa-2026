@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { Check, CircleHelp, Fuel, Sailboat } from 'lucide-react'
+import { Check, CircleHelp, Fuel, Route, Sailboat } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Idea, Rent, RoutePoint, Transport } from '@/lib/types'
+import type { Idea, Rent, Transport } from '@/lib/types'
 import { useTrip, touch } from '@/store'
+import { scrollToSection } from '@/sections'
 import { calcAll, fuelCost, litres, money, rentSum } from '@/lib/calc'
 import {
   AddRow, EditNum, EmptyState, Group, ItemRow, NumberSheet, ResultNum,
@@ -11,13 +12,11 @@ import {
 import { fmtNum, NBSP, plural } from '@/format'
 import { cn } from '@/lib/utils'
 import { RoadCover } from './RoadCover'
-import { RouteTiming } from './RouteTiming'
-import { RoutePointSheet } from './RoutePointSheet'
 import { TransportSheet } from './TransportSheet'
 import { RentSheet } from './RentSheet'
 import { IdeaSheet } from './IdeaSheet'
 import {
-  canRowOf, kindIcon, kmLabel, litresLabel, litresTotal, litreWord, mapPoints,
+  canRowOf, kBackWord, kindIcon, kmLabel, litresLabel, litresTotal, litreWord, mapPoints,
   refuelLitres, rentIcon, rentLine, transportLine, transportTitle,
 } from './roadx'
 
@@ -45,11 +44,10 @@ export function RoadSection() {
   })
   const [trSheet, setTrSheet] = useState<string | null>(null)
   const [rnSheet, setRnSheet] = useState<string | null>(null)
-  const [ptSheet, setPtSheet] = useState<string | null>(null)
   const [ideaSheet, setIdeaSheet] = useState<string | null>(null)
   const [distSheet, setDistSheet] = useState<null | 'main' | 'back' | 'local'>(null)
   const [priceSheet, setPriceSheet] = useState<string | null>(null)
-  const [adding, setAdding] = useState<null | 'transport' | 'rent' | 'point' | 'idea'>(null)
+  const [adding, setAdding] = useState<null | 'transport' | 'rent' | 'idea'>(null)
 
   const c = calcAll(S)
   const dist = S.trip.dist
@@ -86,16 +84,7 @@ export function RoadSection() {
       }
     })
 
-  const patchPt = (id: string, f: (p: RoutePoint) => void) =>
-    update((s) => {
-      const p = s.route.find((x) => x.i === id)
-      if (p) {
-        f(p)
-        touch(p)
-      }
-    })
-
-  const patchIdea = (id: string, f: (i: Idea) => void) =>
+  const patchIdea =(id: string, f: (i: Idea) => void) =>
     update((s) => {
       const it = (s.ideas ?? []).find((x) => x.i === id)
       if (it) {
@@ -161,19 +150,7 @@ export function RoadSection() {
     setRnSheet(id)
   }
 
-  /** Новая точка маршрута. С координатами — когда её поставили тапом по карте. */
-  const addPoint = (n: string, lat?: number, lon?: number) => {
-    const id = 'rp' + Date.now().toString(36)
-    update((s) => {
-      s.route.push({
-        i: id, n, time: '', c: '', done: false, lat, lon, addr: '', lab: '', labT: '',
-        mode: 'road', leg: 0, legSrc: '', ord: (s.route.length + 1) * 10, ua: Date.now(),
-      })
-    })
-    return id
-  }
-
-  const addIdea = (n: string) => {
+  const addIdea =(n: string) => {
     const id = 'q' + Date.now().toString(36)
     update((s) => {
       if (!s.ideas) s.ideas = []
@@ -187,13 +164,13 @@ export function RoadSection() {
 
   const curTr = trSheet ? S.transport.find((t) => t.i === trSheet) : null
   const curRn = rnSheet ? S.rent.find((r) => r.i === rnSheet) : null
-  const curPt = ptSheet ? S.route.find((p) => p.i === ptSheet) : null
   const curIdea = ideaSheet ? ideas.find((i) => i.i === ideaSheet) : null
   const curPrice = priceSheet ? S.fuelPrices.find((f) => f.i === priceSheet) : null
 
-  const distNote = [dist.nt?.manual?.c, dist.nt?.kBack?.c, dist.nt?.local?.c]
-    .filter(Boolean)
-    .join(' · ')
+  /* Заметка про концы пути («Оставляем 2.») сюда больше не идёт: во фразе это был
+     третий пересказ одного и того же факта. Она никуда не делась — переехала
+     в подпись шторки, где её и читают, когда это число правят. */
+  const distNote = [dist.nt?.manual?.c, dist.nt?.local?.c].filter(Boolean).join(' · ')
   const fuelNote = fuels.map((f) => f.nt?.price?.c).filter(Boolean).join(' ')
 
   return (
@@ -203,30 +180,27 @@ export function RoadSection() {
         hint="Сверху — куда и когда едем, ниже — во сколько это встаёт"
       />
 
-      {/* ─── два квадрата: картинка поездки и лента тайминга ───
-          Карта отсюда уехала в «Поездку», к заглавной фотографии (заказчик 04.08.2026).
-          Вкладки «Тайминг / Маршрут» вместе с ней стали не нужны: осталась одна лента,
-          а тап по адресу точки в ней прокручивает страницу к карте наверху. */}
-      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-        <RoadCover trip={S.trip} points={S.route.length} onMap={onMap.length} km={c.km} />
+      {/* ─── два квадрата: картинка поездки и путь к маршруту ───
+          Лента тайминга отсюда уехала наверх, в «Поездку», и встала рядом с картой:
+          заказчик 04.08.2026 сказал, что тайминг и маршрут — одно и то же и должны
+          быть вместе. В двух местах ленте быть нельзя, поэтому здесь осталась
+          короткая карточка-указатель: маршрут никто не потеряет. */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <RoadCover
+          trip={S.trip}
+          points={S.route.length}
+          onMap={onMap.length}
+          km={c.km}
+          kBack={kBackWord(dist.kBack)}
+        />
 
-        <section className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm lg:aspect-square">
-          <h3 className="shrink-0 border-b border-line px-4 py-3 text-[17px] font-[650] text-ink">
-            Тайминг
-          </h3>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <RouteTiming
-              points={S.route}
-              canEdit={canEdit}
-              onToggle={(id) =>
-                patchPt(id, (p) => {
-                  p.done = !p.done
-                })
-              }
-              onOpen={setPtSheet}
-              onAdd={() => setAdding('point')}
-            />
-          </div>
+        <section className="flex items-center justify-center rounded-2xl border border-line bg-surface shadow-sm">
+          <EmptyState
+            icon={Route}
+            title="Маршрут и тайминг наверху"
+            text="Точки, время и карта собраны в один блок — в «Поездке». Там видно и где мы будем, и во сколько"
+            action={{ label: 'Показать маршрут', onClick: () => scrollToSection('trip') }}
+          />
         </section>
       </div>
 
@@ -369,6 +343,9 @@ export function RoadSection() {
         onEdit={canEdit ? () => setDistSheet('main') : undefined}
         note={distNote || undefined}
       >
+        {/* Каждый факт сказан ровно один раз, и каждый — это то, что правится.
+            Слова «туда и обратно» больше не вшиты в текст: их говорит сам
+            коэффициент (kBackWord), поэтому при одном конце фраза не соврёт. */}
         Едем{' '}
         <EditNum
           onClick={canEdit ? () => setDistSheet('main') : undefined}
@@ -376,21 +353,21 @@ export function RoadSection() {
         >
           {fmtNum(baseKm, 0)}
         </EditNum>{' '}
-        км в одну сторону, туда и обратно — это{' '}
-        <EditNum
-          onClick={canEdit ? () => setDistSheet('back') : undefined}
-          label="Сколько концов пути"
-        >
-          {fmtNum(dist.kBack, 0)}
-        </EditNum>{' '}
-        {plural(Math.round(dist.kBack), 'конец', 'конца', 'концов')}, плюс{' '}
+        км в одну сторону, плюс{' '}
         <EditNum
           onClick={canEdit ? () => setDistSheet('local') : undefined}
           label="Местные разъезды"
         >
           {fmtNum(dist.local, 0)}
         </EditNum>{' '}
-        км по месту.
+        км по месту. Дорогу считаем{' '}
+        <EditNum
+          onClick={canEdit ? () => setDistSheet('back') : undefined}
+          label="Сколько концов пути"
+        >
+          {kBackWord(dist.kBack)}
+        </EditNum>
+        .
         <div className="mt-2">
           Получается <ResultNum>{kmLabel(c.km)}</ResultNum>.
         </div>
@@ -541,18 +518,6 @@ export function RoadSection() {
         />
       )}
 
-      {curPt && (
-        <RoutePointSheet
-          item={curPt}
-          index={S.route.findIndex((p) => p.i === curPt.i) + 1}
-          canEdit={canEdit}
-          canDelete={canEdit}
-          onPatch={(f) => patchPt(curPt.i, f)}
-          onDelete={() => drop('route', curPt, 'убрана')}
-          onClose={() => setPtSheet(null)}
-        />
-      )}
-
       {curIdea && (
         <IdeaSheet
           item={curIdea}
@@ -585,12 +550,10 @@ export function RoadSection() {
         open={distSheet === 'back'}
         onOpenChange={(v) => !v && setDistSheet(null)}
         title="Сколько концов пути"
-        subtitle={dist.nt?.kBack?.t}
+        subtitle={[dist.nt?.kBack?.t, dist.nt?.kBack?.c].filter(Boolean).join(' · ') || undefined}
         value={dist.kBack}
         kind="coeff"
-        hint={(v) =>
-          `${v <= 1 ? 'Только туда' : 'Туда и обратно'} — получается ${kmLabel(baseKm * v + dist.local)}`
-        }
+        hint={(v) => `Считаем ${kBackWord(v)} — получается ${kmLabel(baseKm * v + dist.local)}`}
         onChange={(v) =>
           update((s) => {
             s.trip.dist.kBack = v
@@ -657,22 +620,6 @@ export function RoadSection() {
         placeholder="Например, Лодка «Ладога»"
         onDone={(v) => {
           if (v) addRent(v)
-          setAdding(null)
-        }}
-      />
-      <TextSheet
-        open={adding === 'point'}
-        onOpenChange={(v) => !v && setAdding(null)}
-        title="Что за точка"
-        subtitle="Место, где мы окажемся по пути"
-        value=""
-        placeholder="Например, Приозерск: закупка"
-        onDone={(v) => {
-          if (v) {
-            const id = addPoint(v)
-            toast('Точка в маршруте')
-            setPtSheet(id)
-          }
           setAdding(null)
         }}
       />

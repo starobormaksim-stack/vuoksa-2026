@@ -18,6 +18,21 @@ function readPref(): ThemePref {
   }
 }
 
+/**
+ * Цвет полоски браузера над страницей — `<meta name="theme-color">`.
+ *
+ * Встроенный браузер Телеграма на iOS красит по нему свою полоску (крестик, адрес,
+ * «⋯»). Без этого полоска полупрозрачная и показывает сквозь себя содержимое
+ * страницы — заказчик видел там карту и называл это «сквозным отверстием».
+ * Значения — ровно фон сайта из index.css: крем в светлой теме, хвоя в тёмной.
+ * Тег ищем без `media`: вариант с `media` слушает системную тему, а не выбранную
+ * человеком внутри сайта.
+ */
+function setThemeColor(dark: boolean): void {
+  const el = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])')
+  if (el) el.setAttribute('content', dark ? '#2B391A' : '#F9F3D4')
+}
+
 export function useTheme(): { dark: boolean; toggle: () => void } {
   const [pref, setPref] = useState<ThemePref>(readPref)
   const [sysDark, setSysDark] = useState<boolean>(
@@ -35,6 +50,7 @@ export function useTheme(): { dark: boolean; toggle: () => void } {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
+    setThemeColor(dark)
   }, [dark])
 
   const toggle = useCallback(() => {

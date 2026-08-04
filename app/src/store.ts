@@ -44,6 +44,7 @@ import type { State } from './lib/types.ts'
 import type { Auth, Perms } from './lib/perm.ts'
 import { checkAuth, makePerms } from './lib/perm.ts'
 import { clone, forget, mergeInto, mergeSeed, normalizeDoc } from './lib/merge.ts'
+import { initAuth } from './lib/auth.ts'
 import { Sync } from './lib/sync.ts'
 import type { NetState, Presence } from './lib/sync.ts'
 import seedJson from './data/seed-v2.json'
@@ -248,6 +249,12 @@ function setPresence(list: Presence[]): void {
 /** Запустить синхронизацию. Зовётся один раз — при первом подписчике. */
 function startSync(): void {
   if (sync || typeof window === 'undefined') return
+
+  /* Поднять сеанс владельца (Supabase Auth) до первого запроса к базе: если человек
+     вошёл, запросы пойдут от его имени, а не от общего ключа. Ничего не ждём — вход
+     сейчас никому ничего не запрещает, а документ должен открыться в любом случае.
+     Подробности и что осталось сделать в базе — docs/rls-migration.sql. */
+  void initAuth()
   sync = new Sync({
     applyRemote,
     stampDoc: (stamp, author) => {

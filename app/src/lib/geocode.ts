@@ -15,7 +15,9 @@
  * молча двигать маршрут по догадке геокодера нельзя.
  */
 
-import { forwardGeocode, hasGoogleKey, reverseGeocode, type GeoHit } from './gmaps.ts'
+import {
+  forwardGeocode, forwardGeocodeAll, hasGoogleKey, reverseGeocode, type GeoHit,
+} from './gmaps.ts'
 
 /* ─────────── обратное: координаты → адрес ─────────── */
 
@@ -83,8 +85,45 @@ export async function forwardPlace(
       /* ключ отозвали, лимит, нет сети — пробуем бесплатный путь */
     }
   }
-  const hit = await nominatimSearch(query, near)
+  const hit = (await nominatimSearchAll(query, near, 1))[0] ?? null
   return hit && distKm(hit, near) <= MAX_KM ? hit : null
+}
+
+/**
+ * Поиск по строке из-под руки человека — для строки поиска над картой.
+ * От `forwardPlace` отличается тем, что возвращает НЕСКОЛЬКО находок: человек
+ * должен увидеть список и выбрать сам, а не получить молча наведённую карту.
+ *
+ * Пустой список — честное «не нашлось» (или «нашлось, но за тысячу километров
+ * отсюда», что для поездки на Вуоксу одно и то же). Исключений не бросает:
+ * строке поиска нечего делать с ошибкой, ей нужен ответ «нашлось / не нашлось».
+ */
+export async function searchPlaces(
+  query: string,
+  near: { lat: number; lon: number },
+  limit = 5,
+): Promise<PlaceFound[]> {
+  const near_ = { lat: near.lat, lon: near.lon }
+  if (hasGoogleKey()) {
+    try {
+      const list = await forwardGeocodeAll(query, near_, limit)
+      return list.filter((h) => distKm(h, near_) <= MAX_KM)
+    } catch {
+      /* ключ отозвали, лимит, нет сети — пробуем бесплатный путь */
+    }
+  }
+  const list = await nominatimSearchAll(query, near_, limit)
+  return list.filter((h) => distKm(h, near_) <= MAX_KM)
+}
+
+/**
+ * Короткое имя из полного адреса: «Приозерск, Ленинградская обл., Россия» → «Приозерск».
+ * Нужно, чтобы у точки, поставленной из поиска, сразу было человеческое название,
+ * а не строка на полторы строки.
+ */
+export function shortPlaceName(addr: string): string {
+  const first = addr.split(',')[0]?.trim() ?? ''
+  return first || addr.trim()
 }
 
 /** Ответ поиска Nominatim в том объёме, который нам нужен. */
@@ -97,32 +136,37 @@ interface NominatimHit {
 }
 
 /** Прямой поиск в Nominatim, жёстко ограниченный окрестностями поездки. */
-async function nominatimSearch(
+async function nominatimSearchAll(
   query: string,
   near: { lat: number; lon: number },
-): Promise<PlaceFound | null> {
+  limit: number,
+): Promise<PlaceFound[]> {
   try {
     const box = [near.lon - 8, near.lat + 4, near.lon + 8, near.lat - 4].join(',')
     const url =
-      'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ru' +
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=${limit}` +
+      '&accept-language=ru' +
       `&bounded=1&viewbox=${encodeURIComponent(box)}&q=${encodeURIComponent(query)}`
     const r = await fetch(url, { headers: { Accept: 'application/json' } })
-    if (!r.ok) return null
+    if (!r.ok) return []
     const list = (await r.json()) as NominatimHit[]
-    const j = Array.isArray(list) ? list[0] : null
-    if (!j) return null
-    const lat = Number(j.lat)
-    const lon = Number(j.lon)
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
-    return {
-      lat,
-      lon,
-      addr: j.display_name || query,
-      /* 14 — примерно уровень района: всё, что крупнее, для точки маршрута бесполезно. */
-      precise: (j.place_rank ?? 0) >= 14,
+    if (!Array.isArray(list)) return []
+    const out: PlaceFound[] = []
+    for (const j of list) {
+      const lat = Number(j.lat)
+      const lon = Number(j.lon)
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
+      out.push({
+        lat,
+        lon,
+        addr: j.display_name || query,
+        /* 14 — примерно уровень района: всё, что крупнее, для точки маршрута бесполезно. */
+        precise: (j.place_rank ?? 0) >= 14,
+      })
     }
+    return out
   } catch {
-    return null
+    return []
   }
 }
 

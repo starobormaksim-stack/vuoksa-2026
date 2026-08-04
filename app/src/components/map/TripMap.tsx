@@ -1,35 +1,42 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronRight, Map as MapIcon, MapPin, MapPinned, WifiOff } from 'lucide-react'
+import { ChevronRight, Map as MapIcon, MapPin, MapPinned, Tent, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
-import type { RoutePoint, State } from '@/lib/types'
+import type { RoutePoint, State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update, touch, remove } from '@/store'
 import { hasGoogleKey, onGoogleAuthFail } from '@/lib/gmaps'
-import { reversePlace } from '@/lib/geocode'
-import { onMapRequest, type MapRequest } from '@/lib/mapfocus'
+import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
+import { focusInList, onMapRequest, type MapRequest } from '@/lib/mapfocus'
 import { coordLabel, mapCenter, mapPoints } from '@/components/road/roadx'
-import { RoutePointSheet } from '@/components/road/RoutePointSheet'
 import { Btn, TextSheet } from '@/components/flops'
-import { GoogleRouteMap } from './GoogleRouteMap'
+import { cn } from '@/lib/utils'
+import { GoogleRouteMap, type MapDest } from './GoogleRouteMap'
 import { OsmRouteMap } from './OsmRouteMap'
 import { RouteMarkSheet } from './RouteMarkSheet'
+import { MapSearch } from './MapSearch'
 
 /**
- * Карта поездки — второй блок «Поездки», сразу за заглавной фотографией
- * (заказчик 04.08.2026: «сначала заглавная фотография, за ней сразу должна следовать карта»).
+ * Карта поездки — правая половина единого блока «Маршрут» в «Поездке»
+ * (см. RouteBoard.tsx: слева обложка и лента точек, справа карта).
  *
  * Карта на всю поездку одна. Раньше она пряталась во вкладке «Маршрут» в самом низу
- * «Дороги», и заказчик её попросту не находил. Теперь она наверху, а «Тайминг» в «Дороге»
- * умеет к ней обращаться: тап по адресу точки прокручивает страницу сюда и наводит карту
- * (см. lib/mapfocus.ts).
+ * «Дороги», и заказчик её попросту не находил.
  *
- * Точка без координат ставится тапом по карте, после чего название и адрес подставляются
- * сами обратным геокодированием, и человеку сразу предлагается их поправить.
+ * На карте два вида меток, и это разные вещи:
+ *   точки маршрута — остановки по пути, кружки с номерами;
+ *   конечная точка — цель поездки (trip.places, main), подписанная плашка.
+ * Заказчик 04.08.2026: «указывается Приозерское озеро Вуокса, и оно прям на карте
+ * тоже указывается. Нажимаешь на карте на эту точку — указать конечную точку».
+ *
+ * Поставить место можно тремя способами, и все три ничего не делают молча:
+ * тапом по карте, находкой в строке поиска над картой, мастером «Разметить маршрут».
  */
 
 interface Props {
   S: State
   perms: Perms
+  /** место карточки в раскладке единого блока (см. RouteBoard.tsx) */
+  className?: string
 }
 
 /** Живая метка «есть сеть» — от неё зависит, рисуем карту или объяснение. */
@@ -62,17 +69,24 @@ function isOfflineCopy(): boolean {
   return location.protocol === 'file:'
 }
 
-export function TripMap({ S, perms }: Props) {
+/** Главное место поездки: та самая «конечная». Пусто — его ещё не отметили. */
+function mainPlace(S: State): TripPlace | null {
+  const list = S.trip.places ?? []
+  return list.find((p) => p.main) ?? list[0] ?? null
+}
+
+export function TripMap({ S, perms, className }: Props) {
   const live = useOnline()
   const online = live && !isOfflineCopy()
   const canEdit = perms.isEditor()
   const points = mapPoints(S)
   const center = mapCenter(S)
 
-  const [sheet, setSheet] = useState<string | null>(null)
   const [focus, setFocus] = useState<MapRequest | null>(null)
   /** какой точке ждём координаты: следующий тап по карте отдаст их именно ей */
   const [placing, setPlacing] = useState<string | null>(null)
+  /** ждём тап для конечной точки поездки */
+  const [placingMain, setPlacingMain] = useState(false)
   /** после постановки: предложенное название, которое человек может исправить */
   const [rename, setRename] = useState<{ id: string; name: string } | null>(null)
   /** Google не поднялся — дальше показываем OpenStreetMap и не дёргаем его больше */
@@ -81,6 +95,8 @@ export function TripMap({ S, perms }: Props) {
   const [wizard, setWizard] = useState(false)
   /** метка «подгони вид под точки заново»: после разметки маршрут вылезает за экран */
   const [fitAt, setFitAt] = useState(0)
+  /** куда навести карту по находке из строки поиска */
+  const [lookAt, setLookAt] = useState<{ lat: number; lon: number; at: number } | null>(null)
 
   const patch = useCallback(
     (id: string, f: (p: RoutePoint) => void) =>
@@ -98,12 +114,13 @@ export function TripMap({ S, perms }: Props) {
      молча уходим на OpenStreetMap, а не показываем серый прямоугольник. */
   useEffect(() => onGoogleAuthFail(() => setGoogleDead(true)), [])
 
-  /* ── просьбы из «Тайминга» ── */
+  /* ── просьбы из ленты точек ── */
   useEffect(
     () =>
       onMapRequest((r) => {
         setFocus(r)
         setPlacing(r.mode === 'place' ? r.pointId : null)
+        if (r.mode === 'place') setPlacingMain(false)
       }),
     [],
   )
@@ -123,8 +140,45 @@ export function TripMap({ S, perms }: Props) {
     [patch],
   )
 
-  /** Тап по карте: либо ставим координаты ждущей точке, либо заводим новую. */
+  /** Завести новую точку маршрута. Возвращает её id — для тоста «Отменить». */
+  const addPoint = (lat: number, lon: number, n: string, addr: string) => {
+    const id = 'rp' + Date.now().toString(36)
+    update((s) => {
+      s.route.push({
+        i: id, n, time: '', c: '', done: false, lat, lon, addr,
+        lab: '', labT: '', mode: 'road', leg: 0, legSrc: '',
+        ord: (s.route.length + 1) * 10, ua: Date.now(),
+      })
+    })
+    return id
+  }
+
+  /**
+   * Записать конечную точку поездки. Место может быть ещё не заведено вовсе —
+   * тогда собираем его из старого поля trip.place, чтобы не потерять название.
+   */
+  const setDest = (lat: number, lon: number) =>
+    update((s) => {
+      if (!s.trip.places) s.trip.places = []
+      const list = s.trip.places
+      let place = list.find((p) => p.main) ?? list[0]
+      if (!place) {
+        place = { i: 'pl' + Date.now().toString(36), n: s.trip.place || 'Конечная точка' }
+        list.push(place)
+      }
+      place.main = true
+      place.lat = lat
+      place.lon = lon
+    })
+
+  /** Тап по карте: конечная точка, ждущая точка маршрута — или новая точка. */
   const onAdd = (lat: number, lon: number) => {
+    if (placingMain) {
+      setPlacingMain(false)
+      setDest(lat, lon)
+      toast('Конечная точка на карте')
+      return
+    }
     if (placing) {
       const id = placing
       setPlacing(null)
@@ -136,18 +190,38 @@ export function TripMap({ S, perms }: Props) {
       void guessPlace(id, lat, lon)
       return
     }
-    const id = 'rp' + Date.now().toString(36)
-    update((s) => {
-      s.route.push({
-        i: id, n: 'Новая точка', time: '', c: '', done: false, lat, lon, addr: '',
-        lab: '', labT: '', mode: 'road', leg: 0, legSrc: '',
-        ord: (s.route.length + 1) * 10, ua: Date.now(),
-      })
-    })
+    const id = addPoint(lat, lon, 'Новая точка', '')
     toast('Точка поставлена', {
       action: { label: 'Отменить', onClick: () => remove('route', id) },
     })
     void guessPlace(id, lat, lon)
+  }
+
+  /** Находка строки поиска. Карта наводится всегда, точка ставится по обстановке. */
+  const onPick = (hit: PlaceFound) => {
+    setLookAt({ lat: hit.lat, lon: hit.lon, at: Date.now() })
+    if (!canEdit) return
+    if (placingMain) {
+      setPlacingMain(false)
+      setDest(hit.lat, hit.lon)
+      toast('Конечная точка на карте')
+      return
+    }
+    if (placing) {
+      const id = placing
+      setPlacing(null)
+      patch(id, (p) => {
+        p.lat = hit.lat
+        p.lon = hit.lon
+        if (!p.addr) p.addr = hit.addr
+      })
+      toast('Точка на карте')
+      return
+    }
+    const id = addPoint(hit.lat, hit.lon, shortPlaceName(hit.addr), hit.addr)
+    toast('Точка поставлена', {
+      action: { label: 'Отменить', onClick: () => remove('route', id) },
+    })
   }
 
   const onMove = (id: string, lat: number, lon: number) => {
@@ -168,15 +242,20 @@ export function TripMap({ S, perms }: Props) {
     [patch],
   )
 
-  const current = sheet ? S.route.find((p) => p.i === sheet) : null
   const waiting = placing ? S.route.find((p) => p.i === placing) : null
   /** Точки без места на карте — пока они есть, маршрута на карте не видно. */
   const unplaced = S.route.filter((p) => typeof p.lat !== 'number' || typeof p.lon !== 'number')
 
+  const place = mainPlace(S)
+  const dest: MapDest | null =
+    place && typeof place.lat === 'number' && typeof place.lon === 'number'
+      ? { lat: place.lat, lon: place.lon, n: place.n }
+      : null
+
   /* ── нет сети: карта не рисуется, но точки никуда не делись ── */
   if (!online) {
     return (
-      <Card>
+      <Card className={className}>
         <div className="flex flex-col items-center justify-center gap-3 bg-zebra px-6 py-8 text-center">
           <span className="grid size-16 place-items-center rounded-full bg-surface text-muted">
             <WifiOff size={28} strokeWidth={1.5} aria-hidden />
@@ -217,84 +296,116 @@ export function TripMap({ S, perms }: Props) {
     canEdit,
     onAdd,
     onMove,
-    onOpen: setSheet,
+    /* Тап по метке подсвечивает точку в ленте слева — правит её лента, не карта. */
+    onSelect: focusInList,
+    dest,
+    onMoveDest: setDest,
     focusId: focus?.pointId ?? null,
     focusAt: focus?.at,
     fitAt,
-    className: 'min-h-0 flex-1',
+    lookAt,
+    /* На телефоне у карточки высоты нет вовсе — её задаёт сама карта.
+       На десктопе карточка растянута по колонке, и карта забирает остаток. */
+    className: 'min-h-[280px] flex-1',
   }
+
+  /** Что случится с находкой поиска — человек должен знать это ДО выбора. */
+  const searchHint = !canEdit
+    ? 'Выберите — покажем на карте'
+    : placingMain
+      ? 'Выберите — это станет конечной точкой'
+      : waiting
+        ? `Выберите — сюда встанет «${waiting.n}»`
+        : 'Выберите — поставим новую точку маршрута'
 
   return (
     <>
-      <Card>
-        <div className="flex h-[320px] flex-col lg:h-full lg:min-h-[420px]">
+      <Card className={className}>
+        <div className="flex h-full flex-col">
+          <MapSearch near={center} onPick={onPick} hint={searchHint} />
+
           {useGoogle ? (
             <GoogleRouteMap {...mapProps} onFail={() => setGoogleDead(true)} />
           ) : (
             <OsmRouteMap {...mapProps} />
           )}
 
-          {waiting ? (
-            <div className="flex min-h-13 shrink-0 items-center gap-2 border-t border-line px-4 py-2 text-[13px] text-muted">
-              <MapPin size={16} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
-              <span className="min-w-0 flex-1 text-ink">
-                Тапните по карте, где стоит «{waiting.n}» — название подставится само
-              </span>
-              {/* Передумал — из ожидания надо уметь выйти: иначе кнопка «Разметить
-                  маршрут» так и не вернётся, ведь строка внизу карты одна. */}
-              <Btn tone="ghost" className="shrink-0" onClick={() => setPlacing(null)}>
-                Отменить
-              </Btn>
-            </div>
-          ) : canEdit && unplaced.length > 0 ? (
-            /* Пока точки без координат, карта пустая или неполная — и это первое,
-               что надо сказать. Мастер проходит их списком: что нашлось по названию,
-               то подтверждают, остальное ставят пальцем. */
-            <button
-              type="button"
-              onClick={() => setWizard(true)}
-              className="flex min-h-13 w-full shrink-0 items-center gap-3 border-t border-line px-4 py-2 text-left hover:bg-zebra"
-            >
-              <MapPinned size={20} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[15px] leading-tight font-semibold text-ink">
-                  Разметить маршрут
+          <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-t border-line px-3 py-2">
+            {waiting ? (
+              <>
+                <MapPin size={16} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
+                <span className="min-w-0 flex-1 text-[13px] text-ink">
+                  Тапните по карте, где стоит «{waiting.n}» — название подставится само
                 </span>
-                <span className="block text-[13px] text-muted">
-                  {unplaced.length === S.route.length
-                    ? `Ни одна точка ещё не на карте: ${unplaced.length}`
-                    : `Точек без места на карте: ${unplaced.length}`}
+                {/* Передумал — из ожидания надо уметь выйти. */}
+                <Btn tone="ghost" className="shrink-0" onClick={() => setPlacing(null)}>
+                  Отменить
+                </Btn>
+              </>
+            ) : placingMain ? (
+              <>
+                <Tent size={16} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
+                <span className="min-w-0 flex-1 text-[13px] text-ink">
+                  Тапните по карте, где конечная точка поездки
                 </span>
-              </span>
-              <ChevronRight size={18} strokeWidth={1.5} aria-hidden className="shrink-0 text-muted" />
-            </button>
-          ) : (
-            <p className="flex min-h-11 shrink-0 items-center gap-2 border-t border-line px-4 py-2 text-[13px] text-muted">
-              <MapIcon size={16} strokeWidth={1.5} aria-hidden className="shrink-0" />
-              <span>
-                {canEdit
-                  ? 'Тап по карте ставит точку, маркер можно перетащить'
-                  : 'Маршрут ведут владелец и редактор'}
-              </span>
-            </p>
-          )}
+                <Btn tone="ghost" className="shrink-0" onClick={() => setPlacingMain(false)}>
+                  Отменить
+                </Btn>
+              </>
+            ) : (
+              <>
+                {canEdit && unplaced.length > 0 ? (
+                  /* Пока точки без координат, карта пустая или неполная — и это первое,
+                     что надо сказать. Мастер проходит их списком: что нашлось
+                     по названию, то подтверждают, остальное ставят пальцем. */
+                  <button
+                    type="button"
+                    onClick={() => setWizard(true)}
+                    className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl text-left transition-colors hover:bg-zebra"
+                  >
+                    <MapPinned size={20} strokeWidth={1.5} aria-hidden className="shrink-0 text-accent-text" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] leading-tight font-semibold text-ink">
+                        Разметить маршрут
+                      </span>
+                      <span className="block text-[13px] text-muted">
+                        {unplaced.length === S.route.length
+                          ? `Ни одна точка ещё не на карте: ${unplaced.length}`
+                          : `Точек без места на карте: ${unplaced.length}`}
+                      </span>
+                    </span>
+                    <ChevronRight size={18} strokeWidth={1.5} aria-hidden className="shrink-0 text-muted" />
+                  </button>
+                ) : (
+                  <p className="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-muted">
+                    <MapIcon size={16} strokeWidth={1.5} aria-hidden className="shrink-0" />
+                    <span>
+                      {canEdit
+                        ? 'Тап по карте ставит точку, метку можно перетащить'
+                        : 'Маршрут ведут владелец и редактор'}
+                    </span>
+                  </p>
+                )}
+                {canEdit && (
+                  <Btn
+                    tone="secondary"
+                    className="shrink-0"
+                    aria-label="Указать конечную точку поездки тапом по карте"
+                    onClick={() => {
+                      setPlacing(null)
+                      setPlacingMain(true)
+                      toast('Тапните по карте, где конечная точка')
+                    }}
+                  >
+                    <Tent size={16} strokeWidth={1.5} aria-hidden />
+                    Конечная
+                  </Btn>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </Card>
-
-      {current && (
-        <RoutePointSheet
-          item={current}
-          index={S.route.findIndex((p) => p.i === current.i) + 1}
-          canEdit={canEdit}
-          canDelete={canEdit}
-          onPatch={(f) => patch(current.i, f)}
-          onDelete={() => {
-            remove('route', current.i)
-            toast(`«${current.n}» убрана`)
-          }}
-          onClose={() => setSheet(null)}
-        />
-      )}
 
       {/* Разовый мастер: точки без места — списком, с находками геокодера. */}
       <RouteMarkSheet
@@ -337,9 +448,14 @@ export function TripMap({ S, perms }: Props) {
 }
 
 /** Общая рамка блока: та же, что у остальных карточек «Поездки». */
-function Card({ children }: { children: React.ReactNode }) {
+function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+    <section
+      className={cn(
+        'overflow-hidden rounded-2xl border border-line bg-surface shadow-sm',
+        className,
+      )}
+    >
       {children}
     </section>
   )

@@ -6,7 +6,7 @@ import { permName } from '@/lib/perm'
 import { readyOf } from '@/lib/gearx'
 import { orderedPeople, toneOf, type PersonTone } from '@/lib/people'
 import { useTrip, touch } from '@/store'
-import { EmptyState, PersonMark, SectionHead, TextSheet } from '@/components/flops'
+import { Btn, EmptyState, PersonMark, SectionHead, TextSheet } from '@/components/flops'
 import { NBSP } from '@/format'
 import { Progress } from '@/components/ui/progress'
 import { PersonSheet } from './PersonSheet'
@@ -101,37 +101,35 @@ export function CrewSection() {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-          {/* Порядок только на экране: сам себя читатель видит первым, S.people не переставляем.
-              Метка же считается от исходного S.people — иначе она переезжала бы с человека
-              на человека при смене читателя (lib/people.ts). */}
-          {orderedPeople(S.people, perms.me).map((p) => (
-            <CrewCard
-              key={p.id}
-              person={p}
-              me={perms.me}
-              here={isHere(p.id)}
-              tone={toneOf(S.people, p.id)}
-              ready={readyOf(S, p.id)}
-              onOpen={() => setSheet(p.id)}
-            />
-          ))}
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+            {/* Порядок только на экране: сам себя читатель видит первым, S.people не переставляем.
+                Метка же считается от исходного S.people — иначе она переезжала бы с человека
+                на человека при смене читателя (lib/people.ts). */}
+            {orderedPeople(S.people, perms.me).map((p) => (
+              <CrewCard
+                key={p.id}
+                person={p}
+                me={perms.me}
+                here={isHere(p.id)}
+                tone={toneOf(S.people, p.id)}
+                ready={readyOf(S, p.id)}
+                onOpen={() => setSheet(p.id)}
+              />
+            ))}
+          </div>
 
+          {/* Кнопка вынесена из сетки (правка 04.08.2026): пустой карточкой в полный
+              портрет она отнимала место у людей — «пускай будет маленькой, не во весь
+              портрет». Обычная кнопка `md` — это 44 px высоты, цель касания соблюдена;
+              `self-start` не даёт ей растянуться на ширину раздела. */}
           {perms.isEditor() && (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="flex aspect-[171/220] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line-strong bg-bg p-3 text-center transition-colors hover:bg-zebra"
-            >
-              <span className="grid size-11 place-items-center rounded-full bg-zebra text-accent-text">
-                <UserPlus size={22} strokeWidth={1.5} aria-hidden />
-              </span>
-              <span className="text-[15px] font-semibold text-accent-text">
-                Добавить участника
-              </span>
-            </button>
+            <Btn tone="secondary" className="self-start" onClick={() => setAdding(true)}>
+              <UserPlus size={18} strokeWidth={1.5} aria-hidden />
+              Добавить участника
+            </Btn>
           )}
-        </div>
+        </>
       )}
 
       {current && (
@@ -175,7 +173,11 @@ export function CrewSection() {
 }
 
 /**
- * Карточка-фотография 171 × 220 (docs/v2-ux-redesign.md, 7.2).
+ * Карточка-фотография (docs/v2-ux-redesign.md, 7.2).
+ *
+ * Пропорция 04.08.2026 приведена к квадрату: заказчик просил квадратные портреты,
+ * а карточка была 171 × 220. Снимки, снятые до правки, лежат в данных как 3 : 4 —
+ * `object-cover` кадрирует их по центру, поэтому они обрезаются, а не растягиваются.
  * Фотографии заказчик расставит сам: пока её нет — фирменная подложка с инициалом.
  */
 function CrewCard({
@@ -201,7 +203,7 @@ function CrewCard({
       type="button"
       onClick={onOpen}
       aria-label={`${person.name}, ${permName(person.perm)}. Собрано ${ready.done} из ${ready.total}`}
-      className="relative block aspect-[171/220] w-full overflow-hidden rounded-2xl border border-line bg-zebra text-left shadow-sm transition-shadow hover:shadow-md"
+      className="relative block aspect-square w-full overflow-hidden rounded-2xl border border-line bg-zebra text-left shadow-sm transition-shadow hover:shadow-md"
     >
       {person.photo ? (
         <img src={person.photo} alt="" aria-hidden className="size-full object-cover" />
@@ -230,8 +232,8 @@ function CrewCard({
 
       <span className="absolute inset-x-0 bottom-0 block px-3 pt-2 pb-3">
         <span className="flex items-center gap-1.5">
-          {/* личная метка: янтарь разной насыщенности и формы, новых цветов не заводим */}
-          <PersonMark tone={tone} size={12} />
+          {/* личная метка: кружок янтаря на подложке, новых цветов не заводим */}
+          <PersonMark tone={tone} size={14} />
           <span className="min-w-0 flex-1 truncate text-[17px] leading-tight font-[650] text-brand-cream">
             {person.name}
           </span>

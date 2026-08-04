@@ -18,9 +18,15 @@ interface Props {
   onMap: number
   /** пробег на всю поездку */
   km: number
+  /**
+   * Сколько концов пути словами — «туда и обратно», «только туда», «3 конца пути».
+   * Раньше здесь было вшито «туда и обратно», и при одном конце плашка врала
+   * ровно так же, как врала карточка «Сколько едем» (см. kBackWord в roadx.ts).
+   */
+  kBack: string
 }
 
-export function RoadCover({ trip, points, onMap, km }: Props) {
+export function RoadCover({ trip, points, onMap, km, kBack }: Props) {
   return (
     <div className="relative aspect-[4/3] overflow-hidden rounded-2xl shadow-md sm:aspect-[16/9] lg:aspect-square">
       {trip.hero ? (
@@ -39,7 +45,7 @@ export function RoadCover({ trip, points, onMap, km }: Props) {
 
       <div className="absolute inset-x-0 bottom-0 p-5 text-brand-cream lg:p-6">
         <span className="tnum rounded-full bg-brand-cream px-3 py-1 text-xs font-bold text-brand-dark">
-          {kmLabel(km)} туда и обратно
+          {kmLabel(km)} {kBack}
         </span>
         <h3 className="mt-3 text-[26px] leading-tight font-[750] text-balance lg:text-[30px]">
           {trip.title}

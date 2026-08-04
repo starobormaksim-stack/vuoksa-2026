@@ -1,0 +1,21 @@
+# Заголовки Cloudflare Pages. На GitHub Pages файл просто лежит без дела.
+#
+# Смысл один: страница и сценарий служебного работника не должны залёживаться
+# в кеше браузера. Иначе выложенная версия не доезжает до людей — ровно то,
+# на что жаловался заказчик 04.08.2026: «на телефоне старая копия, жёсткая
+# перезагрузка не помогает».
+#
+# Файлы сборки (/assets/*) наоборот кешируются навсегда: у них хеш в имени,
+# и содержимое по этому адресу больше никогда не изменится.
+
+/sw.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

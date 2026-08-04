@@ -67,10 +67,15 @@ export function PlacesSheet({ places, onClose }: { places: TripPlace[]; onClose:
           ))}
         </ul>
 
-        <div className="mt-2 flex h-36 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line bg-zebra/40 text-muted">
-          <MapIcon size={24} strokeWidth={1.5} aria-hidden />
-          <span className="text-sm font-medium">Карта появится в онлайне</span>
-        </div>
+        {/* Заглушка «карта появится в онлайне» отсюда убрана: карта теперь стоит
+            прямо в блоке маршрута, и главная точка отмечена на ней плашкой. */}
+        <p className="mt-2 flex items-start gap-2 rounded-2xl bg-zebra/60 p-3 text-sm text-muted">
+          <MapIcon size={18} strokeWidth={1.5} aria-hidden className="mt-0.5 shrink-0" />
+          <span>
+            Главная точка отмечена на карте отдельной плашкой с названием. Переставить
+            её можно кнопкой «Конечная» под картой.
+          </span>
+        </p>
       </div>
     </div>
   )

@@ -1,0 +1,150 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import { Loader2, MailCheck } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Btn } from '@/components/flops'
+import { Logo } from '@/components/Logo'
+import { sendMagicLink } from '@/lib/auth'
+
+/**
+ * Экран входа владельца: одно поле почты и кнопка «прислать ссылку».
+ *
+ * Раскладка взята с блока shadcn `login-05` (заказчик просил именно его): знак сверху,
+ * заголовок, одно поле, кнопка во всю ширину. Всё лишнее из блока выброшено — входов
+ * через Apple и Google у нас нет, ссылок «зарегистрироваться» тоже: владелец у поездки
+ * один, и его запись заводится вручную (`create_user: false` в `lib/auth.ts`).
+ * Заголовок даёт шапка шторки — второй такой же внутри был бы дублем.
+ *
+ * Обмен с сервером целиком в `lib/auth.ts`: здесь только `sendMagicLink`.
+ *
+ * Форма остаётся на экране и после отправки. Так человек видит адрес, на который ушло
+ * письмо, и может тут же поправить опечатку — отдельного «ввести другой адрес» не нужно.
+ */
+
+/**
+ * Через сколько секунд разрешаем повтор. У почты Supabase по умолчанию жёсткое
+ * ограничение по частоте, и вторая кнопка, нажатая сразу, вернула бы отказ сервера.
+ * Честнее не дать нажать и показать, сколько ждать.
+ */
+const RESEND_AFTER = 60
+
+export function OwnerLogin() {
+  const [email, setEmail] = useState('')
+  const [sentTo, setSentTo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [wait, setWait] = useState(0)
+
+  /* Обратный отсчёт до повтора: один таймер на секунду, без интервала —
+     так нечему «убежать» при быстром открытии и закрытии шторки. */
+  useEffect(() => {
+    if (wait <= 0) return
+    const id = window.setTimeout(() => setWait(wait - 1), 1000)
+    return () => window.clearTimeout(id)
+  }, [wait])
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (busy || wait > 0) return
+    setBusy(true)
+    setError('')
+    const r = await sendMagicLink(email)
+    setBusy(false)
+    if (!r.ok) {
+      setError(r.error || 'Письмо отправить не вышло')
+      return
+    }
+    setSentTo(email.trim().toLowerCase())
+    setWait(RESEND_AFTER)
+  }
+
+  const label = busy
+    ? 'Отправляем…'
+    : wait > 0
+      ? `Ещё раз можно через ${wait} с`
+      : sentTo
+        ? 'Отправить ещё раз'
+        : 'Прислать ссылку для входа'
+
+  return (
+    <div className="flex flex-col gap-5 pb-1">
+      <div className="flex flex-col items-center gap-3 pt-1 text-center">
+        <Logo height={30} />
+        <p className="text-[14px] leading-relaxed text-balance text-ink">
+          Ссылку для входа пришлём на почту. Нажмёте на неё в письме — и вы внутри.
+          Пароль придумывать не надо.
+        </p>
+      </div>
+
+      {sentTo && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-line bg-zebra p-3"
+        >
+          <MailCheck
+            size={20}
+            strokeWidth={1.5}
+            className="mt-0.5 shrink-0 text-accent-text"
+            aria-hidden
+          />
+          <p className="text-[14px] leading-relaxed text-ink">
+            Письмо ушло на <span className="font-semibold break-all">{sentTo}</span>. Откройте
+            его и нажмите на ссылку — вернётесь сюда уже владельцем. Письмо идёт не мгновенно;
+            если его нет — посмотрите в папке со спамом.
+          </p>
+        </div>
+      )}
+
+      {/* Проверку адреса делает `sendMagicLink` и говорит по-русски — родная проверка
+          браузера показала бы своё окошко поверх нашего. */}
+      <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3" noValidate>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="owner-email" className="text-[13px] font-semibold text-muted">
+            Почта
+          </Label>
+          {/* inputMode и autoCapitalize — чтобы телефон предложил адрес и не включил
+              заглавную букву в начале; 16 px не дают iOS приблизить страницу. */}
+          <Input
+            id="owner-email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="имя@почта.com"
+            value={email}
+            disabled={busy}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setError('')
+            }}
+            className="h-12 rounded-xl border-line-strong bg-surface px-3 text-[16px] text-ink md:text-[16px] focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+          />
+        </div>
+
+        {error && (
+          <p role="alert" className="text-[13px] leading-relaxed text-danger">
+            {error}
+          </p>
+        )}
+
+        <Btn
+          type="submit"
+          scale="lg"
+          className="w-full"
+          disabled={busy || wait > 0}
+          aria-busy={busy}
+        >
+          {busy && <Loader2 size={18} strokeWidth={1.5} className="animate-spin" aria-hidden />}
+          {label}
+        </Btn>
+      </form>
+
+      <p className="text-[12px] leading-relaxed text-muted">
+        Это подготовка к защите листа. Сейчас вход почтой ничего не закрывает и ничего
+        не отнимает: личные ссылки участников работают как работали.
+      </p>
+    </div>
+  )
+}

@@ -92,6 +92,44 @@ const PERSON_FIELDS = ['name', 'ini', 'car', 'role', 'desc', 'color', 'perm', 'k
  */
 const WHOLE_DOC = ['menu', 'weather', 'tileLabels', 'secTitles', 'trip', 'doc']
 
+/** Поля, которые страховка «добери недостающее» не трогает: они личные, не общие. */
+const LOCAL_ONLY = ['me', 'theme', 'author', 'updatedAt']
+
+/**
+ * Добрать в `a` ключи, которые есть в `b` и отсутствуют в `a`. Возвращает, сколько добрал.
+ *
+ * Только добавляет: существующие значения не трогает, списки не сливает (за них
+ * отвечает `pick`), в чужие ветки не спускается глубже одного уровня объектов.
+ * Смысл — не дать устаревшей копии молча удалить поле с сервера.
+ */
+function fillMissingKeys(a: unknown, b: unknown): number {
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return 0
+  if (Array.isArray(a) || Array.isArray(b)) return 0
+  const dst = a as Bag
+  const src = b as Bag
+  let n = 0
+  Object.keys(src).forEach((k) => {
+    const bv = src[k]
+    if (bv === undefined || bv === null) return
+    const av = dst[k]
+    if (av === undefined || av === null) {
+      dst[k] = clone(bv)
+      n++
+      return
+    }
+    /* Оба — простые объекты: спускаемся на уровень ниже (например, trip.lat/lon). */
+    if (
+      typeof av === 'object' &&
+      typeof bv === 'object' &&
+      !Array.isArray(av) &&
+      !Array.isArray(bv)
+    ) {
+      n += fillMissingKeys(av, bv)
+    }
+  })
+  return n
+}
+
 /** Влить входящий документ `inc` в `S`. Меняет `S` на месте. */
 export function mergeInto(S: State, inc: Partial<State> | null | undefined): MergeResult {
   let marks = 0
@@ -301,12 +339,38 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
   })
 
   /* ── общие блоки без собственных меток: по свежести всего документа ── */
-  if ((inc?.updatedAt || '') > (S.updatedAt || '')) {
-    WHOLE_DOC.forEach((f) => {
-      if (src[f] !== undefined && src[f] !== null) dst[f] = clone(src[f])
-    })
-    if (src.theme !== undefined) S.theme = src.theme as string | null
-  }
+  const fresher = (inc?.updatedAt || '') > (S.updatedAt || '')
+  WHOLE_DOC.forEach((f) => {
+    if (src[f] === undefined || src[f] === null) return
+    if (fresher) {
+      dst[f] = clone(src[f])
+      return
+    }
+    /* Пришедшее старее нашего — но того, чего у нас НЕТ, оно не отменяет.
+       См. страховку ниже: именно так 04.08.2026 пропали свои названия разделов. */
+    if (dst[f] === undefined || dst[f] === null) {
+      dst[f] = clone(src[f])
+      edits++
+      return
+    }
+    edits += fillMissingKeys(dst[f], src[f])
+  })
+  if (fresher && src.theme !== undefined) S.theme = src.theme as string | null
+
+  /* ── Страховка: слияние не имеет права терять поля ──────────────────────
+     04.08.2026 боевой лист четырежды обеднела вкладка с УСТАРЕВШЕЙ копией:
+     она сливала свежий серверный документ со своим, но поля, которых в её
+     копии не было вовсе (`secTitles`, `tileLabels`, `trip.lat/lon`, прогноз),
+     слияние не воскрешало — и обеднённый документ уезжал обратно на сервер.
+     Здесь мы добираем всё, что есть на сервере и отсутствует у нас. Это
+     действие только добавляющее: ни одно существующее значение оно не трогает,
+     а значит и чужую свежую правку затереть не может.
+     Настоящее лечение — RLS по auth.uid(), см. PROMPT-NEXT.md. */
+  const local = { ...src }
+  /* Это не общие поля документа, а личные: «кто я», выбранная тема, подпись
+     последнего писавшего и метка документа. С сервера их не добираем. */
+  LOCAL_ONLY.forEach((k) => delete local[k])
+  edits += fillMissingKeys(dst, local)
 
   return { marks, edits, news, gone, total: marks + edits + news + gone }
 }

@@ -96,7 +96,9 @@ export function SearchCommand({
       description="Ищем по названиям и примечаниям"
     >
       <CommandInput placeholder="Что ищем?" />
-      <CommandList className="max-h-[60vh]">
+      {/* dvh, а не vh: на iOS и во встроенном браузере Телеграма `vh` считается
+          по самому большому окну, и при видимых панелях низ списка уезжает за экран. */}
+      <CommandList className="max-h-[60dvh]">
         <CommandEmpty>
           <div className="px-4 py-6 text-center">
             <div className="text-base font-[650] text-ink">Ничего не нашлось</div>

@@ -1,16 +1,92 @@
 /* Служебный работник Pine-to-Pine: приложение открывается и работает без интернета.
-   Стратегия «сначала сеть» для разметки и «сначала кеш» для собранных ресурсов
-   (у них хеш в имени, значит содержимое неизменно). Чужие домены — Supabase,
-   погода, тайлы карты — не кешируем: они уходят мимо работника. */
-var CACHE = 'pine-to-pine-v2-1'
-var CORE = ['./', './index.html', './manifest.webmanifest', './favicon.svg']
+
+   ─── Почему файл переписан 04.08.2026 ───
+   У заказчика на телефоне держалась старая версия сайта, и жёсткая перезагрузка
+   не помогала. Виноват был прежний работник, и сразу по трём причинам:
+
+   1. Имя кеша было вшито строкой и никогда не менялось. Значит, `activate` ничего
+      не удалял, а сам работник браузер не перекачивал: сценарий по тому же адресу
+      с тем же содержимым — обновлять нечего.
+   2. Файлы из `/assets/` отдавались «сначала кеш» без единой проверки, ЧТО именно
+      туда положили. А сразу после выкладки Cloudflare успевает ответить на запрос
+      кода правилом `_redirects` — то есть отдать index.html вместо файла кода.
+      Такой ответ ложился в кеш навсегда, и вылечить это перезагрузкой было нельзя.
+   3. Никто не говорил странице, что приехала новая версия. Даже забрав свежий код,
+      работник ждал закрытия всех вкладок.
+
+   Теперь: версия сборки приходит в адресе работника (`sw.js?v=…`), от неё зависит
+   имя кеша; ответы проверяются перед укладкой в кеш; страница сама перезагружается,
+   когда новый работник встал у руля (см. `src/main.tsx`).
+
+   Чужие домены — Supabase, погода, тайлы карты — работник не трогает вовсе. */
+
+/* Версия сборки. Другой адрес сценария = браузер обязан его перекачать и поставить. */
+var VERSION = new URL(self.location.href).searchParams.get('v') || 'dev'
+var CACHE = 'pine-to-pine-' + VERSION
+var SHELL = './index.html'
+var CORE = ['./', SHELL, './manifest.webmanifest', './favicon.svg']
+
+/** Файлы сборки: в имени хеш, содержимое неизменно. */
+function isBuilt(url) {
+  return /\/assets\/.+\.(js|css|woff2?|ttf|png|svg|jpe?g)$/.test(url.pathname)
+}
+
+/** Ответ пришёл разметкой — для файла кода это подмена от `_redirects`. */
+function isHtml(res) {
+  return (res.headers.get('content-type') || '').indexOf('text/html') !== -1
+}
+
+/** Такой ответ можно класть в кеш: свой домен, честные 200, не ошибка и не заглушка. */
+function storable(res) {
+  return !!res && res.status === 200 && res.type === 'basic'
+}
+
+/** Сеть с ограничением по времени: без него плохая связь вешает страницу насмерть. */
+function fromNetwork(req, ms) {
+  return new Promise(function (ok, fail) {
+    var done = false
+    var timer = setTimeout(function () {
+      if (!done) {
+        done = true
+        fail(new Error('timeout'))
+      }
+    }, ms)
+    fetch(req).then(
+      function (res) {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        ok(res)
+      },
+      function (err) {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        fail(err)
+      },
+    )
+  })
+}
+
+function keep(req, res) {
+  var copy = res.clone()
+  caches.open(CACHE).then(function (c) {
+    c.put(req, copy)
+  })
+}
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches
       .open(CACHE)
       .then(function (c) {
-        return c.addAll(CORE)
+        /* `cache: 'reload'` — мимо обычного кеша браузера: иначе в новую версию
+           переезжает старая оболочка, и весь смысл смены версии пропадает. */
+        return c.addAll(
+          CORE.map(function (u) {
+            return new Request(u, { cache: 'reload' })
+          }),
+        )
       })
       .catch(function () {})
       .then(function () {
@@ -47,39 +123,32 @@ self.addEventListener('fetch', function (e) {
   }
   if (url.origin !== self.location.origin) return
 
-  /* Собранные файлы с хешем в имени неизменны — отдаём из кеша сразу. */
-  var immutable = /\/assets\/.+\.(js|css|woff2?|ttf|png|svg|jpe?g)$/.test(url.pathname)
-  if (immutable) {
+  /* ── Файлы сборки: сначала кеш, но кладём в него только настоящий файл ── */
+  if (isBuilt(url)) {
     e.respondWith(
       caches.match(req).then(function (hit) {
-        return (
-          hit ||
-          fetch(req).then(function (res) {
-            var copy = res.clone()
-            caches.open(CACHE).then(function (c) {
-              c.put(req, copy)
-            })
-            return res
-          })
-        )
+        if (hit) return hit
+        return fetch(req).then(function (res) {
+          /* Разметка вместо кода = файл ещё не разъехался по краям Cloudflare.
+             В кеш такое класть нельзя: там оно осталось бы навсегда. */
+          if (storable(res) && !isHtml(res)) keep(req, res)
+          return res
+        })
       }),
     )
     return
   }
 
-  /* Всё остальное: свежее из сети, без сети — из кеша. */
+  /* ── Всё остальное (в первую очередь сама страница): сначала сеть ── */
   e.respondWith(
-    fetch(req)
+    fromNetwork(req, 6000)
       .then(function (res) {
-        var copy = res.clone()
-        caches.open(CACHE).then(function (c) {
-          c.put(req, copy)
-        })
+        if (storable(res)) keep(req, res)
         return res
       })
       .catch(function () {
         return caches.match(req).then(function (hit) {
-          return hit || caches.match('./index.html')
+          return hit || caches.match(SHELL)
         })
       }),
   )

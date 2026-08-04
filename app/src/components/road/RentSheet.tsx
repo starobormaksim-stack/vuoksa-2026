@@ -41,6 +41,12 @@ export function RentSheet({ item, S, canEdit, canDelete, onPatch, onDelete, onCl
   const daysMismatch = item.unit === 'сут.' && days > 0 && item.qty !== days
   const ntList = Object.entries(item.nt ?? {}).filter(([, n]) => n && n.t)
 
+  /*
+   * «Итого» показываем, только когда оно не повторяет цену. При одной штуке на одни сутки
+   * итог равен цене, и строка ничего не объясняет — заказчик видел «цена 6 ₽ … Итого 6 ₽».
+   */
+  const showSum = item.qty * item.count !== 1
+
   return (
     <>
       <ResponsiveSheet
@@ -60,7 +66,8 @@ export function RentSheet({ item, S, canEdit, canDelete, onPatch, onDelete, onCl
               Стоит{' '}
               <EditNum onClick={go('price')} label="Цена аренды">
                 {money(item.price, S.doc)}
-              </EditNum>{' '}
+              </EditNum>
+              {NBSP}
               {rentPer(item)}
             </Line>
           </Step>
@@ -70,7 +77,8 @@ export function RentSheet({ item, S, canEdit, canDelete, onPatch, onDelete, onCl
               Берём на{' '}
               <EditNum onClick={go('qty')} label="Сколько берём">
                 {fmtNum(item.qty, 1)}
-              </EditNum>{' '}
+              </EditNum>
+              {NBSP}
               {item.unit === 'сут.'
                 ? plural(Math.round(item.qty), 'сутки', 'суток', 'суток')
                 : item.unit}
@@ -78,14 +86,14 @@ export function RentSheet({ item, S, canEdit, canDelete, onPatch, onDelete, onCl
             {canEdit && daysMismatch && (
               <Btn
                 tone="ghost"
-                scale="sm"
-                className="mt-1 -ml-3"
+                /* h-auto + перенос: длинная подпись при 390 px иначе вылезала бы вбок */
+                className="mt-1 -ml-4 h-auto min-h-11 py-2 text-left whitespace-normal"
                 onClick={() => {
                   const was = item.qty
                   onPatch((r) => {
                     r.qty = days
                   })
-                  toast(`Взяли на ${days}${NBSP}суток`, {
+                  toast(`Взяли на ${days}${NBSP}${plural(days, 'сутки', 'суток', 'суток')}`, {
                     action: {
                       label: 'Отменить',
                       onClick: () =>
@@ -96,7 +104,9 @@ export function RentSheet({ item, S, canEdit, canDelete, onPatch, onDelete, onCl
                   })
                 }}
               >
-                В поездке {days} {plural(days, 'сутки', 'суток', 'суток')} — подставить?
+                В поездке {days}
+                {NBSP}
+                {plural(days, 'сутки', 'суток', 'суток')} — подставить?
               </Btn>
             )}
           </Step>
@@ -110,10 +120,12 @@ export function RentSheet({ item, S, canEdit, canDelete, onPatch, onDelete, onCl
             </Line>
           </Step>
 
-          <div className="mt-2 flex items-center gap-3 rounded-xl bg-accent-soft px-3 py-3">
-            <span className="flex-1 text-[15px] font-[650] text-ink">Итого</span>
-            <ResultNum className="text-2xl">{money(rentSum(item), S.doc)}</ResultNum>
-          </div>
+          {showSum && (
+            <div className="mt-2 flex min-h-12 items-center gap-3 rounded-xl bg-accent-soft px-3 py-2">
+              <span className="flex-1 text-[15px] font-[650] text-ink">Итого</span>
+              <ResultNum className="text-2xl">{money(rentSum(item), S.doc)}</ResultNum>
+            </div>
+          )}
         </div>
 
         {/* Текстовые блоки строки аренды — то, что в v1 было отдельной карточкой лодки. */}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { MenuDay, MenuDish } from '@/lib/types'
 import { Btn, ResponsiveSheet, SheetRow, TextSheet } from '@/components/flops'
+import { cn } from '@/lib/utils'
 
 /**
  * Карточка блюда (docs/v2-ux-redesign.md, 11.2).
@@ -41,7 +42,8 @@ export function DishSheet({ day, dish, canEdit, onPatch, onPatchDay, onDelete, o
         }
       >
         <div className="rounded-2xl bg-accent-soft p-4">
-          <p className="text-sm text-ink">
+          {/* Незаполненное «сколько» — приглушённо: это подсказка, а не данные (правило пустых значений). */}
+          <p className={cn('text-[15px] leading-snug', dish.q ? 'text-ink' : 'text-muted')}>
             {dish.q || 'Сколько брать продуктов — ещё не вписано'}
           </p>
           <p className="mt-1.5 text-[13px] font-semibold text-accent-text">

@@ -2,9 +2,24 @@ import { useState } from 'react'
 import { CalendarDays, Camera, MapPin, TentTree } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Trip, TripPlace } from '../../lib/types'
-import { countdown } from '../../format'
+import { countdown, fmtRange } from '../../format'
 import { update } from '../../store'
 import { PhotoCropSheet, usePhotoPick } from '../flops'
+
+/**
+ * Подпись с датами. Считается из trip.start и trip.end — из тех же полей, из которых
+ * считается обратный отсчёт и длительность поездки. Готовая строка trip.dates берётся
+ * только тогда, когда владелец вписал её руками (datesAuto === false): иначе после
+ * правки календаря на обложке могла бы остаться старая подпись, не сходящаяся
+ * с отсчётом «до выезда».
+ */
+function datesLabel(trip: Trip): string {
+  if (trip.datesAuto === false) return trip.dates
+  const a = new Date(trip.start)
+  const b = new Date(trip.end)
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return trip.dates
+  return fmtRange(a, b)
+}
 
 interface Props {
   trip: Trip
@@ -25,6 +40,7 @@ interface Props {
 export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: Props) {
   const main = places.find((p) => p.main) ?? places[0]
   const extra = places.length - 1
+  const dates = datesLabel(trip)
   const chip =
     'flex min-h-11 items-center gap-2 rounded-xl bg-brand-dark/45 px-3 backdrop-blur-sm'
 
@@ -35,7 +51,9 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: 
   const { pick, input } = usePhotoPick(setSrc)
 
   return (
-    <div className="relative overflow-hidden rounded-2xl shadow-md aspect-[4/3] sm:aspect-[16/9] lg:aspect-square">
+    /* На десктопе обложка больше не квадрат: под ней в той же колонке стоит лента
+       точек (см. map/RouteBoard.tsx), и квадрат съедал бы всю высоту блока. */
+    <div className="relative aspect-[4/3] overflow-hidden rounded-2xl shadow-md sm:aspect-[16/9] lg:max-h-[400px]">
       {trip.hero ? (
         <img src={trip.hero} alt="" className="absolute inset-0 size-full object-cover" />
       ) : (
@@ -106,15 +124,15 @@ export function TripCover({ trip, places, onEditDates, onShowPlaces, canEdit }: 
               type="button"
               onClick={onEditDates}
               className={`${chip} transition-colors hover:bg-brand-dark/65`}
-              aria-label={`Даты поездки: ${trip.dates}. Изменить`}
+              aria-label={`Даты поездки: ${dates}. Изменить`}
             >
               <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
-              <span className="editable tnum text-sm font-semibold">{trip.dates}</span>
+              <span className="editable tnum text-sm font-semibold">{dates}</span>
             </button>
           ) : (
             <span className={chip}>
               <CalendarDays size={18} strokeWidth={1.5} aria-hidden />
-              <span className="tnum text-sm font-semibold">{trip.dates}</span>
+              <span className="tnum text-sm font-semibold">{dates}</span>
             </span>
           )}
 

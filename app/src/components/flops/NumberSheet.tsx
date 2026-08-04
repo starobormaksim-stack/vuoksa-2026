@@ -3,7 +3,7 @@ import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { ResponsiveSheet } from './ResponsiveSheet'
 import { Btn } from './Btn'
-import { fmtNum, NBSP } from '@/format'
+import { fmtNum, MDASH, NBSP } from '@/format'
 import { nameAcc } from '@/lib/gearx'
 import { cn } from '@/lib/utils'
 
@@ -265,7 +265,7 @@ export function NumberSheet(props: NumberSheetProps) {
   )
 }
 
-const MDASH = '—'
+/** Минус-знак, а не дефис: он живёт на пресетах «−100». */
 const MINUS = '−'
 
 /** Степпер: −/+ 56×56 и крупное число между ними. */

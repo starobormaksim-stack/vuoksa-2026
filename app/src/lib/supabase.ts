@@ -47,11 +47,26 @@ interface FetchOpts {
   signal?: AbortSignal
 }
 
+/**
+ * Токен вошедшего владельца (Supabase Auth). Пока никто не вошёл — null, и запросы
+ * идут от anon-ключа, как раньше. Значение ставит `lib/auth.ts`; связь односторонняя,
+ * чтобы не заводить круговой импорт между модулями.
+ *
+ * Когда на таблице `trips` включат RLS по `auth.uid()`, право записи будет именно
+ * у этого токена, а не у anon-ключа (см. docs/rls-migration.sql).
+ */
+let authToken: string | null = null
+
+/** Поставить или снять токен вошедшего. Зовётся только из lib/auth.ts. */
+export function setAuthToken(token: string | null): void {
+  authToken = token
+}
+
 /** Запрос к REST API Supabase. Путь — без ведущего слэша: `trips?id=eq.…`. */
 export function sbFetch(path: string, opts: FetchOpts = {}): Promise<Response> {
   const h: Record<string, string> = { ...(opts.headers || {}) }
   h['apikey'] = SB.key
-  h['Authorization'] = 'Bearer ' + SB.key
+  h['Authorization'] = 'Bearer ' + (authToken || SB.key)
   h['Content-Type'] = 'application/json'
   if (opts.rep) h['Prefer'] = 'return=representation'
   return fetch(SB.url + '/rest/v1/' + path, {
