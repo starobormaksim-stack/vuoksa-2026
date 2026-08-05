@@ -5,7 +5,7 @@ import type { MenuDay, MenuDish } from '@/lib/types'
 import { readTrip, touch, useTrip } from '@/store'
 import {
   AddRow, DataCell, DataHead, DataRow, DataTable, EmptyState, Group, InlineText,
-  newTableScroll, RowAction, RowActions, SectionHead, useIsDesktop,
+  newTableScroll, RowAction, RowActions, SectionHead,
 } from '@/components/flops'
 import { autoDayTitle } from '@/format'
 import { cn } from '@/lib/utils'
@@ -42,14 +42,15 @@ import { cn } from '@/lib/utils'
  */
 export function MenuSection() {
   const { S, update, perms } = useTrip()
-  const desktop = useIsDesktop()
   const days = S.menu ?? []
   const canEdit = perms.isEditor()
 
-  /* Десктоп: дни раскрыты все сразу. Мобайл: открыт первый. */
+  /* ⛔ Дни раскрыты все сразу на ОБЕИХ ширинах. Заказчик 06.08.2026: «по умолчанию
+     у тебя все списки должны быть раскрыты, название разделов должно быть крупно
+     написано… чтобы было очевидно». Прежде на телефоне открывался только первый
+     день, и остальные читались как пустой список. */
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const isOpen = (d: MenuDay, idx: number) =>
-    d.i in open ? open[d.i] : desktop || idx === 0
+  const isOpen = (d: MenuDay) => (d.i in open ? open[d.i] : true)
 
   /**
    * Только что добавленная строка (день или блюдо): её поле открывается сразу
@@ -193,8 +194,8 @@ export function MenuSection() {
             key={day.i}
             day={day}
             canEdit={canEdit}
-            open={isOpen(day, idx)}
-            onToggle={() => setOpen((o) => ({ ...o, [day.i]: !isOpen(day, idx) }))}
+            open={isOpen(day)}
+            onToggle={() => setOpen((o) => ({ ...o, [day.i]: !isOpen(day) }))}
             fresh={fresh}
             sync={scroll}
             autoTitle={autoDayTitle(S.trip.start, idx)}

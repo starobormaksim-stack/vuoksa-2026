@@ -5,12 +5,14 @@ import type { Gear, GearSection as GearSec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { readyOfGroup } from '@/lib/gearx'
 import { orderedPeople } from '@/lib/people'
+import { visibleBlockId } from '@/lib/visible'
 import {
   AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
-  newTableScroll, type TableScroll,
+  newTableScroll, useIsDesktop, type TableScroll,
 } from '@/components/flops'
 import { GEAR_LEGEND } from './legend'
 import { GearMatrix } from './GearMatrix'
+import { GearStrip } from './GearStrip'
 
 /**
  * Раздел «Сборы».
@@ -32,7 +34,16 @@ export function GearSection() {
   const { S, update, remove, perms } = useTrip()
   /* один общий сдвиг вбок на все блоки: лист в таблице заказчика один */
   const scroll = useRef<TableScroll>(newTableScroll())
-  const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [S.gearSections[0]?.i]: true }))
+  /** корень раздела — по нему липкий «плюс» находит блок, который сейчас читают */
+  const list = useRef<HTMLDivElement | null>(null)
+  const desktop = useIsDesktop()
+  /* ⛔ Раскрыты ВСЕ разделы, а не один первый. Заказчик 06.08.2026: «по умолчанию
+     у тебя все списки должны быть раскрыты, название разделов должно быть крупно
+     написано… чтобы было очевидно». Свёрнутой остаётся подробность позиции —
+     это спрошено отдельно и подтверждено им же (У-44). Пустой объект здесь значит
+     «раскрыто»: свёрнутые помечаются явным `false`, поэтому новый раздел, заведённый
+     после загрузки, тоже открыт. */
+  const [closed, setClosed] = useState<Record<string, boolean>>({})
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
@@ -151,12 +162,28 @@ export function GearSection() {
   const menuSec = menu ? sections.find((s) => s.i === menu) ?? null : null
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" ref={list}>
       <SectionHead
         title="Сборы"
         secId="gear"
         hint="Цифра — сколько штук везёт человек. «Всего» считается само"
         legend={GEAR_LEGEND}
+        /* Липкий «плюс» — просьба заказчика 06.08.2026: «есть всегда при прокрутке…
+           с правой стороны плюсик, оно как бы прилипает». Полоса раздела липкая
+           сама по себе, поэтому кнопке довольно стоять в ней. Вещь ложится
+           в тот подраздел, который человек сейчас читает (`visibleBlockId`),
+           а не всегда в первый. */
+        action={
+          perms.isEditor() || perms.me
+            ? {
+                label: 'Добавить вещь',
+                onClick: () => {
+                  const sid = visibleBlockId(list.current, sections[0]?.i ?? '')
+                  if (sid) addAt(sid, (bySec[sid] ?? []).length)
+                },
+              }
+            : undefined
+        }
       >
         {/* Кружок в чужой ячейке участнику не кнопка, а значок — и это надо
             прочитать словами, иначе тап «просто не работает» (постулаты 4 и 5).
@@ -175,6 +202,7 @@ export function GearSection() {
         return (
           <Group
             key={sec.i}
+            data-block={sec.i}
             title={sec.t}
             /* итог как в таблице заказчика: «собрано: 0 из 14» */
             badge={
@@ -182,8 +210,8 @@ export function GearSection() {
                 собрано: {r.done} из {r.total}
               </span>
             }
-            open={!!open[sec.i]}
-            onToggle={() => setOpen((o) => ({ ...o, [sec.i]: !o[sec.i] }))}
+            open={closed[sec.i] !== true}
+            onToggle={() => setClosed((o) => ({ ...o, [sec.i]: o[sec.i] !== true }))}
             onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
           >
             {rows.length === 0 ? (
@@ -195,19 +223,41 @@ export function GearSection() {
               />
             ) : (
               <>
-                <GearMatrix
-                  rows={rows}
-                  people={people}
-                  perms={perms}
-                  label={sec.t}
-                  sync={scroll}
-                  units={units}
-                  fresh={fresh}
-                  onFreshDone={() => setFresh('')}
-                  patch={patch}
-                  onDelete={del}
-                  onInsert={(before) => addAt(sec.i, before)}
-                />
+                {/* ⛔ Две плотности одной логики, а не два продукта. На широком
+                    экране остаётся матрица «вещь × люди» — именно её заказчик
+                    прислал эталоном (его Excel 2024, лист «ВЕЩИ»: колонки Макс,
+                    Костя, Миша, Жека и «Общее количество»). На телефоне она
+                    требовала прокрутки вбок, и он назвал это «нереалистично» —
+                    там лента. Модель, права и правка общие, разная только
+                    расстановка. Рисуется ровно один вид: 96 позиций во второй
+                    разметке — это лишняя работа на каждой перерисовке. */}
+                {desktop ? (
+                  <GearMatrix
+                    rows={rows}
+                    people={people}
+                    perms={perms}
+                    label={sec.t}
+                    sync={scroll}
+                    units={units}
+                    fresh={fresh}
+                    onFreshDone={() => setFresh('')}
+                    patch={patch}
+                    onDelete={del}
+                    onInsert={(before) => addAt(sec.i, before)}
+                  />
+                ) : (
+                  <GearStrip
+                    rows={rows}
+                    people={people}
+                    perms={perms}
+                    units={units}
+                    fresh={fresh}
+                    onFreshDone={() => setFresh('')}
+                    patch={patch}
+                    onDelete={del}
+                    onInsert={(before) => addAt(sec.i, before)}
+                  />
+                )}
                 <div className="border-t border-line">
                   <AddRow label="Добавить вещь" onClick={() => addAt(sec.i, rows.length)} />
                 </div>
@@ -238,7 +288,7 @@ export function GearSection() {
               tone="secondary"
               className="w-full justify-start"
               onClick={() => {
-                setOpen({})
+                setClosed(Object.fromEntries(sections.map((s) => [s.i, true])))
                 setMenu(null)
               }}
             >

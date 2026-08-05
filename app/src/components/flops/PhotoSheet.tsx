@@ -23,6 +23,32 @@ import { ResponsiveSheet } from './ResponsiveSheet'
 const OUT = 800
 const QUALITY = 0.82
 
+/**
+ * Пределы ползунка масштаба.
+ *
+ * ⛔ Нижний предел был **единицей** — то есть снимок всегда заполнял рамку целиком
+ * и обязательно резался по длинной стороне. Заказчик 06.08.2026: «если бы я хотел
+ * нормально поправить по ширине, я бы хотел условно уменьшить кадр, но по ширине
+ * расставить фотографию квадратную, а у меня не получается. То есть редактор
+ * не позволяет, она обрезана получается по бокам». Ниже единицы снимок встаёт
+ * в рамку целиком, а свободное место остаётся полем.
+ *
+ * 0,2 берётся не с потолка: у вертикального снимка 9 : 16 в лежачей рамке 4 : 3
+ * «вписать целиком» — это 0,42 от заполнения, у совсем узких панорам меньше.
+ * Один запас на все случаи дешевле, чем считать предел под каждый снимок.
+ */
+const ZOOM_MIN = 0.2
+const ZOOM_MAX = 3
+
+/**
+ * Чем закрашены поля, когда снимок меньше рамки.
+ *
+ * Крем бренда, а не чёрный: JPEG прозрачности не знает, и незакрашенный холст
+ * сохранился бы чёрными полосами. Значение зашито числом сознательно — оно уезжает
+ * в сам файл снимка и обязано быть одинаковым в обеих темах.
+ */
+const PAD = '#F9F3D4'
+
 /* ─────────── выбор файла ─────────── */
 
 /**
@@ -87,6 +113,14 @@ interface Props {
   okLabel?: string
   onDone: (dataUrl: string) => void
   onClose: () => void
+  /**
+   * Убрать снимок совсем. Есть — в редакторе появляется своё действие;
+   * нет — не появляется вовсе (постулат 6: не положено — кнопки нет).
+   * Заказчик 06.08.2026: «плашка с фотографией… не позволяет удалить».
+   */
+  onRemove?: () => void
+  /** Выбрать другой файл, не закрывая редактор. */
+  onPickOther?: () => void
 }
 
 export function PhotoCropSheet({
@@ -100,6 +134,8 @@ export function PhotoCropSheet({
   okLabel = 'Поставить',
   onDone,
   onClose,
+  onRemove,
+  onPickOther,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const img = useRef<HTMLImageElement | null>(null)
@@ -122,8 +158,15 @@ export function PhotoCropSheet({
     const base = Math.max(BW / nat.current.w, BH / nat.current.h)
     const dw = nat.current.w * base * view.current.zoom
     const dh = nat.current.h * base * view.current.zoom
-    const maxX = Math.max(0, (dw - BW) / 2)
-    const maxY = Math.max(0, (dh - BH) / 2)
+    /* ⚠️ Модуль, а не `Math.max(0, …)`. Пока масштаб был не меньше единицы, снимок
+       всегда был крупнее рамки, и предел движения означал «дальше края не уедешь».
+       При масштабе меньше единицы снимок МЕНЬШЕ рамки, разность отрицательная,
+       прежняя формула давала ноль — и уменьшенный снимок намертво прилипал
+       к центру. Заказчик просил ровно обратного: «по ширине расставить
+       фотографию». С модулем предел читается одинаково в обе стороны: снимок
+       ходит внутри рамки, пока его край не упрётся в край рамки. */
+    const maxX = Math.abs(dw - BW) / 2
+    const maxY = Math.abs(dh - BH) / 2
     view.current.ox = Math.max(-maxX, Math.min(maxX, view.current.ox))
     view.current.oy = Math.max(-maxY, Math.min(maxY, view.current.oy))
     im.style.width = dw + 'px'
@@ -156,6 +199,29 @@ export function PhotoCropSheet({
     drag.current = null
   }
 
+  /**
+   * Поставить масштаб, при котором снимок виден целиком.
+   *
+   * `base` — это заполнение рамки (`Math.max`), поэтому «целиком» — это отношение
+   * вписывания к заполнению. Одна кнопка делает то, ради чего ползунок пришлось
+   * опускать ниже единицы, и человеку не надо угадывать деление на шкале.
+   */
+  const fitWhole = () => {
+    const b = box.current
+    if (!b || !nat.current.w) return
+    const BW = b.clientWidth
+    const BH = b.clientHeight
+    if (!BW || !BH) return
+    const cover = Math.max(BW / nat.current.w, BH / nat.current.h)
+    const contain = Math.min(BW / nat.current.w, BH / nat.current.h)
+    const v = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, contain / cover))
+    view.current.zoom = v
+    view.current.ox = 0
+    view.current.oy = 0
+    setZoom(v)
+    draw()
+  }
+
   /** Собрать результат: рисуем видимую часть в холст нужного размера. */
   const done = () => {
     const b = box.current
@@ -171,6 +237,11 @@ export function PhotoCropSheet({
     cv.height = OH
     const ctx = cv.getContext('2d')
     if (!ctx) return
+    /* ⚠️ Холст закрашивается ДО снимка. При масштабе меньше единицы снимок рамку
+       не закрывает, а JPEG прозрачности не знает: незакрашенные поля сохранились
+       бы чёрными полосами — ровно та «обрезка», от которой уходим. */
+    ctx.fillStyle = PAD
+    ctx.fillRect(0, 0, OW, OH)
     const base = Math.max(BW / nat.current.w, BH / nat.current.h)
     const dw = nat.current.w * base * view.current.zoom
     const dh = nat.current.h * base * view.current.zoom
@@ -239,8 +310,8 @@ export function PhotoCropSheet({
         <span className="shrink-0 text-note font-semibold text-muted">Масштаб</span>
         <input
           type="range"
-          min={1}
-          max={3}
+          min={ZOOM_MIN}
+          max={ZOOM_MAX}
           step={0.01}
           value={zoom}
           onChange={(e) => {
@@ -253,7 +324,32 @@ export function PhotoCropSheet({
         />
       </label>
 
-      <p className="mt-2 text-note text-muted">{frameHint}</p>
+      {/* Три действия над снимком стоят в одной строке под ползунком, а не в подвале:
+          подвал занят выбором «отмена или поставить», и мешать в него правку
+          самого снимка значит спорить за одну и ту же зону. */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Btn tone="secondary" onClick={fitWhole} disabled={!ready}>
+          Вписать целиком
+        </Btn>
+        {onPickOther && (
+          <Btn tone="secondary" onClick={onPickOther}>
+            Другой снимок
+          </Btn>
+        )}
+        {onRemove && (
+          <Btn
+            tone="secondary"
+            onClick={() => {
+              onRemove()
+              onClose()
+            }}
+          >
+            Убрать снимок
+          </Btn>
+        )}
+      </div>
+
+      <p className="mt-3 text-note text-muted">{frameHint}</p>
     </ResponsiveSheet>
   )
 }

@@ -132,7 +132,18 @@ export function RouteTiming({
 
   return (
     <div ref={box}>
-      <DataTable cols={cols} minW={minW} label="Маршрут: точки, кто едет и что пройдено">
+      {/* ⛔ `inScroller`: на широком экране лента стоит внутри блока со своей
+          прокруткой (`map/RouteBoard.tsx`), и шапка обязана липнуть к верху
+          ЭТОГО блока. Без поправки она висела на 64 px ниже его края, а над ней
+          проползали строки — заказчик 06.08.2026 прочитал это как «не прилипший».
+          Саму прокрутку блока трогать нельзя: на ней держится наведение с карты
+          (`scrollIntoView` ниже по файлу). */}
+      <DataTable
+        cols={cols}
+        minW={minW}
+        inScroller
+        label="Маршрут: точки, кто едет и что пройдено"
+      >
         <DataHead>
           <DataCell head sticky align="left">
             Точка

@@ -9,7 +9,13 @@ import type { Perms } from '@/lib/perm'
 import { update, touch, remove } from '@/store'
 import { hasGoogleKey, onGoogleAuthFail, retryGoogle } from '@/lib/gmaps'
 import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
-import { focusInList, onMapLook, onMapRequest, type MapRequest } from '@/lib/mapfocus'
+import {
+  focusInList,
+  onAskPlaceMain,
+  onMapLook,
+  onMapRequest,
+  type MapRequest,
+} from '@/lib/mapfocus'
 import { coordLabel, mapCenter, mapPoints } from '@/components/road/roadx'
 import { Btn } from '@/components/flops'
 import { cn } from '@/lib/utils'
@@ -217,6 +223,20 @@ export function TripMap({ S, perms, className }: Props) {
      место поездки — не точка маршрута, у него нет ни времени, ни техники.
      Участнику это доступно наравне с владельцем: смотреть можно всем. */
   useEffect(() => onMapLook((r) => setLookAt({ lat: r.lat, lon: r.lon, at: r.at })), [])
+
+  /* ── просьба «дай поставить место поездки» с обложки ──
+     Тот же режим, что даёт кнопка «Конечная» под картой: следующий тап по карте
+     задаёт координаты главного места. Заводится он отсюда потому, что у места
+     без координат другого входа не было вовсе (см. `askPlaceMain`). */
+  useEffect(
+    () =>
+      onAskPlaceMain(() => {
+        setPlacingMain(true)
+        setPlacing(null)
+        setPlacingNew(false)
+      }),
+    [],
+  )
 
   useEffect(() => () => window.clearTimeout(hoverOff.current), [])
 

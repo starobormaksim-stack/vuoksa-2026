@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { CalendarDays, Camera, MapPin, MapPinned, TentTree } from 'lucide-react'
+import { CalendarDays, Camera, MapPin, TentTree } from 'lucide-react'
 import { toast } from 'sonner'
 import type { State, Trip, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { countdown, daysUntil, fmtRange, plural } from '@/format'
-import { askMapLook } from '@/lib/mapfocus'
+import { askMapLook, askPlaceMain } from '@/lib/mapfocus'
 import { update } from '@/store'
 import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
 import { MoneyTiles } from './MoneyTiles'
@@ -78,8 +78,10 @@ export function TripCover({ S, perms, onEditDates }: Props) {
   const trip = S.trip
   const canEdit = perms.isEditor()
   const places = tripPlaces(S)
-  /* Адрес берём у главного места — это и есть точка приезда. */
-  const destAddr = (places.find((p) => p.main) ?? places[0])?.addr?.trim() ?? ''
+  /* Главное место — оно же точка приезда: от него и адрес, и единственная
+     иконка карты в строке мест. */
+  const mapPlace = places.find((p) => p.main) ?? places[0]
+  const destAddr = mapPlace?.addr?.trim() ?? ''
   const dates = datesLabel(trip)
   const days = daysUntil(trip.start)
   const start = new Date(trip.start)
@@ -164,8 +166,13 @@ export function TripCover({ S, perms, onEditDates }: Props) {
         {canEdit && (
           <button
             type="button"
-            onClick={pick}
-            aria-label={trip.hero ? 'Сменить обложку поездки' : 'Поставить обложку поездки'}
+            /* ⛔ Снимок есть — открываем РЕДАКТОР на нём, а не выбор файла.
+               Иначе поправить кадр или убрать обложку было нельзя вовсе: редактор
+               открывался только на только что выбранном файле, и заказчик написал
+               «не позволяет удалить». Из редактора выбор файла доступен кнопкой
+               «Другой снимок». */
+            onClick={() => (trip.hero ? setSrc(trip.hero) : pick())}
+            aria-label={trip.hero ? 'Изменить обложку поездки' : 'Поставить обложку поездки'}
             className={`absolute top-4 right-4 z-10 grid size-11 place-items-center rounded-lg text-brand-cream transition-colors hover:bg-brand-dark ${SCRIM}`}
           >
             <Camera size={20} strokeWidth={1.75} aria-hidden />
@@ -229,7 +236,41 @@ export function TripCover({ S, perms, onEditDates }: Props) {
 
           {(places.length > 0 || canEdit) && (
             <div className="flex min-h-11 items-center gap-2 text-note text-muted">
-              <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+              {/* ⛔ Иконка геолокации здесь ОДНА, и она же — орган.
+                  Заказчик 06.08.2026: «у тебя рядом геолокация, ещё одна иконка
+                  геолокации, название… короче, бред какой-то. Я хочу, чтобы там
+                  была просто ссылка на карту: нажимаешь — открываешь… если там
+                  пусто — он тебе предлагает указать точку». Было две: немой значок
+                  слева у всей строки и вторая кнопка `MapPinned` у каждого места.
+                  Осталась левая — она стоит на одной линии со значками дат и адреса,
+                  и она же нажимается.
+                  ⛔ Кнопка доступна ВСЕМ, включая участника: «участники могут
+                  просмотреть, что это такое. Менять они не смогут» (05.08.2026).
+                  Правка названия по-прежнему только у владельца и редактора.
+                  Места без координат орган теперь тоже получают — но другой:
+                  не «показать», а «указать точку», и только тому, кто вправе
+                  её ставить (постулат 6). */}
+              {mapPlace && typeof mapPlace.lat === 'number' && typeof mapPlace.lon === 'number' ? (
+                <button
+                  type="button"
+                  onClick={() => askMapLook(mapPlace.lat as number, mapPlace.lon as number)}
+                  aria-label={`Показать «${mapPlace.n}» на карте`}
+                  className="-ml-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
+                >
+                  <MapPin size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+              ) : canEdit ? (
+                <button
+                  type="button"
+                  onClick={askPlaceMain}
+                  aria-label="Указать место поездки на карте"
+                  className="-ml-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
+                >
+                  <MapPin size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+              ) : (
+                <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+              )}
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4">
                 {places.map((p) => (
                   <span key={p.i} className="flex min-w-0 max-w-full items-center gap-1">
@@ -241,24 +282,6 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                       required
                       className="truncate font-semibold text-ink"
                     />
-                    {/* Показать место на карте — она стоит тут же, справа.
-                        ⛔ Кнопка доступна ВСЕМ, включая участника. Слово заказчика
-                        05.08.2026: «при нажатии нужно не только название выбрать,
-                        но и можно точку показать. Участники могут просмотреть,
-                        что это такое. Менять они не смогут» — смотреть можно всем,
-                        правка названия по-прежнему только у владельца и редактора.
-                        Места без координат кнопки не получают вовсе (постулат 6):
-                        показывать нечего, а серых кнопок у нас не бывает. */}
-                    {typeof p.lat === 'number' && typeof p.lon === 'number' && (
-                      <button
-                        type="button"
-                        onClick={() => askMapLook(p.lat as number, p.lon as number)}
-                        aria-label={`Показать «${p.n}» на карте`}
-                        className="grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
-                      >
-                        <MapPinned size={16} strokeWidth={1.75} aria-hidden />
-                      </button>
-                    )}
                   </span>
                 ))}
                 {/* Мест ещё нет — на обложке пусто, и вписать место негде.
@@ -303,12 +326,19 @@ export function TripCover({ S, perms, onEditDates }: Props) {
       {src && (
         <PhotoCropSheet
           src={src}
-          ratio={1}
+          /* ⛔ Рамка редактора обязана быть той же формы, что плашка обложки
+             (`aspect-[4/3]` выше). Стояла единица — квадрат, — и человек кадрировал
+             в квадрате то, что показывается лежачим прямоугольником. Отсюда жалоба
+             06.08.2026: «плашка с фотографией — она у тебя прямоугольная… я бы хотел
+             условно уменьшить кадр, но по ширине расставить фотографию квадратную,
+             а у меня не получается». Теперь форма одна, а «Вписать целиком» ставит
+             квадратный снимок в лежачую рамку целиком, полями по бокам. */
+          ratio={4 / 3}
           out={1400}
           quality={0.74}
           title="Обложка поездки"
           subtitle="Подвиньте фотографию, чтобы главное встало в кадр"
-          frameHint="Так обложка и будет выглядеть на телефоне."
+          frameHint="Так обложка и будет выглядеть. Меньше рамки — по краям остаются поля."
           okLabel="Поставить"
           onDone={(url) => {
             update((s) => {
@@ -316,6 +346,17 @@ export function TripCover({ S, perms, onEditDates }: Props) {
             })
             toast('Обложка обновлена')
           }}
+          onPickOther={pick}
+          onRemove={
+            trip.hero
+              ? () => {
+                  update((s) => {
+                    s.trip.hero = ''
+                  })
+                  toast('Обложка убрана')
+                }
+              : undefined
+          }
           onClose={() => setSrc(null)}
         />
       )}

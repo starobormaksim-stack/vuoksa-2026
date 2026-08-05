@@ -56,11 +56,26 @@ interface TableProps {
   label: string
   /** сцепка прокрутки с соседними таблицами раздела; без неё таблица сама по себе */
   sync?: RefObject<TableScroll>
+  /**
+   * Таблица стоит ВНУТРИ своего прокручиваемого блока (а не прямо на странице).
+   *
+   * ⛔ Тогда шапка обязана липнуть к верху этого блока, то есть на `top: 0`.
+   * Поправка на высоту верхней панели (`--header-h`) нужна лишь тогда, когда
+   * прокручивается сама страница и панель перекрывает её сверху. Внутри блока
+   * та же поправка отодвигала шапку на 64 px вниз от края блока, и над ней
+   * оставалась полоса уезжающих строк — заказчик 06.08.2026 прочитал это как
+   * поломку: «он по какой-то причине перелистывается, то есть скроллится,
+   * и он не прилипший, а как-то иначе себя ведёт». Замер до правки: `top: 64px`
+   * у шапки внутри блока высотой 599 при содержимом 1123.
+   */
+  inScroller?: boolean
   children: ReactNode
   className?: string
 }
 
-export function DataTable({ cols, minW, label, sync, children, className }: TableProps) {
+export function DataTable({
+  cols, minW, label, sync, inScroller, children, className,
+}: TableProps) {
   /** внутренняя обёртка липкой шапки: её и двигаем вбок вслед за телом */
   const headInner = useRef<HTMLDivElement>(null)
 
@@ -141,7 +156,14 @@ export function DataTable({ cols, minW, label, sync, children, className }: Tabl
           role="presentation"
           /* Под верхней панелью И под липкой полосой раздела: они стоят друг
              на друге, и без второго слагаемого имена прятались под «Сборами». */
-          className="sticky top-[calc(var(--header-h)+var(--sec-h))] z-20 overflow-hidden bg-surface"
+          className={cn(
+            'sticky z-20 overflow-hidden bg-surface top-[calc(var(--header-h)+var(--sec-h))]',
+            /* Своя прокрутка у блока заведена только на широком экране
+               (`lg:max-h-[600px] lg:overflow-y-auto` в `map/RouteBoard.tsx`),
+               поэтому и поправку снимаем только там. На телефоне прокручивается
+               страница, и шапке по-прежнему надо уступать верхней панели. */
+            inScroller && 'lg:top-0',
+          )}
         >
           <div
             ref={(el) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CloudOff,
   Copy,
@@ -11,6 +11,7 @@ import {
   LogIn,
   LogOut,
   Save,
+  Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -21,9 +22,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ResponsiveSheet, Btn } from '@/components/flops'
 import { OwnerLogin } from '@/components/auth/OwnerLogin'
-import { useTrip } from '@/store'
+import { update, useTrip } from '@/store'
 import { linkFor, permName } from '@/lib/perm'
-import { deliver, isOfflineCopy, offlineInfo, saveOfflineCopy } from '@/lib/offline'
+import {
+  deliver, docFromOfflineHtml, isOfflineCopy, offlineInfo, saveOfflineCopy,
+} from '@/lib/offline'
+import { mergeInto, type MergeResult } from '@/lib/merge'
+import type { State } from '@/lib/types'
 import { tripFileName, tripWorkbook } from '@/lib/export'
 import { openTripsList } from '@/lib/trips'
 import { currentSession, onAuthChange, signOut, type Session } from '@/lib/auth'
@@ -90,8 +95,60 @@ export function MoreMenu() {
     }
   }
 
+  /* ── Вернуть офлайн-копию в онлайн ──
+     Заказчик 06.08.2026: «и подгрузить, кстати, обратно версию надо иметь
+     возможность — ты раньше делал эту историю, чтобы она работала». В первой
+     версии пункт назывался «Загрузить офлайн-файл обратно» и был только
+     у владельца: файл — это слепок всей поездки. Правило сохранено.
+
+     ⛔ Данные из файла именно СЛИВАЮТСЯ (`mergeInto`), а не подменяют документ:
+     пока человек правил лист без интернета, остальные правили его в сети,
+     и подмена стёрла бы их работу (постулат 4). Слияние решает по меткам `ua`,
+     как и обычная синхронизация.
+
+     ⛔ Молчаливых отказов не бывает: и удача, и каждая неудача сказаны словами. */
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  const loadCopy = (file: File) => {
+    const fr = new FileReader()
+    fr.onload = () => {
+      try {
+        const inc = docFromOfflineHtml(String(fr.result))
+        let r: MergeResult | null = null
+        update((s) => {
+          r = mergeInto(s, inc as Partial<State>)
+        })
+        const m = r as MergeResult | null
+        const total = m ? m.news + m.edits + m.marks + m.gone : 0
+        toast(
+          total > 0
+            ? `Правки из файла вернулись: новых ${m!.news}, изменённых ${m!.edits}, отметок ${m!.marks}`
+            : 'В файле нет ничего свежее того, что уже в листе',
+        )
+      } catch (e) {
+        toast('Файл не подошёл: ' + (e instanceof Error ? e.message : 'не читается'))
+      }
+    }
+    fr.onerror = () => toast('Файл не прочитался. Попробуйте ещё раз')
+    fr.readAsText(file)
+  }
+
   return (
     <>
+      {/* Скрытое поле выбора файла: собственного вида у него нет, зовётся
+          пунктом меню. Значение обнуляем сразу — иначе повторный выбор
+          того же файла не сработает. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".html,text/html"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f) loadCopy(f)
+        }}
+      />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -141,6 +198,17 @@ export function MoreMenu() {
                 <Download size={18} strokeWidth={1.75} aria-hidden />
               )}
               {offline ? 'Сохранить копию заново' : 'Забрать офлайн-копию'}
+            </DropdownMenuItem>
+          )}
+          {/* ⛔ Возврат копии — только владельцу и только в онлайне: внутри самой
+              копии сети нет, возвращать некуда. */}
+          {chief && !offline && (
+            <DropdownMenuItem
+              className="min-h-11 gap-2"
+              onSelect={() => fileRef.current?.click()}
+            >
+              <Upload size={18} strokeWidth={1.75} aria-hidden />
+              Вернуть копию в онлайн
             </DropdownMenuItem>
           )}
           {sess ? (

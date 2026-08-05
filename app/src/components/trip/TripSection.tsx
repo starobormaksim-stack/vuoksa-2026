@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import type { State } from '@/lib/types'
-import type { Perms } from '@/lib/perm'
+import { permName, type Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { autoDayTitle, fmtRange, isAutoDayTitle, withDate } from '@/format'
 import { touch } from '@/store'
-import { SectionHead } from '@/components/flops'
 import { TripMap } from '@/components/map/TripMap'
 import { TripCover } from './TripCover'
 import { DateRangePicker } from './DateRangePicker'
@@ -29,6 +28,9 @@ import { DateRangePicker } from './DateRangePicker'
 export function TripSection({ S, perms }: { S: State; perms: Perms }) {
   const [calOpen, setCalOpen] = useState(false)
   const canEdit = perms.isEditor()
+  /* Кто вошёл и с какими правами — для строки принадлежности над обложкой. */
+  const me = perms.mePerson
+  const roleWord = me ? permName(perms.perm) : ''
 
   const saveDates = (a: Date, b: Date) => {
     const start = withDate(S.trip.start, a, '07:30:00')
@@ -61,12 +63,40 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
-      {/* Своя полоса есть у каждого раздела — иначе при прокрутке непонятно, где ты,
-          и единообразия, которого просил заказчик, не получается. Названия из
-          `S.secTitles` у «Поездки» нет (ключи первой версии — buy, log, crew, gear,
-          menu), поэтому `secId` не передаём: форму хранения трогать нельзя (У-04).
-          Название поездки живёт на самой обложке и правится там же. */}
-      <SectionHead title="Поездка" />
+      {/* ⛔ Полосы раздела здесь больше НЕТ. Заказчик 06.08.2026: «здесь, где у тебя
+          написано слово „Поездка“, не нужно вообще его — подними выше просто вот
+          этот блок с обложкой и картой. И вот эту полоску удали. Элементы, которые
+          лишними являются в сервисе, которые просто перегружают информацией людей, —
+          и премиальность из-за этого теряется».
+          Слово «Поездка» ничего не добавляло: название поездки написано на самой
+          обложке первой строкой и правится там же. Своего имени в `S.secTitles`
+          у этого раздела нет (ключи первой версии — buy, log, crew, gear, menu),
+          поэтому и терять из документа нечего (У-04). У остальных разделов полоса
+          остаётся: там она отделяет раздел от раздела при прокрутке. */}
+
+      {/* ── Чья это поездка и кто в неё вошёл ──
+          Заказчик 06.08.2026: «я хочу, чтобы наверху, там где pine-to-pine.com,
+          если я захожу под собой, было бы условно нормальное указание поездки,
+          на которой я нахожусь, и человека, который зашёл. Принадлежность».
+
+          ⛔ В полосу верхнего меню это класть нельзя: там строка «Вы — Макс»
+          однажды срезала названия всех разделов (У-11). Поэтому она стоит первой
+          строкой содержимого — ровно на месте убранной полосы «Поездка», одной
+          строкой в 13 px, и уезжает вместе со страницей.
+
+          ⛔ Адрес при этом не переписывается. Красивый путь `/vuoksa2026/Maks`
+          приложение понимает, но ключа он не несёт (У-37): подменить им адрес
+          значит потерять пропуск при первой же перезагрузке. */}
+      <p className="text-note text-muted">
+        <span className="font-semibold text-ink">{S.trip.title || 'Поездка'}</span>
+        {me ? (
+          <>
+            {' · '}
+            Вы — <span className="font-semibold text-ink">{me.name}</span>
+            {roleWord ? `, ${roleWord}` : ''}
+          </>
+        ) : null}
+      </p>
 
       {/* ── Два одинаковых блока: обложка слева, карта справа ──
           Заказчик 05.08.2026: «слева блок обложки… а с правой стороны такой же

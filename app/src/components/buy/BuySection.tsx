@@ -4,8 +4,9 @@ import { toast } from 'sonner'
 import type { BuySection as BuySec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { orderedPeople } from '@/lib/people'
+import { visibleBlockId } from '@/lib/visible'
 import {
-  Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll,
+  Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll, useIsDesktop,
 } from '@/components/flops'
 import { BUY_LEGEND } from './legend'
 import { BuyTotals } from './BuyTotals'
@@ -27,7 +28,12 @@ import { byOrd, type BuyItem } from './buylocal'
  */
 export function BuySection() {
   const { S, update, remove, perms } = useTrip()
-  const [open, setOpen] = useState<Record<string, boolean>>(() => ({ [S.buySections[0]?.i]: true }))
+  /* ⛔ Раскрыты ВСЕ разделы (06.08.2026: «по умолчанию у тебя все списки должны
+     быть раскрыты»). Свёрнута только подробность позиции — спрошено отдельно.
+     Пустой объект = «всё раскрыто»; свёрнутые помечаются явным `true`. */
+  const [closed, setClosed] = useState<Record<string, boolean>>({})
+  /** корень раздела — по нему липкий «плюс» находит блок, который сейчас читают */
+  const list = useRef<HTMLDivElement | null>(null)
   /** id только что добавленной строки: подсвечена и сразу открыта на правку */
   const [fresh, setFresh] = useState<string | null>(null)
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
@@ -45,6 +51,12 @@ export function BuySection() {
 
   /* Читатель видит свою колонку первой — порядок один и тот же во всех блоках. */
   const people = useMemo(() => orderedPeople(S.people, perms.me), [S.people, perms.me])
+
+  const sorted = useMemo(
+    () => [...S.buySections].sort((a, b) => a.ord - b.ord),
+    [S.buySections],
+  )
+  const desktop = useIsDesktop()
 
   const patch = (id: string, f: (p: BuyItem) => void) =>
     update((s) => {
@@ -134,28 +146,41 @@ export function BuySection() {
   const menuSec = menu ? S.buySections.find((s) => s.i === menu) ?? null : null
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" ref={list}>
       <SectionHead
         title="Закупка"
         secId="buy"
         hint="Галочка слева — куплено. Без галочки «Берём» позиция в сумму не идёт"
         legend={BUY_LEGEND}
+        /* Липкий «плюс» (06.08.2026). Позиция ложится в тот блок, который человек
+           сейчас читает, а не всегда в первый. */
+        action={
+          perms.isEditor() || perms.me
+            ? {
+                label: 'Добавить покупку',
+                onClick: () => {
+                  const sid = visibleBlockId(list.current, sorted[0]?.i ?? '')
+                  if (sid) addItem(sid)
+                },
+              }
+            : undefined
+        }
       />
 
       <BuyTotals S={S} />
 
-      {[...S.buySections]
-        .sort((a, b) => a.ord - b.ord)
+      {sorted
         .map((sec) => {
           const rows = bySec[sec.i] ?? []
           return (
             <Group
               key={sec.i}
+              data-block={sec.i}
               title={sec.t}
               done={rows.filter((p) => p.b).length}
               total={rows.length}
-              open={!!open[sec.i]}
-              onToggle={() => setOpen((o) => ({ ...o, [sec.i]: !o[sec.i] }))}
+              open={closed[sec.i] !== true}
+              onToggle={() => setClosed((o) => ({ ...o, [sec.i]: o[sec.i] !== true }))}
               onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
               /* Личный блок отличается пунктиром рамки; словами правило написано
                  в его подытоге — «в общий бюджет не входит». */
@@ -168,6 +193,7 @@ export function BuySection() {
                 perms={perms}
                 people={people}
                 scroll={scroll}
+                desktop={desktop}
                 fresh={fresh}
                 onPatch={patch}
                 onDelete={delItem}
@@ -206,7 +232,7 @@ export function BuySection() {
               tone="secondary"
               className="w-full justify-start"
               onClick={() => {
-                setOpen({})
+                setClosed(Object.fromEntries(sorted.map((s) => [s.i, true])))
                 setMenu(null)
               }}
             >

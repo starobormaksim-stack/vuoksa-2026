@@ -6,6 +6,8 @@ export { SheetRow } from './SheetRow'
 export { NumberSheet } from './NumberSheet'
 export type { NumKind } from './NumberSheet'
 export { ItemRow } from './ItemRow'
+/* Вертикальная лента — форма списочных разделов на телефоне (06.08.2026). */
+export { StripRow, StripField } from './StripRow'
 export { Group } from './Group'
 export { EmptyState } from './EmptyState'
 export { StatusDial } from './StatusDial'

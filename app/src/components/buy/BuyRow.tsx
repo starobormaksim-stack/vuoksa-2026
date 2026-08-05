@@ -2,7 +2,7 @@ import { useRef, type ReactNode } from 'react'
 import { Check, Plus, Trash2 } from 'lucide-react'
 import type { Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
-import { counted, sumOf, unitOf } from '@/lib/buyx'
+import { counted, unitOf } from '@/lib/buyx'
 import {
   DataCell, DataRow, InlineNum, InlineText, ProductLink, RowAction, RowActions,
 } from '@/components/flops'
@@ -199,16 +199,11 @@ export function BuyRow({
         />
       </DataCell>
 
-      <DataCell align="right">
-        <InlineNum
-          value={sumOf(p)}
-          can={canEdit && p.q > 0}
-          label="Сумма"
-          kind="plain"
-          onSave={(v) => onPatch((x) => { x.prf = x.q > 0 ? v / x.q : x.prf })}
-          className={cn('text-body font-semibold', take ? 'text-ink' : 'text-muted line-through')}
-        />
-      </DataCell>
+      {/* ⛔ Колонки «Сумма» здесь больше нет — 06.08.2026: «Сумма — я не понимаю,
+          что это такое. Бред же… по сути это оно и есть, это есть цена факт».
+          Вместе с ней ушла и правка суммы, вписывавшая `prf = сумма ÷ количество`:
+          орган, которого человек не понимает, менял ту самую цифру, на которой
+          держатся контрольные суммы. `sumOf` при этом цел и считает итоги внизу. */}
 
       <DataCell align="center" className="px-1">
         <Box

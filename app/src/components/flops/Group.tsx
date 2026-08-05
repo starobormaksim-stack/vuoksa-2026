@@ -41,10 +41,13 @@ interface Props {
   onMenu?: () => void
   children: ReactNode
   className?: string
+  /** якорь блока: по нему липкий «плюс» находит подраздел, который сейчас читают */
+  'data-block'?: string
 }
 
 export function Group({
   title, titleEdit, done, total, open, onToggle, badge, onMenu, children, className,
+  'data-block': dataBlock,
 }: Props) {
   const seen = useRef(open)
   if (open) seen.current = true
@@ -103,14 +106,20 @@ export function Group({
        таблицы внутри прилипает к верху ЭТОЙ группы — то есть никуда, потому что
        группа высотой во весь список. Замер 05.08.2026: шапка уезжала на y = −492.
        `clip` прокручиваемым блок не делает, и шапка находит настоящий экран. */
-    <section className={cn('overflow-clip rounded-2xl border border-line bg-surface', className)}>
+    <section
+      data-block={dataBlock}
+      className={cn('overflow-clip rounded-2xl border border-line bg-surface', className)}
+    >
       <h3 className="relative flex items-stretch">
         {titleEdit ? (
           /* Название правится на месте, поэтому оно НЕ внутри кнопки сворачивания:
              кнопка в кнопке — невалидная разметка, и промах по названию сворачивал бы
              раздел вместо правки. Сворачивание уезжает в отдельную кнопку справа. */
           <span className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-4">
-            <span className="min-w-0 flex-1 text-body font-[650] text-ink">{titleEdit}</span>
+            {/* ⚠️ Кегль 20 (`text-head`), а не 15,5. Заказчик 06.08.2026: «название
+                разделов должно быть крупно написано… чтобы было очевидно».
+                Значение из шкалы проекта, штучных размеров не заведено. */}
+            <span className="min-w-0 flex-1 text-head font-[650] text-ink">{titleEdit}</span>
             {badge}
           </span>
         ) : null}
@@ -134,7 +143,7 @@ export function Group({
           )}
         >
           {titleEdit ? null : (
-            <span className="min-w-0 flex-1 truncate text-body font-[650] text-ink">{title}</span>
+            <span className="min-w-0 flex-1 truncate text-head font-[650] text-ink">{title}</span>
           )}
           {titleEdit ? null : badge}
           {total != null && total > 0 && (

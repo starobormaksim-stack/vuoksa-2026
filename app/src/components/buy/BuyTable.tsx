@@ -9,6 +9,7 @@ import {
 } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { BuyRow } from './BuyRow'
+import { BuyStrip } from './BuyStrip'
 import { colsFor, secPlan, secSum, type BuyItem } from './buylocal'
 
 /**
@@ -25,6 +26,8 @@ interface Props {
   perms: Perms
   people: Person[]
   scroll: RefObject<TableScroll>
+  /** широкий экран — матрица; узкий — вертикальная лента (решение 06.08.2026) */
+  desktop: boolean
   /** id только что добавленной строки */
   fresh: string | null
   onPatch: (id: string, f: (x: BuyItem) => void) => void
@@ -35,7 +38,7 @@ interface Props {
 }
 
 export function BuyTable({
-  sec, rows, S, perms, people, scroll, fresh, onPatch, onDelete, onAdd, onFreshEnd,
+  sec, rows, S, perms, people, scroll, desktop, fresh, onPatch, onDelete, onAdd, onFreshEnd,
 }: Props) {
   const canAdd = perms.isEditor() || !!perms.me
   const sum = secSum(rows)
@@ -49,6 +52,35 @@ export function BuyTable({
         text="Здесь пока нет ни одной позиции"
         action={canAdd ? { label: 'Добавить позицию', onClick: () => onAdd(sec.i) } : undefined}
       />
+    )
+  }
+
+  /* ⛔ На телефоне — лента (заказчик 06.08.2026 назвал матрицу с прокруткой вбок
+     «нереалистичной»). На широком экране матрица остаётся: её он сам прислал
+     эталоном. Рисуется ровно одна: 53 позиции во второй разметке — лишняя работа
+     на каждой перерисовке. */
+  if (!desktop) {
+    return (
+      <>
+        <BuyStrip
+          rows={rows}
+          S={S}
+          perms={perms}
+          people={people}
+          fresh={fresh}
+          canAdd={canAdd}
+          onPatch={onPatch}
+          onDelete={onDelete}
+          onInsert={(afterId) => onAdd(sec.i, afterId)}
+          onFreshEnd={onFreshEnd}
+        />
+        {canAdd && (
+          <div className="border-t border-line">
+            <AddRow label="Добавить позицию" onClick={() => onAdd(sec.i)} />
+          </div>
+        )}
+        <SecTotals sec={sec} plan={plan} sum={sum} S={S} />
+      </>
     )
   }
 
@@ -76,9 +108,6 @@ export function BuyTable({
           </DataCell>
           <DataCell head align="right">
             Цена, факт
-          </DataCell>
-          <DataCell head align="right">
-            Сумма
           </DataCell>
           <DataCell head className="px-1">
             Берём
@@ -130,18 +159,44 @@ export function BuyTable({
         </div>
       )}
 
-      <div className="flex items-center gap-3 border-t border-line bg-zebra/60 px-4 py-2.5">
-        <span className="min-w-0 flex-1 text-note font-semibold text-muted">
-          {sec.personal ? 'Подытог · в общий бюджет не входит' : 'Подытог'}
-        </span>
-        {/* План рядом с итогом, а не вместо него: столбец «Цена, план» человек
-            складывает глазами, и его сумма обязана быть написана (урок У-63,
-            требование заказчика 05.08.2026). Пусто — плановых цен в блоке нет. */}
-        {plan > 0 && plan !== sum && (
-          <span className="tnum shrink-0 text-note text-muted">по плану {money(plan, S.doc)}</span>
-        )}
-        <span className="tnum shrink-0 text-body font-bold text-ink">{money(sum, S.doc)}</span>
-      </div>
+      <SecTotals sec={sec} plan={plan} sum={sum} S={S} />
     </>
+  )
+}
+
+/**
+ * Итоги блока — как в Excel заказчика: обе величины подписаны и стоят внизу.
+ *
+ * Дословно 06.08.2026: «сумма тоже считается, должна в итоге итоговая сумма.
+ * То есть я внизу должен видеть условно как в Excel: сумма факт, сумма план».
+ * Раньше здесь стояло одно число и приписка «по плану …» мелким шрифтом, да и то
+ * только когда план отличался от факта.
+ *
+ * ⛔ Обе строки печатаются ВСЕГДА, даже нулями: «по умолчанию цена план, цена факт
+ * у нас нулевые везде, мы её будем писать на месте» — значит человек обязан видеть
+ * «0 ₽», а не пустоту, иначе непонятно, посчиталось ли вообще.
+ */
+function SecTotals({
+  sec, plan, sum, S,
+}: {
+  sec: BuySection
+  plan: number
+  sum: number
+  S: State
+}) {
+  return (
+    <div className="border-t border-line bg-zebra/60 px-4 py-2.5">
+      {sec.personal && (
+        <p className="mb-1 text-micro text-muted">В общий бюджет не входит</p>
+      )}
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-note text-muted">Сумма, план</span>
+        <span className="tnum text-body font-semibold text-ink">{money(plan, S.doc)}</span>
+      </div>
+      <div className="mt-1 flex items-baseline justify-between gap-3">
+        <span className="text-note font-semibold text-muted">Сумма, факт</span>
+        <span className="tnum text-head font-bold text-ink">{money(sum, S.doc)}</span>
+      </div>
+    </div>
   )
 }

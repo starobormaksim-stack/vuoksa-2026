@@ -416,7 +416,7 @@ function Cell({
  * Живёт в первой колонке — она закреплена и видна на любой прокрутке,
  * а в узкой колонке «Всего» ряд кнопок не поместился бы.
  */
-function UnitPick({
+export function UnitPick({
   units, value, onPick,
 }: {
   units: string[]

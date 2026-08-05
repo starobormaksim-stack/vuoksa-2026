@@ -329,6 +329,38 @@ export function withoutOthersKeys(S: State, meId: string): State {
 }
 
 /**
+ * Прочитать документ из скачанной офлайн-копии.
+ *
+ * Заказчик 06.08.2026: «и подгрузить, кстати, обратно версию надо иметь
+ * возможность — ты раньше делал эту историю, чтобы она работала». В первой
+ * версии это был пункт «Загрузить офлайн-файл обратно» (`uploadOffline`
+ * в `src/online.js`), и он читал данные из `<script id="seed">`.
+ *
+ * Во второй версии данные лежат иначе — строкой base64 в `window.__PINE_B64__`
+ * внутри скрипта `pine-doc` (см. `docScript` выше), — поэтому и достаём их
+ * оттуда. Ничего не сливаем и не пишем: разбор отдельно, слияние отдельно.
+ *
+ * ⚠️ Ищем с КОНЦА, по той же причине, что и всё остальное в этом файле: строка
+ * `__PINE_B64__` встречается и в коде приложения, вшитом в шапку копии. Первое
+ * совпадение — это исходник, последнее — настоящие данные.
+ */
+export function docFromOfflineHtml(html: string): unknown {
+  const NAME = '__PINE_B' + '64__="'
+  const at = html.lastIndexOf(NAME)
+  if (at < 0) throw new Error('в файле нет данных поездки')
+  const from = at + NAME.length
+  const end = html.indexOf('"', from)
+  if (end < 0) throw new Error('данные в файле оборваны')
+  const b64 = html.slice(from, end)
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i)
+  const doc = JSON.parse(new TextDecoder().decode(bytes)) as { gear?: unknown }
+  if (!doc || !Array.isArray(doc.gear)) throw new Error('данные не читаются')
+  return doc
+}
+
+/**
  * Скачать офлайн-копию с текущими данными.
  * Внутри самой копии это «Сохранить копию заново»: заготовка та же, данные свежие.
  *
