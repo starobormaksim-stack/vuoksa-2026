@@ -190,6 +190,26 @@ export function checkAuth(people: Person[], searchStr?: string): AuthCheck {
   return { auth: null, me, stale }
 }
 
+/**
+ * Ключ, с которым идти на сервер ЗА ЛИСТОМ.
+ *
+ * Для записи годится только подтверждённый ключ: `checkAuth()` сверил его с карточкой
+ * человека в документе. Для чтения так нельзя — сверять не с чем: документа ещё нет,
+ * а у поездки, которую этот браузер видит впервые, в сиде нет и людей. Поэтому в дело
+ * идёт сырой ключ из адреса или запомненный в браузере: сверит его всё равно сервер
+ * (`trip_read` в docs/rls-apply-e.sql), а подделать чужой ключ подстановкой нельзя.
+ *
+ * Порядок: подтверждённый → из адреса `?k=` → запомненный. Красивая ссылка
+ * `/vuoksa2026/Maks` ключа не несёт вовсе (урок У-37) — её случай закрывает третий шаг.
+ */
+export function readKey(auth: Auth | null): string {
+  if (auth && auth.key) return auth.key
+  const url = readUrlUser()
+  if (url && url.key) return url.key
+  const saved = authLoad()
+  return saved && saved.key ? saved.key : ''
+}
+
 /** Собрать личную ссылку для человека. */
 export function linkFor(p: Person, base?: string): string {
   const b =

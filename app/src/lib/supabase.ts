@@ -214,9 +214,13 @@ export function realtimeUrl(): string {
 }
 
 /**
- * Прочитать документ поездки. Пустой массив — строки ещё нет.
+ * Прочитать документ поездки ПРЯМЫМ запросом. Пустой массив — строки ещё нет.
  * Без второго довода читается открытая поездка; с ним — любая другая
  * (так «Мои поездки» дублируют чужой лист, не открывая его).
+ *
+ * ⚠️ Прямой путь. После применения `docs/rls-apply-e.sql` он закрыт для всех —
+ * остаётся только на время, пока функции `trip_read` в базе нет. Звать его
+ * напрямую больше неоткуда: все читают через `loadTrip()` ниже.
  */
 export function fetchTrip(trip: string = TRIP_ID): Promise<TripRow[]> {
   return sbJson<TripRow[]>('trips?id=eq.' + trip + '&select=data,updated_at,author')
@@ -292,6 +296,112 @@ export async function rpcTripWrite(
     throw new Error('HTTP ' + r.status)
   }
   return (await r.json()) as TripRow[]
+}
+
+/**
+ * Чтение через функцию базы `trip_read` — единственный путь, когда закрыт прямой
+ * SELECT (см. docs/rls-apply-e.sql). Функция сверяет личный ключ человека со списком
+ * людей в документе НА СЕРВЕРЕ — ровно так же, как это делает `trip_write`.
+ *
+ * Требование заказчика 05.08.2026: «чтобы не было доступа у человека, который зашёл
+ * на pine-to-pine.com… чтобы в публичном доступе не была информация». Одной заглушки
+ * на экране мало: anon-ключ лежит в коде сайта, то есть публичен по своей природе,
+ * и до этой правки `GET /rest/v1/trips` отдавал весь документ кому угодно.
+ */
+export function rpcTripRead(key: string, trip: string = TRIP_ID): Promise<TripRow[]> {
+  return rpcRows<TripRow>('trip_read', { p_id: trip, p_key: key })
+}
+
+/**
+ * Почта владельца строки — той же функцией и по тому же ключу. Пока прямой SELECT
+ * был открыт, `lib/auth.ts` читал колонку `owner_email` запросом; после
+ * `docs/rls-apply-e.sql` колонка недоступна, а решать по ней надо.
+ */
+export function rpcTripOwner(
+  key: string,
+  trip: string = TRIP_ID,
+): Promise<{ owner_email: string | null }[]> {
+  return rpcRows<{ owner_email: string | null }>('trip_owner', { p_id: trip, p_key: key })
+}
+
+/** Строка списка «Мои поездки», как её отдаёт функция `trip_list`. */
+export interface TripListRow {
+  id: string
+  updated_at: string
+  author?: string | null
+  owner_email?: string | null
+  title?: string | null
+}
+
+/** Поездки, в команде которых есть человек с этим ключом. Чужих не отдаёт. */
+export function rpcTripList(key: string): Promise<TripListRow[]> {
+  return rpcRows<TripListRow>('trip_list', { p_key: key })
+}
+
+/**
+ * Общая часть читающих функций базы: разбор ответа и два особых случая —
+ * функции ещё нет (переходный период) и ключ не подошёл (человек не из поездки).
+ */
+async function rpcRows<T>(name: string, body: unknown): Promise<T[]> {
+  const r = await sbFetch('rpc/' + name, { method: 'POST', body })
+  /* PostgREST отвечает 404 с кодом PGRST202, когда такой функции в схеме нет */
+  if (r.status === 404) throw new RpcMissing('функции ' + name + ' в базе нет')
+  if (!r.ok) {
+    let text = ''
+    try {
+      text = await r.text()
+    } catch {
+      /* тела нет — обойдёмся кодом ответа */
+    }
+    if (text.includes('ключ не подходит')) throw new KeyRejected('ключ не подходит')
+    throw new Error('HTTP ' + r.status)
+  }
+  const rows = (await r.json()) as T[]
+  return Array.isArray(rows) ? rows : []
+}
+
+/**
+ * Функции `trip_read` в базе ещё нет — выяснили один раз и больше не стучимся.
+ * Переходный период: код выложен, а SQL из `docs/rls-apply-e.sql` ещё не применён.
+ * Ровно так же ведёт себя запись (`Sync.rpcGone` в lib/sync.ts).
+ */
+let readRpcGone = false
+
+/**
+ * Прочитать документ поездки: через функцию, а пока её в базе нет — прямым запросом.
+ * Единственный вход для всех, кто читает лист, — и синхронизация, и «Мои поездки».
+ *
+ * `key` — личный ключ человека. Пустой ключ функция не принимает, и это правильно:
+ * посторонний не должен получить документ (`KeyRejected`).
+ */
+export async function loadTrip(key: string, trip: string = TRIP_ID): Promise<TripRow[]> {
+  if (!readRpcGone) {
+    try {
+      return await rpcTripRead(key, trip)
+    } catch (e) {
+      if (!(e instanceof RpcMissing)) throw e
+      readRpcGone = true
+    }
+  }
+  const rows = await fetchTrip(trip)
+  if (rows.length) return rows
+
+  /* ⛔ Пустой ответ прямого чтения значит ДВЕ РАЗНЫЕ вещи, и цена ошибки — боевой
+     документ. Либо строки правда нет (новая поездка), либо SELECT закрыли, пока
+     эта вкладка была открыта, и сервер вежливо отдал `[]` вместо отказа. По первому
+     прочтению приложение создаёт строку заново из своей копии (`Sync.pull`), то есть
+     затирает лист всей команды — это У-07 в новой одежде.
+     Поэтому переспрашиваем функцию: она либо отдаст документ, либо честно откажет
+     по ключу, либо снова скажет, что её нет. Стоит это одного запроса и только там,
+     где ответ и так оказался пустым. */
+  readRpcGone = false
+  try {
+    return await rpcTripRead(key, trip)
+  } catch (e) {
+    if (!(e instanceof RpcMissing)) throw e
+    readRpcGone = true
+  }
+  return rows
 }
 
 /**

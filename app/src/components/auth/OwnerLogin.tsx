@@ -36,7 +36,7 @@ import { sendMagicLink } from '@/lib/auth'
  */
 const RESEND_AFTER = 60
 
-export function OwnerLogin() {
+export function OwnerLogin({ showLogo = true }: { showLogo?: boolean } = {}) {
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState('')
   const [busy, setBusy] = useState(false)
@@ -77,7 +77,9 @@ export function OwnerLogin() {
   return (
     <div className="flex flex-col gap-5 pb-1">
       <div className="flex flex-col items-center gap-3 pt-1 text-center">
-        <Logo height={30} />
+        {/* Знак нужен там, где этот блок стоит один (шторка входа). На закрытом листе
+            знак уже стоит выше, и второй такой же был бы дублем. */}
+        {showLogo && <Logo height={30} />}
         <p className="text-body leading-relaxed text-balance text-ink">
           Почтой входит владелец поездки — один человек на весь лист. Остальные заходят
           по личным ссылкам, которые владелец раздаёт в разделе «Команда».

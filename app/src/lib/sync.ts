@@ -16,9 +16,9 @@
 
 import {
   SB,
-  fetchTrip,
   insertTrip,
   KeyRejected,
+  loadTrip,
   patchTrip,
   pingTrip,
   realtimeUrl,
@@ -49,8 +49,19 @@ export interface SyncHooks {
    * «ключа нет»: такой человек читает, но не пишет.
    */
   getKey(): string
+  /**
+   * Ключ, с которым идти ЗА ЛИСТОМ. Отличается от `getKey()` тем, что годится
+   * и неподтверждённый: пока документ не прочитан, сверять ключ не с чем
+   * (`readKey()` в lib/perm.ts). Сверит его сервер — `trip_read`.
+   */
+  getReadKey(): string
   /** себя для присутствия */
   getMe(): Presence | null
+  /**
+   * Сервер не отдал лист по этому ключу. Не «нет связи», а «вы не из этой поездки»:
+   * человеку надо предложить его личную ссылку, а не кнопку «повторить».
+   */
+  onDenied(denied: boolean): void
   /** индикатор состояния */
   onNet(state: NetState, msg?: string): void
   /** список присутствующих поменялся */
@@ -149,8 +160,9 @@ export class Sync {
     if (this.pulling) return
     this.pulling = true
     try {
-      const rows = await fetchTrip()
+      const rows = await loadTrip(this.h.getReadKey())
       this.pulling = false
+      this.h.onDenied(false)
       if (!rows.length) {
         /* строки ещё нет — создаём её из того, что у нас */
         await this.push()
@@ -168,9 +180,15 @@ export class Sync {
         this.h.onNet('ok', 'обновлено с сервера')
         setTimeout(() => this.h.onNet('ok'), 2000)
       } else this.h.onNet('ok')
-    } catch {
+    } catch (e) {
       this.pulling = false
-      this.h.onNet('err', 'нет связи с сервером')
+      /* Отказ по ключу — это не обрыв связи, и говорить о нём надо иначе: человек
+         открыл лист, который закрыт от посторонних (docs/rls-apply-e.sql). Кнопка
+         «повторить» ему не поможет, поможет только своя личная ссылка. */
+      if (e instanceof KeyRejected) {
+        this.h.onDenied(true)
+        this.h.onNet('err', 'лист закрыт — откройте свою личную ссылку')
+      } else this.h.onNet('err', 'нет связи с сервером')
     }
   }
 
@@ -213,7 +231,7 @@ export class Sync {
   private async pushTry(attempt: number): Promise<void> {
     const author = this.h.getAuthor()
     const key = this.h.getKey()
-    const rows = await fetchTrip()
+    const rows = await loadTrip(this.h.getReadKey())
     const row = rows.length ? rows[0] : null
     /* вобрали чужие правки — иначе условная запись затрёт их нашей копией */
     if (row && row.updated_at !== this.lastPull) this.h.applyRemote(row.data)

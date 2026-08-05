@@ -6,6 +6,7 @@ import { useTheme } from './theme'
 import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
 import { closeTripsList, firstStepPerson } from './lib/trips'
+import { ClosedList } from './components/auth/ClosedList'
 import { FirstStep } from './components/trips/FirstStep'
 import { TripsScreen } from './components/trips/TripsScreen'
 import { TopNav } from './components/TopNav'
@@ -38,7 +39,7 @@ import { Toaster } from './components/ui/sonner'
  * раздел, попавший в эту полосу.
  */
 function App() {
-  const { S, perms } = useTrip()
+  const { S, perms, denied, signIn } = useTrip()
   const { dark, toggle } = useTheme()
   const [search, setSearch] = useState(false)
   const reduce = useReducedMotion()
@@ -121,6 +122,22 @@ function App() {
         }}
       />
     )
+
+  /* ⛔ Лист закрыт от посторонних (требование заказчика 05.08.2026).
+     Критерий — «человек ОПОЗНАН», а не «в адресе есть ?k=»: красивая ссылка
+     /vuoksa2026/Maks ключа не несёт, он берётся из запомненного в браузере
+     (урок У-37). Поэтому смотрим на `perms.authed` — ключ сошёлся с карточкой,
+     откуда бы он ни пришёл: из адреса, из памяти браузера или из сеанса владельца.
+     ⚠️ Не на `perms.me`: его заполняет ОДНО ИМЯ из пути, а имя посторонний
+     наберёт руками. Назвался ≠ опознан.
+     Заодно это закрывает дыру «голый адрес = права владельца» (урок У-01):
+     до этой правки `myPerm()` при пустом `me` отдавал chief.
+     Поездка, которую этот браузер видит впервые, людей в сиде не имеет — там ключ
+     подтвердится только после первого чтения с сервера, и экран снимется сам.
+     Офлайн-копия сюда не попадает: файл самодостаточен, его скачал владелец,
+     и сети у него нет вовсе. */
+  if (!офлайн && (denied || !perms.authed))
+    return <ClosedList denied={denied || perms.stale} signedInAs={signIn.email} />
 
   return (
     <div className="min-h-svh">

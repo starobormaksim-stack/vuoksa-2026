@@ -25,7 +25,15 @@
  * по ссылке Кости, оставался Костей — с правами участника и без объяснений.
  */
 
-import { SB, sbFetch, setAuthToken, TRIP_ID } from './supabase.ts'
+import {
+  KeyRejected,
+  RpcMissing,
+  rpcTripOwner,
+  SB,
+  sbFetch,
+  setAuthToken,
+  TRIP_ID,
+} from './supabase.ts'
 
 /** Где лежит сеанс. Ключ внутренний, на экране его не видно. */
 const KEY = 'flops.session'
@@ -288,7 +296,7 @@ export interface TripOwner {
   /** почта владельца строки в нижнем регистре; '' — строка ещё ничья */
   email: string
   /** почему не выяснили: '' — выяснили */
-  reason: '' | 'нет-связи' | 'нет-колонки'
+  reason: '' | 'нет-связи' | 'нет-колонки' | 'нет-ключа'
 }
 
 /**
@@ -302,7 +310,17 @@ export interface TripOwner {
  * Запрос идёт мимо `fetchTrip()` из `sync.ts` сознательно: тот тянет документ
  * целиком (под мегабайт), а здесь нужна одна короткая строка. Ничего не пишем.
  */
-export async function fetchTripOwner(): Promise<TripOwner> {
+export async function fetchTripOwner(key: string): Promise<TripOwner> {
+  /* Сначала через функцию: после `docs/rls-apply-e.sql` прямого доступа к колонке
+     нет ни у кого. Пока функции в базе нет — читаем колонку, как читали всегда. */
+  try {
+    const rows = await rpcTripOwner(key)
+    const mail = rows.length ? rows[0].owner_email || '' : ''
+    return { ok: true, email: mail.trim().toLowerCase(), reason: '' }
+  } catch (e) {
+    if (e instanceof KeyRejected) return { ok: false, email: '', reason: 'нет-ключа' }
+    if (!(e instanceof RpcMissing)) return { ok: false, email: '', reason: 'нет-связи' }
+  }
   try {
     const r = await sbFetch('trips?id=eq.' + TRIP_ID + '&select=owner_email')
     if (r.status === 400 || r.status === 404) return { ok: false, email: '', reason: 'нет-колонки' }

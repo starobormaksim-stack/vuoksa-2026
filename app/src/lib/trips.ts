@@ -29,20 +29,34 @@
 import type { Person, State } from './types.ts'
 import { clone } from './merge.ts'
 import seedJson from '../data/seed-v2.json'
+import { readKey } from './perm.ts'
 import {
   currentTripId,
   defaultTripId,
-  fetchTrip,
   insertTrip,
   isDefaultTrip,
   KeyRejected,
+  loadTrip,
   rememberTrip,
   RpcMissing,
+  rpcTripList,
   rpcTripWrite,
   sbFetch,
   sbJson,
   tripRowId,
 } from './supabase.ts'
+
+/**
+ * Ключ, с которым этот браузер ходит за чужими листами («Мои поездки»).
+ * Подтверждать его здесь не с чем — документа чужой поездки у нас нет; сверит
+ * его сервер (`trip_read` в docs/rls-apply-e.sql).
+ */
+function savedKey(): string {
+  /* Тот же порядок, что и у листа: ключ из адреса важнее запомненного. Брать только
+     запомненный нельзя — человек, пришедший по свежей ссылке в чистом браузере,
+     остался бы без списка своих поездок. */
+  return readKey(null)
+}
 
 const SEED = seedJson as unknown as State
 
@@ -281,22 +295,46 @@ export async function listTrips(email: string): Promise<TripsIndex> {
   let why = ''
   let rows: IndexRow[] = []
 
+  /* Сначала через функцию: после `docs/rls-apply-e.sql` таблица не читается вовсе,
+     а поездки отдаёт `trip_list` — и только те, в чьей команде есть человек с этим
+     ключом. Пока функции в базе нет, работает прежний прямой запрос. */
+  let rpcGone = false
   try {
-    rows = await sbJson<IndexRow[]>(
-      'trips?select=id,updated_at,author,owner_email,title:data->trip->>title&order=updated_at.desc',
-    )
-  } catch {
-    /* Колонки владельца может ещё не быть — тогда PostgREST отвечает отказом на весь
-       запрос. Пробуем самое простое: имена строк сервер отдаёт всегда, а список
-       показать надо в любом случае (молчаливых отказов не бывает). */
-    try {
-      rows = await sbJson<IndexRow[]>('trips?select=id,updated_at,author&order=updated_at.desc')
-      why =
-        'База пока не знает, за кем закреплена поездка, — не хватает одной настройки. ' +
-        'Поэтому вместо названий видны имена строк, а убирать поездки нельзя. ' +
-        'Что сделать — в файле docs/trips-steps.md.'
-    } catch {
+    rows = await rpcTripList(savedKey())
+  } catch (e) {
+    if (e instanceof KeyRejected) {
+      return {
+        ok: false,
+        why:
+          'Поездки закрыты от посторонних, и ключа у этого браузера нет. Откройте свою ' +
+          'личную ссылку — ту, что прислал владелец, — и список появится.',
+        items: [],
+      }
+    }
+    if (!(e instanceof RpcMissing)) {
       return { ok: false, why: 'Нет связи с сервером — список поездок не пришёл.', items: [] }
+    }
+    rpcGone = true
+  }
+
+  if (rpcGone) {
+    try {
+      rows = await sbJson<IndexRow[]>(
+        'trips?select=id,updated_at,author,owner_email,title:data->trip->>title&order=updated_at.desc',
+      )
+    } catch {
+      /* Колонки владельца может ещё не быть — тогда PostgREST отвечает отказом на весь
+         запрос. Пробуем самое простое: имена строк сервер отдаёт всегда, а список
+         показать надо в любом случае (молчаливых отказов не бывает). */
+      try {
+        rows = await sbJson<IndexRow[]>('trips?select=id,updated_at,author&order=updated_at.desc')
+        why =
+          'База пока не знает, за кем закреплена поездка, — не хватает одной настройки. ' +
+          'Поэтому вместо названий видны имена строк, а убирать поездки нельзя. ' +
+          'Что сделать — в файле docs/trips-steps.md.'
+      } catch {
+        return { ok: false, why: 'Нет связи с сервером — список поездок не пришёл.', items: [] }
+      }
     }
   }
 
@@ -426,8 +464,15 @@ export async function duplicateTrip(
 ): Promise<TripResult> {
   let rows
   try {
-    rows = await fetchTrip(tripRowId(srcId))
-  } catch {
+    rows = await loadTrip(savedKey(), tripRowId(srcId))
+  } catch (e) {
+    if (e instanceof KeyRejected) {
+      return {
+        ok: false,
+        id: '',
+        why: 'Прежняя поездка закрыта от посторонних, и ваш ключ она не признала. Откройте свою личную ссылку на ту поездку и повторите.',
+      }
+    }
     return { ok: false, id: '', why: 'Нет связи с сервером — прежнюю поездку прочитать не вышло.' }
   }
   if (!rows.length) {
@@ -480,8 +525,15 @@ export async function renameTrip(id: string, title: string, author: string): Pro
   const row = tripRowId(id)
   let rows
   try {
-    rows = await fetchTrip(row)
-  } catch {
+    rows = await loadTrip(savedKey(), row)
+  } catch (e) {
+    if (e instanceof KeyRejected) {
+      return {
+        ok: false,
+        id,
+        why: 'Эта поездка закрыта от посторонних, и ваш ключ она не признала. Название не сохранилось.',
+      }
+    }
     return { ok: false, id, why: 'Нет связи с сервером — название не сохранилось.' }
   }
   if (!rows.length) return { ok: false, id, why: 'Этой поездки на сервере больше нет.' }

@@ -45,7 +45,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { State } from './lib/types.ts'
 import type { Auth, Perms } from './lib/perm.ts'
-import { checkAuth, makePerms } from './lib/perm.ts'
+import { checkAuth, makePerms, readKey } from './lib/perm.ts'
 import { clone, forget, mergeInto, mergeSeed, normalizeDoc } from './lib/merge.ts'
 import { fetchTripOwner, initAuth, onAuthChange } from './lib/auth.ts'
 import type { Session, TripOwner } from './lib/auth.ts'
@@ -99,6 +99,11 @@ let doc: State = loadInitial()
 let auth: Auth | null = null
 let stale = false
 let net: { state: NetState; msg: string } = { state: 'off', msg: '' }
+/**
+ * Сервер не отдал лист по нашему ключу (`trip_read`, docs/rls-apply-e.sql).
+ * Это не обрыв связи, а «вы не из этой поездки», и экран об этом другой.
+ */
+let denied = false
 let presence: Presence[] = []
 let perms: Perms = makePerms(doc, null, false)
 
@@ -238,7 +243,7 @@ function onSession(s: Session | null): void {
 
 /** Сходить за `owner_email` строки и пересчитать личность. */
 async function loadOwner(): Promise<void> {
-  const r = await fetchTripOwner()
+  const r = await fetchTripOwner(readKey(auth))
   /* Пока ходили, человек мог выйти — тогда ответ уже ни к чему. */
   if (!session) return
   owner = r
@@ -270,8 +275,9 @@ interface Snapshot {
   net: { state: NetState; msg: string }
   presence: Presence[]
   signIn: SignIn
+  denied: boolean
 }
-let snapshot: Snapshot = { S: doc, perms, net, presence, signIn }
+let snapshot: Snapshot = { S: doc, perms, net, presence, signIn, denied }
 
 /** Пересобрать снимок и разбудить подписчиков — только если что-то правда изменилось. */
 function emit(): void {
@@ -280,10 +286,11 @@ function emit(): void {
     snapshot.perms === perms &&
     snapshot.net === net &&
     snapshot.presence === presence &&
-    snapshot.signIn === signIn
+    snapshot.signIn === signIn &&
+    snapshot.denied === denied
   )
     return
-  snapshot = { S: doc, perms, net, presence, signIn }
+  snapshot = { S: doc, perms, net, presence, signIn, denied }
   listeners.forEach((l) => l())
 }
 
@@ -400,6 +407,12 @@ function setNet(state: NetState, msg?: string): void {
   emit()
 }
 
+function setDenied(v: boolean): void {
+  if (denied === v) return
+  denied = v
+  emit()
+}
+
 function setPresence(list: Presence[]): void {
   const same =
     presence.length === list.length &&
@@ -431,6 +444,11 @@ function startSync(): void {
     /* Ключ отдаём только подтверждённый: checkAuth() сверил его с карточкой человека.
        Нет ключа — база правку не примет, и это правильно (docs/rls-apply-b.sql). */
     getKey: () => (auth ? auth.key : ''),
+    /* За ЧТЕНИЕМ идём и с неподтверждённым ключом: подтверждать его нечем, пока
+       документа нет (у поездки, открытой впервые, в сиде нет и людей). Сверит его
+       сервер — `trip_read`. Подробности у readKey() в lib/perm.ts. */
+    getReadKey: () => readKey(auth),
+    onDenied: setDenied,
     getMe: () => {
       const me = perms.mePerson
       return me ? { id: me.id, name: me.name } : null
@@ -459,6 +477,8 @@ export interface TripApi {
   presence: Presence[]
   /** чем кончилась сверка сеанса по почте с листом */
   signIn: SignIn
+  /** сервер не отдал лист по нашему ключу — человек не из этой поездки */
+  denied: boolean
   isHere: (id: string) => boolean
 }
 
@@ -470,6 +490,7 @@ export function readTrip(): Omit<TripApi, 'update' | 'remove' | 'isHere'> {
     net: snapshot.net,
     presence: snapshot.presence,
     signIn: snapshot.signIn,
+    denied: snapshot.denied,
   }
 }
 
@@ -488,6 +509,7 @@ export function useTrip(): TripApi {
     net: snap.net,
     presence: snap.presence,
     signIn: snap.signIn,
+    denied: snap.denied,
     isHere,
   }
 }
