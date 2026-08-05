@@ -592,11 +592,19 @@ export function TripMap({ S, perms, className }: Props) {
                 {canEdit && unplaced.length > 0 ? (
                   /* Пока точки без координат, карта пустая или неполная — и это первое,
                      что надо сказать. Мастер проходит их списком: что нашлось
-                     по названию, то подтверждают, остальное ставят пальцем. */
+                     по названию, то подтверждают, остальное ставят пальцем.
+
+                     ⚠️ `basis-64` обязателен, и вот почему (замер 05.08.2026, родня У-81).
+                     Полоса переносится (`flex-wrap`), но при `flex-1` без базиса браузер
+                     предпочитает СЖАТЬ соседа, а не перенести его: на 390 кнопка
+                     съёживалась до 83 × 147, и подпись «Точек без места на карте: 6»
+                     вставала в столбик по одной букве — 19 px ширины при 108 высоты.
+                     Базис говорит «мне нужно 16rem», и тогда на узкой ширине кнопка
+                     честно уезжает на свою строку, а на 1280 стоит в ряд с соседями. */
                   <button
                     type="button"
                     onClick={() => setWizard(true)}
-                    className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg text-left transition-colors hover:bg-zebra/70"
+                    className="flex min-h-11 min-w-0 flex-1 basis-64 items-center gap-3 rounded-lg text-left transition-colors hover:bg-zebra/70"
                   >
                     <MapPinned size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
                     <span className="min-w-0 flex-1">
