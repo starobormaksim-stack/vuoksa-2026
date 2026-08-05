@@ -81,8 +81,10 @@ export function TripsScreen({ onClose }: { onClose: () => void }) {
     const r = await createTrip(title, perms.mePerson ? perms.mePerson.name : '')
     if (r.ok) {
       /* Новая поездка открывается сразу: человек попадает в неё, а не остаётся
-         смотреть на список, гадая, завелась она или нет. */
-      openTrip(r.id)
+         смотреть на список, гадая, завелась она или нет.
+         ⛔ Вместе с ключом владельца: лист закрыт от неопознанных, и без ключа
+         создатель увидел бы «Этот лист закрыт» на собственной поездке. */
+      openTrip(r.id, r.cred)
       return
     }
     await after(r, '')
@@ -93,7 +95,7 @@ export function TripsScreen({ onClose }: { onClose: () => void }) {
     setBusy(t.id)
     const r = await duplicateTrip(t.id, copyName, author)
     if (r.ok) {
-      openTrip(r.id)
+      openTrip(r.id, r.cred)
       return
     }
     setCopyOf('')
@@ -127,8 +129,7 @@ export function TripsScreen({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col gap-1">
         <h1 className="text-title font-[650] text-ink">Мои поездки</h1>
         <p className="text-note leading-relaxed text-muted">
-          Каждая поездка — отдельный лист со своими людьми, списками и деньгами. Поездки
-          закрепляются за почтой: заводить и убирать свои может тот, кто вошёл по почте.
+          Каждая поездка — отдельный лист со своими людьми, списками и деньгами.
         </p>
       </div>
 
@@ -156,15 +157,13 @@ export function TripsScreen({ onClose }: { onClose: () => void }) {
             </Btn>
           </div>
           <p className="text-micro leading-relaxed text-muted">
-            Новая поездка открывается пустой: справочники и разделы на месте, а вещи,
-            закупка и маршрут заводятся с нуля. Участник в ней сначала один — вы.
+            Открывается пустой: вещи, закупка и маршрут заводятся с нуля.
           </p>
         </div>
       ) : (
         <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
           <p className="text-body leading-relaxed text-ink">
-            Свой список поездок появляется после входа по почте: именно по ней сервис
-            и узнаёт владельца. Пока входа нет, видна только эта поездка.
+            Свой список поездок появляется после входа по почте.
           </p>
           <OwnerLogin />
         </div>
@@ -282,8 +281,7 @@ export function TripsScreen({ onClose }: { onClose: () => void }) {
           </ul>
           {index.items.length === 0 && index.ok && (
             <p className="text-note leading-relaxed text-muted">
-              Пока ни одной поездки не видно. Заведите первую — или откройте личную ссылку,
-              которую вам прислал владелец.
+              Поездок пока нет. Заведите первую или откройте личную ссылку.
             </p>
           )}
         </>

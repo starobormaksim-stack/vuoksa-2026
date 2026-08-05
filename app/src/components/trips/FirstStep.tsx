@@ -62,8 +62,7 @@ export function FirstStep({ person }: { person: Person }) {
         <Logo height={30} />
         <h1 className="text-title font-[650] text-ink">Вы — владелец поездки</h1>
         <p className="text-body leading-relaxed text-balance text-ink">
-          В поездке уже есть один участник — это вы. Впишите имя: им лист называет вас
-          в команде, в списках вещей и в подписях правок.
+          В поездке уже есть один участник — это вы. Впишите имя.
         </p>
       </div>
 
@@ -135,8 +134,7 @@ export function FirstStep({ person }: { person: Person }) {
       </div>
 
       <p className="text-note leading-relaxed text-muted">
-        Остальных участников добавите в разделе «Команда» — там же лежат их личные ссылки.
-        Ссылка задаёт права: кто по ней зашёл, тот и правит.
+        Остальных добавите в разделе «Команда» — там же их личные ссылки.
       </p>
 
       {input}

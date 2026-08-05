@@ -10,6 +10,7 @@ import {
 import { BUY_LEGEND } from './legend'
 import { BuyTotals } from './BuyTotals'
 import { BuyTable } from './BuyTable'
+import { Settlement } from './Settlement'
 import { byOrd, type BuyItem } from './buylocal'
 
 /**
@@ -176,6 +177,13 @@ export function BuySection() {
             </Group>
           )
         })}
+
+      {/* Кто кому должен — последним блоком раздела. Переехало сюда из «Дороги»
+          по слову заказчика 05.08.2026: «все затраты закупки имеют отношение
+          также и к затратам, которые связаны с проездом, то есть бензин…
+          это всё должно быть в одном разделе, внизу должны быть итоги».
+          ⛔ В «Дороге» второго экземпляра нет — один блок в одном месте (У-53). */}
+      <Settlement S={S} me={perms.me} />
 
       {menuSec && (
         <ResponsiveSheet

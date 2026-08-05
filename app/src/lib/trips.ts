@@ -88,8 +88,25 @@ const SEED = seedJson as unknown as State
    людям документ, тему и личность. Для поездок, кроме той, что была всегда,
    заводятся НОВЫЕ ключи с именем поездки на конце. */
 
-/** Где лежит документ этой поездки. У поездки по умолчанию ключ прежний. */
+/**
+ * Где лежит документ этой поездки. У поездки по умолчанию ключ прежний.
+ *
+ * ⛔ Внутри офлайн-копии ключ берётся из самого файла (`__PINE_KEY__`, его
+ * вшивает `lib/offline.ts`). Причина: в копии адрес `file:`, в нём нет ни
+ * `?trip=`, ни памяти браузера сайта, — и по обычным правилам копия ЛЮБОЙ
+ * поездки считала бы себя первой. Тогда копия второй поездки показывала бы
+ * документ первой как свой (урок У-62).
+ *
+ * ⚠️ Лечится только ПАРОЙ: и чтение (загрузчик `BOOT` в `offline.ts`), и запись
+ * (`store.ts` через эту функцию) идут по одному имени. Поменять что-то одно —
+ * значит получить копию, которая не находит собственных правок и молча
+ * откатывается на вшитый снимок; это пробовали 05.08.2026 и откатили.
+ * Старая копия без `__PINE_KEY__` ведёт себя ровно как прежде.
+ */
 export function docKey(): string {
+  const w = typeof window === 'undefined' ? null : (window as { __PINE_KEY__?: string })
+  const вшитый = w && typeof w.__PINE_KEY__ === 'string' ? w.__PINE_KEY__ : ''
+  if (вшитый) return вшитый
   return isDefaultTrip() ? 'flops.doc' : 'flops.doc.' + currentTripId()
 }
 
@@ -219,13 +236,30 @@ export function tripIdFrom(title: string): string {
 
 /* ─────────── переход между поездками ─────────── */
 
-/** Адрес поездки. Читаемый и пересылаемый: `?trip=<id>`. */
-export function tripHref(id: string): string {
+/** Кто открывает поездку: имя в адресе и личный ключ. */
+export interface TripCred {
+  u: string
+  k: string
+}
+
+/**
+ * Адрес поездки. Читаемый и пересылаемый: `?trip=<id>`.
+ *
+ * ⛔ Личная ссылка ПРЕЖНЕЙ поездки к новой отношения не имеет — `u` и `k` из
+ * адреса убираются, иначе человек открыл бы новую поездку под чужим именем.
+ * Но и без ключа вовсе уходить нельзя: после `docs/rls-apply-e.sql` лист
+ * читается только по ключу кого-то из своей команды, и создатель новой поездки
+ * остался бы за дверью собственного листа. Поэтому тот, кто ключ знает
+ * (`createTrip`, `duplicateTrip`), передаёт его сюда явно.
+ */
+export function tripHref(id: string, cred?: TripCred): string {
   const q = new URLSearchParams(typeof location === 'undefined' ? '' : location.search)
-  /* Чужая личная ссылка к другой поездке отношения не имеет — убираем её,
-     иначе человек открыл бы новую поездку под именем из прежней. */
   q.delete('u')
   q.delete('k')
+  if (cred && cred.k) {
+    q.set('u', cred.u)
+    q.set('k', cred.k)
+  }
   q.set('trip', id.replace(/-test$/, ''))
   const path = typeof location === 'undefined' ? '/' : location.pathname
   return path + '?' + q.toString()
@@ -235,10 +269,10 @@ export function tripHref(id: string): string {
  * Открыть другую поездку. Полная перезагрузка страницы, и это не лень: вместе
  * с поездкой обязаны перечитаться документ, права, присутствие и канал изменений.
  */
-export function openTrip(id: string): void {
+export function openTrip(id: string, cred?: TripCred): void {
   rememberTrip(id)
   rememberSeen(tripRowId(id))
-  location.assign(tripHref(id))
+  location.assign(tripHref(id, cred))
 }
 
 /**
@@ -389,9 +423,24 @@ export interface TripResult {
   id: string
   /** что показать человеку словами; при удаче — короткое подтверждение */
   why: string
+  /**
+   * Чем открывать заведённую поездку: имя и личный ключ её владельца.
+   * Без него создатель попадёт в собственный новый лист без ключа, а лист
+   * закрыт от неопознанных — и это выглядело бы как «поездка не завелась».
+   */
+  cred?: TripCred
 }
 
-/** Не давать двум поездкам одно имя строки. */
+/**
+ * Не давать двум поездкам одно имя строки.
+ *
+ * ⚠️ Это ТОЛЬКО быстрая проба, а не защита. После `docs/rls-apply-e.sql` прямой
+ * SELECT закрыт, и PostgREST отвечает `200 []` — то есть «имя свободно» всегда,
+ * даже если строка есть (родня У-67: пустой ответ и отказ — разные вещи).
+ * Настоящая защита стоит ниже, в `putNew`: `trip_write` с `p_seen = null`
+ * по существующей строке возвращает НОЛЬ строк и ничего не делает (У-77),
+ * и человек читает об этом словами, а не «поездка заведена».
+ */
 async function taken(id: string): Promise<boolean> {
   try {
     const rows = await sbJson<{ id: string }[]>('trips?id=eq.' + tripRowId(id) + '&select=id')
@@ -408,11 +457,30 @@ async function putNew(id: string, doc: State, author: string): Promise<TripResul
   const stamp = new Date().toISOString()
   const chief = doc.people.find((p) => p.perm === 'chief')
   const key = chief ? chief.key || '' : ''
+  /* Открываем новую поездку СВОИМ ключом, если он в ней есть (копия везёт людей
+     прежней поездки вместе с ключами), и только иначе — ключом владельца.
+     Иначе тот, кто дублировал поездку не будучи владельцем, вошёл бы в копию
+     под чужим именем: назвался ≠ опознан. */
+  const mine = doc.people.find((p) => !!p.key && p.key === savedKey())
+  const who = mine ?? chief
+  const cred: TripCred | undefined =
+    who && who.key ? { u: who.slug || who.id, k: who.key } : undefined
   const body = { ...doc, updatedAt: stamp, author }
   try {
-    await rpcTripWrite(null, body, stamp, author, key, row)
+    const out = await rpcTripWrite(null, body, stamp, author, key, row)
+    /* ⛔ Ноль строк — запись НЕ состоялась. `trip_write` с `p_seen = null`
+       по существующей строке отвечает 200 и не делает ничего (У-77): без этой
+       проверки человек читал бы «поездка заведена», а её нет. Молчаливых
+       отказов не бывает (постулат 5). */
+    if (!out.length) {
+      return {
+        ok: false,
+        id: '',
+        why: 'Поездка с таким именем строки уже есть. Назовите её иначе и повторите.',
+      }
+    }
     rememberSeen(row)
-    return { ok: true, id, why: '' }
+    return { ok: true, id, why: '', cred }
   } catch (e) {
     if (e instanceof RpcMissing) {
       /* Переходный период: функции в базе ещё нет, значит и защита не включена —
@@ -420,7 +488,7 @@ async function putNew(id: string, doc: State, author: string): Promise<TripResul
       try {
         await insertTrip(body, stamp, author, row)
         rememberSeen(row)
-        return { ok: true, id, why: '' }
+        return { ok: true, id, why: '', cred }
       } catch {
         return { ok: false, id: '', why: 'Сервер не принял новую поездку. Попробуйте ещё раз.' }
       }

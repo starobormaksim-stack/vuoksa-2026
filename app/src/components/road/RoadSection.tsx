@@ -11,7 +11,6 @@ import { MDASH, plural } from '@/format'
 import { cn } from '@/lib/utils'
 import { RouteBoard } from '@/components/map/RouteBoard'
 import { RoadCalc } from './RoadCalc'
-import { Settlement } from './Settlement'
 import { TransportSheet } from './TransportSheet'
 import { RentSheet } from './RentSheet'
 import { calcLegsByMap } from './legs'
@@ -197,12 +196,15 @@ export function RoadSection() {
             ))}
         </div>
       )}
+      {/* Одна короткая строка вместо трёх длинных объяснений: заказчик
+          05.08.2026 — «гигантское количество текста… это лишнее». Какое
+          число идёт в расчёт — критическая деталь, она остаётся. */}
       <p className={cn('text-note leading-snug text-muted', canEdit && 'mt-2')}>
         {dist.src === 'auto'
-          ? `Считается по карте: ${kmLabel(dist.auto)}. Своё число — ${kmLabel(dist.manual)}, оно ждёт наготове.`
+          ? `В расчёте карта · ${kmLabel(dist.auto)}. Своё — ${kmLabel(dist.manual)}`
           : dist.auto > 0
-            ? `По карте выходит ${kmLabel(dist.auto)}. В расчёт это число пойдёт, только если его включить.`
-            : 'Расстояние можно посчитать по точкам маршрута — по дорогам, а не по прямой.'}
+            ? `В расчёте своё число. По карте — ${kmLabel(dist.auto)}`
+            : 'Считается по дорогам между точками маршрута'}
       </p>
     </div>
   )
@@ -231,9 +233,6 @@ export function RoadSection() {
         onFreshEnd={() => setFresh(null)}
         mapStrip={mapStrip}
       />
-
-      {/* ─── Кто кому должен ─── */}
-      <Settlement S={S} me={perms.me} />
 
       {/* ─── Вопросы ─── */}
       <Group

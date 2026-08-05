@@ -67,10 +67,12 @@ export function BuyTotals({ S }: { S: State }) {
         </>
       )}
 
+      {/* Короче, чем было: правило остаётся, объяснение правила уходит
+          (заказчик 05.08.2026 про «гигантское количество текста»). */}
       {b.noFact > 0 && (
         <p className={cn('text-micro text-muted', b.anyFact ? 'mt-1.5' : 'mt-3')}>
-          У {b.noFact}{NBSP}
-          {plurItems(b.noFact)} фактическая цена ещё не вписана — там в счёт идёт плановая
+          Без фактической цены · {b.noFact}{NBSP}
+          {plurItems(b.noFact)}: в счёт идёт план
         </p>
       )}
 

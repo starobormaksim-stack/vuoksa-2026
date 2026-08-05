@@ -222,10 +222,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
               Карточка только заведена
             </div>
             <p className="mt-1 text-note leading-snug text-ink">
-              {missing.length
-                ? `Осталось вписать ${listRu(missing)}. `
-                : 'Всё вписано. '}
-              Готовность сборов появится, когда в снаряжении будет что отмечать.
+              {missing.length ? `Осталось вписать ${listRu(missing)}` : 'Всё вписано'}
             </p>
           </div>
         ) : (

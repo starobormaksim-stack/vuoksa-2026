@@ -120,7 +120,7 @@ export function RouteTiming({
       <EmptyState
         icon={Route}
         title="Маршрута пока нет"
-        text="Точка маршрута — место, где мы окажемся по пути: сбор, выезд, закупка, лагерь"
+        text="Место, где мы окажемся по пути"
         action={canEdit ? { label: 'Добавить точку', onClick: onAdd } : undefined}
       />
     )

@@ -77,6 +77,11 @@ export function dative(name: string): { text: string; sure: boolean } {
   const low = n.toLowerCase()
   const odd = DATIVE_ODD[low]
   if (odd) return { text: odd, sure: true }
+  /* Беглая гласная в уменьшительных на -ёк: «Санёк» → «Саньку», «Витёк» →
+     «Витьку», «Игорёк» → «Игорьку». В этой позиции «ё» выпадает всегда, поэтому
+     правило общее, а не список. Именно так зовут друг друга в компании, ради
+     которой лист и делается. */
+  if (low.length > 3 && low.endsWith('ёк')) return { text: n.slice(0, -2) + 'ьку', sure: true }
   /* «Мария» → «Марии», но «Илья» → «Илье»: на -ия окончание другое. */
   if (low.endsWith('ия')) return { text: n.slice(0, -1) + 'и', sure: true }
   if (low.endsWith('я') || low.endsWith('а')) return { text: n.slice(0, -1) + 'е', sure: true }
