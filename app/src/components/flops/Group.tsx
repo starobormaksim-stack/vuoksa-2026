@@ -142,8 +142,15 @@ export function Group({
             onMenu && 'pr-1 select-none',
           )}
         >
+          {/* ⚠️ Без `truncate`. На 20 px название «Бытовое и расходники» на 390
+              обрывалось многоточием — «Бытовое и расходн…», — а заказчик просил
+              ровно обратного: «название разделов должно быть крупно написано…
+              чтобы было очевидно». Пусть лучше перенесётся: высота заголовка
+              растёт на строку, зато название читается целиком. */}
           {titleEdit ? null : (
-            <span className="min-w-0 flex-1 truncate text-head font-[650] text-ink">{title}</span>
+            <span className="min-w-0 flex-1 text-head leading-snug font-[650] text-ink text-pretty">
+              {title}
+            </span>
           )}
           {titleEdit ? null : badge}
           {total != null && total > 0 && (

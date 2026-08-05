@@ -374,9 +374,16 @@ function PlaceRow({
   if (!canEdit && !point.addr && !coord) return null
 
   return (
-    <span className="mt-1 flex w-full items-center gap-2">
+    /* ⚠️ `flex-wrap` и полная строка под адрес на узком экране. Колонка точки
+       шириной 13 rem, и когда адрес делил её с кнопкой «на карте», ему
+       оставалось около 100 px: длинный адрес вставал столбиком по одному слову
+       («проспект / Медиков, / округ / Аптекарский…»). Заказчик 06.08.2026 —
+       «выравнивание хреново сделано во всех таблицах, всё в разнобой».
+       Кнопка уезжает строкой ниже, адрес получает колонку целиком.
+       На широком экране всё как было: там места хватает обоим. */
+    <span className="mt-1 flex w-full flex-wrap items-center gap-x-2 gap-y-1">
       <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] lg:basis-auto">
         <InlineText
           value={point.addr}
           onSave={onAddr}
