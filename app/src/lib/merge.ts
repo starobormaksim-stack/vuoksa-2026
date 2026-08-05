@@ -340,6 +340,12 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
       e += fields(a, b, [
         'n', 'time', 'c', 'lat', 'lon', 'addr', 'lab', 'labT', 'mode', 'tr', 'leg', 'legSrc', 'ord',
       ])
+      /* `o` — кто едет этой точкой (id человека → 1). Отдельной строкой и через
+         jsonFields, а не в списке выше: `fields` сравнивает через `!==`, а два
+         одинаковых объекта так всегда разные — поле переписывалось бы на каждом
+         слиянии и могло затереть чужую свежую правку клоном самой себя. Ровно
+         поэтому `sp` и `o` закупки заведены здесь же, а не в `fields`. */
+      e += jsonFields(a, b, ['o'])
       a.ua = b.ua
     }
     return { marks: m, edits: e }
@@ -438,6 +444,8 @@ export function normalizeDoc(S: State): State {
     p.ua = p.ua || 0
   })
   S.route.forEach((r) => {
+    /* Пустой объект = сегодняшнее поведение: точка ничья, едут все. */
+    if (!r.o) r.o = {}
     r.ua = r.ua || 0
   })
   S.people.forEach((p) => {

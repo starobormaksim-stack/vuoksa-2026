@@ -1,8 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { Check, MapPin, MapPinPlus, Route, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { RoutePoint } from '@/lib/types'
-import { AddRow, EmptyState, InlineText, RowAction, RowActions } from '@/components/flops'
+import type { Person, RoutePoint } from '@/lib/types'
+import type { Perms } from '@/lib/perm'
+import {
+  AddRow, DataCell, DataHead, DataRow, DataTable, EmptyState, InlineText,
+  PersonHead, RowAction, RowActions,
+} from '@/components/flops'
 import { askMap, type MapMode } from '@/lib/mapfocus'
 import { remove, touch, update } from '@/store'
 import { scrollToSection } from '@/sections'
@@ -22,23 +26,36 @@ function askHere(pointId: string, mode: MapMode): void {
 }
 
 /**
- * Тайминг поездки — вертикальная лента точек: кружок «этап пройден», время,
- * название, описание и адрес.
+ * Маршрут — та же матрица, что у «Сборов» и «Закупки» (урок У-54, требование
+ * заказчика 05.08.2026: «слева столбец вещей, справа столбцы с участниками…
+ * в зависимости от специфики раздела отображение локально немного изменено,
+ * но чтобы единообразие было»).
  *
- * ⚠️ Правится всё прямо в строке (заказчик 04.08.2026: «это прямо вот здесь,
- * в этой таблице уже должно быть»). Карточка точки осталась только ради того,
- * что выбирается из списка, — метка этапа, чем добираемся, расстояние по дороге.
+ * Слева закреплена точка: время, название, описание, адрес и «на карте».
+ * Справа — «этап пройден» и столбец на каждого человека: **кто едет этой
+ * точкой**. Это прямой ответ заказчика 05.08.2026 на вопрос, хватает ли
+ * привязки точки к технике (`RoutePoint.tr`): «нужна: кто именно едет этой
+ * точкой». Поле `RoutePoint.o` заведено ровно той же формы, что `Gear.o`.
  *
- * Лента и карта — одна вещь, а не две, и связь у них двусторонняя через
+ * ⛔ Прежней ленты `<ol>` с ниткой между кружками здесь больше нет: она была
+ * пятой формой списка в сервисе, где заказчик просил одну.
+ *
+ * Правится всё прямо в строке (постулат 2). Карточка точки осталась только
+ * ради того, что выбирается из списка, — метка этапа и способ передвижения.
+ *
+ * Матрица и карта — одна вещь, а не две, и связь у них двусторонняя через
  * lib/mapfocus.ts: строка адреса наводит карту, а тап по метке на карте
- * подсвечивает здесь нужную точку (activeId).
+ * подсвечивает здесь нужную строку (activeId).
  *
- * Участнику лента показывается целиком, но без единой кнопки правки: их просто
- * нет в разметке (постулат 5). Строка «показать на карте» остаётся: смотреть
- * можно всем, это не правка.
+ * Участнику матрица показывается целиком, но без кнопок правки: их просто нет
+ * в разметке (постулат 5). Отметить СЕБЯ участник может — это его собственная
+ * отметка, ровно как в «Сборах». Строка «показать на карте» остаётся всем:
+ * смотреть можно каждому, это не правка.
  */
 interface Props {
   points: RoutePoint[]
+  people: Person[]
+  perms: Perms
   canEdit: boolean
   /** отметить этап пройденным */
   onToggle: (id: string) => void
@@ -52,29 +69,29 @@ interface Props {
 }
 
 export function RouteTiming({
-  points, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
+  points, people, perms, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
 
   /**
-   * Подсвеченная точка может оказаться за краем ленты — подводим её к глазам.
+   * Подсвеченная точка может оказаться за краем списка — подводим её к глазам.
    *
    * ⛔ `scrollIntoView` здесь нельзя, хотя он и стоял раньше: он прокручивает
-   * ВСЕХ прокручиваемых предков, а не только ленту, и `block:'nearest'` этого
-   * не отменяет. Пока лента стояла справа от карты, разницы не было — они были
-   * на одном уровне. Теперь лента под картой во всю ширину, и наведение из
-   * карты утаскивало страницу на 351 px: карта, по которой человек только что
-   * попал пальцем, уезжала вверх из вида.
+   * ВСЕХ прокручиваемых предков, а не только список, и `block:'nearest'` этого
+   * не отменяет. Пока список стоял справа от карты, разницы не было — они были
+   * на одном уровне. Теперь карта уехала в «Поездку», и наведение из карты
+   * утаскивало страницу на 351 px: карта, по которой человек только что попал
+   * пальцем, уезжала вверх из вида.
    *
-   * Поэтому двигаем ТОЛЬКО собственную прокрутку ленты, руками. Страница
+   * Поэтому двигаем ТОЛЬКО собственную прокрутку списка, руками. Страница
    * не трогается вовсе — замер: `scrollY` до и после совпадает.
    */
   useEffect(() => {
     if (!activeId) return
     const wrap = box.current
-    const el = wrap?.querySelector<HTMLElement>(`[data-point="${CSS.escape(activeId)}"]`)
+    const el = wrap?.querySelector<HTMLElement>(`[data-hit="${CSS.escape(activeId)}"]`)
     if (!wrap || !el) return
-    /* Своя прокрутка может быть не у самой ленты, а у обёртки-карточки. */
+    /* Своя прокрутка может быть не у самого списка, а у обёртки-карточки. */
     let pane: HTMLElement | null = wrap
     while (pane && pane.scrollHeight <= pane.clientHeight + 1) pane = pane.parentElement
     if (!pane) return
@@ -109,129 +126,161 @@ export function RouteTiming({
     )
   }
 
+  const cols = `minmax(13rem,1fr) 4.5rem repeat(${people.length}, 4.5rem) 6rem`
+  /* Сумма минимумов: 13 + 4,5 + люди × 4,5 + 6. Зачем — см. `minW` в DataTable. */
+  const minW = `${13 + 4.5 + people.length * 4.5 + 6}rem`
+
   return (
     <div ref={box}>
-      <ol className="py-1">
-        {points.map((p, idx) => {
-          const last = idx === points.length - 1
-          const active = p.i === activeId
-          const meta = pointMeta(p)
-          return (
-            <li key={p.i} className="relative" data-point={p.i} aria-current={active || undefined}>
-              {/* Нитка между кружками: рисуется под точкой, кроме последней. */}
-              {!last && (
-                <span aria-hidden className="absolute top-10 bottom-0 left-[34px] w-px bg-line" />
-              )}
+      <DataTable cols={cols} minW={minW} label="Маршрут: точки, кто едет и что пройдено">
+        <DataHead>
+          <DataCell head sticky align="left">
+            Точка
+          </DataCell>
+          <DataCell head>Пройдено</DataCell>
+          {people.map((p) => (
+            <DataCell
+              key={p.id}
+              head
+              /* колонка читателя слегка подсвечена: свою человек ищет первой */
+              className={cn('px-1 py-2', p.id === perms.me && 'bg-accent-soft')}
+            >
+              <PersonHead
+                name={p.name}
+                photo={p.photo}
+                ini={p.ini}
+                mine={p.id === perms.me}
+                size={40}
+              />
+            </DataCell>
+          ))}
+          <DataCell head className="px-1" />
+        </DataHead>
 
-              <div
-                className={cn(
-                  'group flex items-start gap-2 rounded-xl px-3 transition-colors',
-                  active && 'bg-accent-soft',
-                )}
-              >
+        {points.map((p, idx) => {
+          const meta = pointMeta(p)
+          const bg = idx % 2 === 1 ? 'zebra' : 'surface'
+          return (
+            <DataRow
+              key={p.i}
+              zebra={idx % 2 === 1}
+              fresh={p.i === activeId}
+              dataHit={p.i}
+            >
+              <DataCell sticky bg={bg} align="left">
+                <span className="flex w-full items-baseline gap-2">
+                  <span className="w-14 shrink-0">
+                    <InlineText
+                      value={p.time}
+                      onSave={(v) => patch(p.i, (x) => { x.time = v })}
+                      can={canEdit}
+                      label="Время"
+                      placeholder="··:··"
+                      className="tnum text-note font-bold text-accent-text"
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <InlineText
+                      value={p.n}
+                      onSave={(v) => patch(p.i, (x) => { x.n = v })}
+                      can={canEdit}
+                      required
+                      label="Название точки"
+                      placeholder="Например, Приозерск: закупка"
+                      className={cn(
+                        'text-body leading-snug font-semibold text-ink',
+                        p.done && 'line-through',
+                      )}
+                    />
+                  </span>
+                </span>
+
+                {canEdit || p.c ? (
+                  <InlineText
+                    value={p.c}
+                    onSave={(v) => patch(p.i, (x) => { x.c = v })}
+                    can={canEdit}
+                    multiline
+                    label="Описание точки"
+                    placeholder="Что здесь важно не забыть"
+                    className="text-note leading-snug text-muted"
+                  />
+                ) : null}
+
+                {meta ? (
+                  <span className="tnum mt-1 block text-micro leading-snug font-medium text-muted">
+                    {meta}
+                  </span>
+                ) : null}
+
+                <PlaceRow
+                  point={p}
+                  canEdit={canEdit}
+                  onAddr={(v) => patch(p.i, (x) => { x.addr = v })}
+                />
+              </DataCell>
+
+              <DataCell>
                 {canEdit ? (
                   <button
                     type="button"
                     onClick={() => onToggle(p.i)}
                     aria-label={`${p.n}: ${p.done ? 'этап пройден' : 'этап впереди'}. Отметить`}
                     aria-pressed={p.done}
-                    className="relative z-1 mt-2 grid size-11 shrink-0 place-items-center rounded-xl transition-colors hover:bg-zebra"
+                    className="grid size-11 shrink-0 place-items-center rounded-xl transition-colors hover:bg-zebra"
                   >
                     <Dot done={p.done} />
                   </button>
                 ) : (
-                  <span className="relative z-1 mt-2 grid size-11 shrink-0 place-items-center">
+                  <span className="grid size-11 shrink-0 place-items-center">
                     <Dot done={p.done} />
                   </span>
                 )}
+              </DataCell>
 
-                <div className="min-w-0 flex-1 py-2">
-                  <div className="flex items-start gap-2">
-                    <span className="mt-0.5 w-16 shrink-0">
-                      <InlineText
-                        value={p.time}
-                        onSave={(v) =>
-                          patch(p.i, (x) => {
-                            x.time = v
-                          })
-                        }
-                        can={canEdit}
-                        label="Время"
-                        placeholder="··:··"
-                        className="tnum text-note font-bold text-accent-text"
-                      />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <InlineText
-                        value={p.n}
-                        onSave={(v) =>
-                          patch(p.i, (x) => {
-                            x.n = v
-                          })
-                        }
-                        can={canEdit}
-                        required
-                        label="Название точки"
-                        placeholder="Например, Приозерск: закупка"
-                        className={cn(
-                          'text-body leading-snug font-semibold text-ink',
-                          p.done && 'line-through',
-                        )}
-                      />
-                      {canEdit || p.c ? (
-                        <InlineText
-                          value={p.c}
-                          onSave={(v) =>
-                            patch(p.i, (x) => {
-                              x.c = v
-                            })
-                          }
-                          can={canEdit}
-                          multiline
-                          label="Описание точки"
-                          placeholder="Что здесь важно не забыть"
-                          className="text-note leading-snug text-muted"
-                        />
-                      ) : null}
-                    </span>
-                    <RowActions>
-                      {canEdit ? (
-                        <RowAction
-                          icon={Settings2}
-                          label={`${p.n}: метка, чем добираемся, расстояние`}
-                          onClick={() => onOpen(p.i)}
-                        />
-                      ) : null}
-                      {canEdit ? (
-                        <RowAction
-                          icon={Trash2}
-                          tone="danger"
-                          label={`Убрать точку «${p.n}»`}
-                          onClick={() => drop(p)}
-                        />
-                      ) : null}
-                    </RowActions>
-                  </div>
-
-                  {meta ? (
-                    <p className="tnum mt-1 text-micro leading-snug font-medium text-muted">{meta}</p>
-                  ) : null}
-
-                  <PlaceRow
-                    point={p}
-                    canEdit={canEdit}
-                    onAddr={(v) =>
+              {people.map((who) => (
+                <DataCell key={who.id} align="center" className="px-1">
+                  <Rider
+                    on={!!p.o?.[who.id]}
+                    /* Отметиться может и участник без права правки точки:
+                       это его собственная отметка, за других он не отмечает. */
+                    can={perms.canMark(who.id)}
+                    label={`${who.name} едет точкой «${p.n || 'без названия'}»`}
+                    onSet={(v) =>
                       patch(p.i, (x) => {
-                        x.addr = v
+                        const o = { ...(x.o || {}) }
+                        if (v) o[who.id] = 1
+                        else delete o[who.id]
+                        x.o = o
                       })
                     }
                   />
-                </div>
-              </div>
-            </li>
+                </DataCell>
+              ))}
+
+              <DataCell className="px-1">
+                <RowActions>
+                  {canEdit ? (
+                    <RowAction
+                      icon={Settings2}
+                      label={`${p.n}: метка, чем добираемся, расстояние`}
+                      onClick={() => onOpen(p.i)}
+                    />
+                  ) : null}
+                  {canEdit ? (
+                    <RowAction
+                      icon={Trash2}
+                      tone="danger"
+                      label={`Убрать точку «${p.n}»`}
+                      onClick={() => drop(p)}
+                    />
+                  ) : null}
+                </RowActions>
+              </DataCell>
+            </DataRow>
           )
         })}
-      </ol>
+      </DataTable>
 
       {canEdit && <AddRow label="Добавить точку" onClick={onAdd} />}
     </div>
@@ -254,6 +303,51 @@ function Dot({ done }: { done: boolean }) {
 }
 
 /**
+ * Едет ли человек этой точкой. Пусто — точка общая, поэтому пустая ячейка
+ * не кричит: тире. Одно нажатие ставит отметку, второе снимает.
+ * Права нет — рисуется только состояние, без кнопки (постулат 6).
+ */
+function Rider({
+  on, can, label, onSet,
+}: {
+  on: boolean
+  can: boolean
+  label: string
+  onSet: (v: boolean) => void
+}) {
+  const mark = (
+    <span
+      className={cn(
+        'grid size-6 place-items-center rounded-full border-[1.5px]',
+        on ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
+      )}
+    >
+      {on && <Check size={16} strokeWidth={1.75} aria-hidden />}
+    </span>
+  )
+  if (!can) {
+    return on ? (
+      <span role="img" aria-label={label} className="grid size-11 place-items-center">
+        {mark}
+      </span>
+    ) : (
+      <span className="text-note text-muted">&#8212;</span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSet(!on)}
+      aria-pressed={on}
+      aria-label={`${label}. Отметить`}
+      className="grid size-11 place-items-center rounded-md transition-colors hover:bg-zebra/70 active:scale-[0.98]"
+    >
+      {on ? mark : <span className="text-note text-muted">&#8212;</span>}
+    </button>
+  )
+}
+
+/**
  * Строка места: адрес правится словами прямо здесь, а кнопка справа наводит
  * на точку карту. Координат нет и правка разрешена — вместо кнопки предложение
  * поставить точку на карте.
@@ -269,7 +363,7 @@ function PlaceRow({
   if (!canEdit && !point.addr && !coord) return null
 
   return (
-    <div className="mt-1 flex items-center gap-2">
+    <span className="mt-1 flex w-full items-center gap-2">
       <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
       <span className="min-w-0 flex-1">
         <InlineText
@@ -300,6 +394,6 @@ function PlaceRow({
           поставить на карте
         </button>
       ) : null}
-    </div>
+    </span>
   )
 }

@@ -95,6 +95,8 @@ export function RouteBoard({ S, perms }: Props) {
         <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm lg:max-h-[600px] lg:overflow-y-auto">
           <RouteTiming
             points={S.route}
+            people={S.people}
+            perms={perms}
             canEdit={canEdit}
             onToggle={(id) =>
               patch(id, (p) => {
