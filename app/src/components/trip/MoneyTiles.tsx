@@ -32,11 +32,22 @@ const TILES: TileDef[] = [
 ]
 
 /**
- * Четыре суммы поверх фотографии обложки.
+ * Четыре суммы в панели обложки.
  *
  * Разбор «Как это считается» отсюда убран заказчиком 04.08.2026: «сами расчёты
  * должны быть внизу, в разделе другом». На обложке остались только цифры.
  * Подпись плитки правится тапом по ней же — как вижу, так и редактирую.
+ *
+ * ⛔ Подпись к подписи, число к числу. Заказчик 05.08.2026: «неграмотно
+ * расположены вот эти вот цифры, там 47 тысяч, 21 385, 26 005, 12 305 — всё
+ * на разных уровнях, я не знаю, зачем ты это так сделал». Он прав, и причина
+ * была не в замысле: подписи разной длины («Бензин, лодка, парковка» против
+ * «Продукты») занимают то одну строку, то две, и число под длинной подписью
+ * уезжает ниже соседнего. Лечится сеткой, а не подгонкой: у каждой плитки
+ * ДВА ряда внешней сетки (`row-span-2` + `grid-rows-subgrid`), поэтому все
+ * подписи одного ряда стоят на одной линии и все числа — на одной линии,
+ * сколько бы строк ни занял текст. ⚠️ Обрезать подпись в одну строку нельзя:
+ * своя подпись из документа потерялась бы на глазах у владельца.
  */
 export function MoneyTiles({ S, perms }: { S: State; perms: Perms }) {
   const canEdit = perms.isEditor()
@@ -61,20 +72,22 @@ export function MoneyTiles({ S, perms }: { S: State; perms: Perms }) {
     })
 
   return (
-    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-4">
       {TILES.map((t) => (
-        <div key={t.key} className="min-w-0">
-          <div className="text-micro">
+        <div key={t.key} className="row-span-2 grid min-w-0 grid-rows-subgrid gap-0">
+          <div className="text-micro leading-tight text-muted">
             <InlineText
               value={labelOf(t)}
               onSave={(v) => saveLabel(t, v)}
               can={canEdit}
               label={`Подпись суммы «${t.label}»`}
               placeholder={t.label}
-              className="truncate text-brand-cream/85"
+              className="text-muted"
             />
           </div>
-          <div className="tnum mt-0.5 text-head font-bold text-brand-cream lg:text-title">
+          {/* Число прижато к низу своей клетки: подпись сверху может занять одну
+              строку или две, а числа обязаны стоять на одной линии. */}
+          <div className="tnum self-end pt-1 text-head font-bold text-ink lg:text-title">
             {money(sums[t.key], S.doc)}
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Droplets, Wind } from 'lucide-react'
+import { ChevronDown, CloudSun, Droplets, Wind } from 'lucide-react'
 import type { State } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -48,8 +48,13 @@ function weatherOf(S: State): WeatherData {
 }
 
 /**
- * Лента дней поверх фотографии. Выбранный день отмечен кремовым контуром, а не
- * заливкой: заливка съедает контраст подписи на светлом снимке.
+ * Лента дней в панели обложки.
+ *
+ * ⛔ Над лентой стоит слово «Погода», и убирать его нельзя. Заказчик 05.08.2026:
+ * «там, где погода, у тебя не написано… у тебя конечно прописано там градусы,
+ * но непонятно, что это имеет отношение к погоде». Ряд «10.08 · 22° / 12°» сам
+ * по себе читается как что угодно — от температуры воды до расписания. Подпись
+ * объясняет, ЧТО это, а не как этим пользоваться (постулат 7).
  */
 export function WeatherRow({
   S, open, onOpen,
@@ -63,29 +68,35 @@ export function WeatherRow({
   if (days.length === 0) return null
 
   return (
-    <div className="-mx-1 mt-3 flex gap-1 overflow-x-auto px-1 pb-0.5">
-      {days.map((d) => {
-        const on = open === d.i
-        return (
-          <button
-            key={d.i}
-            type="button"
-            onClick={() => onOpen(on ? null : d.i)}
-            aria-expanded={on}
-            aria-label={`Погода ${d.d}: днём ${d.day}, ночью ${d.night} градусов`}
-            className={cn(
-              'flex min-h-11 shrink-0 flex-col items-center justify-center rounded-md px-2 transition-colors',
-              'hover:bg-brand-cream/12',
-              on && 'bg-brand-cream/12 ring-1 ring-brand-cream/70 ring-inset',
-            )}
-          >
-            <span className="tnum text-micro text-brand-cream/85">{d.d}</span>
-            <span className="tnum text-note font-semibold text-brand-cream">
-              {d.day}° / {d.night}°
-            </span>
-          </button>
-        )
-      })}
+    <div>
+      <div className="flex items-center gap-1.5 text-micro text-muted">
+        <CloudSun size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+        <span>Погода на дни поездки</span>
+      </div>
+      <div className="-mx-1 mt-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+        {days.map((d) => {
+          const on = open === d.i
+          return (
+            <button
+              key={d.i}
+              type="button"
+              onClick={() => onOpen(on ? null : d.i)}
+              aria-expanded={on}
+              aria-label={`Погода ${d.d}: днём ${d.day}, ночью ${d.night} градусов`}
+              className={cn(
+                'flex min-h-11 shrink-0 flex-col items-center justify-center rounded-md px-2 transition-colors',
+                'hover:bg-zebra',
+                on && 'bg-zebra ring-1 ring-line-strong ring-inset',
+              )}
+            >
+              <span className="tnum text-micro text-muted">{d.d}</span>
+              <span className="tnum text-note font-semibold text-ink">
+                {d.day}° / {d.night}°
+              </span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -50,6 +50,41 @@ export function askMap(pointId: string, mode: MapMode, scroll = true): void {
   listeners.forEach((l) => l(r))
 }
 
+/* ─────────── просьба «покажи это место» ─────────── */
+
+/** Куда навести карту: голые координаты, без точки маршрута. */
+export interface LookRequest {
+  lat: number
+  lon: number
+  /** метка времени: по одному и тому же месту можно попросить дважды подряд */
+  at: number
+}
+
+type LookListener = (r: LookRequest) => void
+const lookWatchers = new Set<LookListener>()
+
+/** Подписаться на «наведись сюда». Возвращает отписку. */
+export function onMapLook(l: LookListener): () => void {
+  lookWatchers.add(l)
+  return () => {
+    lookWatchers.delete(l)
+  }
+}
+
+/**
+ * Показать место на карте.
+ *
+ * Заведено под слова заказчика 05.08.2026 про место поездки на обложке: «здесь
+ * при нажатии нужно не только название выбрать, но и можно точку показать.
+ * Участники могут просмотреть, что это такое. Менять они не смогут». Просьба
+ * идёт от координат, а не от точки маршрута: главное место поездки живёт
+ * в `trip.places`, точкой маршрута оно не является.
+ */
+export function askMapLook(lat: number, lon: number): void {
+  const r: LookRequest = { lat, lon, at: Date.now() }
+  lookWatchers.forEach((l) => l(r))
+}
+
 /* ─────────── обратный ход: карта → лента ─────────── */
 
 /** Какую точку карта просит подсветить в ленте. */

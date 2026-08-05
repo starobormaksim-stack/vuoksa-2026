@@ -8,7 +8,7 @@ import type { Perms } from '@/lib/perm'
 import { update, touch, remove } from '@/store'
 import { hasGoogleKey, onGoogleAuthFail } from '@/lib/gmaps'
 import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
-import { focusInList, onMapRequest, type MapRequest } from '@/lib/mapfocus'
+import { focusInList, onMapLook, onMapRequest, type MapRequest } from '@/lib/mapfocus'
 import { coordLabel, mapCenter, mapPoints } from '@/components/road/roadx'
 import { Btn } from '@/components/flops'
 import { cn } from '@/lib/utils'
@@ -20,12 +20,16 @@ import { MapPointCard } from './MapPointCard'
 import { leafletDash, threads, type Thread } from './marks'
 
 /**
- * Карта поездки — левая половина блока «Маршрут» в «Дороге»
- * (см. RouteBoard.tsx: карта и лента точек стоят рядом и видны сразу).
+ * Карта поездки — правый из двух блоков раздела «Поездка», рядом с обложкой
+ * (см. `trip/TripSection.tsx`).
  *
- * Карта на всю поездку одна. Раньше она пряталась за вкладкой «На карте», и пока
- * вкладку не нажали, карты не было вовсе — заказчик 04.08.2026 так и сказал:
- * «карты нет». Теперь вкладок нет, карта видна сразу.
+ * Карта на всю поездку одна, и это буквально: второго её экземпляра на странице
+ * нет. Сначала она пряталась за вкладкой «На карте» и не монтировалась, пока
+ * вкладку не нажали, — заказчик 04.08.2026 так и сказал: «карты нет». Потом
+ * стояла в «Дороге» над лентой точек. С 05.08.2026 она наверху страницы:
+ * «карта наверху сразу же, с точками показана… справа такой же блок будет
+ * с изображением карты, вот этой, логистика». В «Дороге» осталась лента точек,
+ * связь с ней двусторонняя и идёт через `lib/mapfocus.ts`.
  *
  * На карте два вида меток, и это разные вещи:
  *   точки маршрута — остановки по пути, кружки с номерами; у точки может быть
@@ -173,6 +177,12 @@ export function TripMap({ S, perms, className }: Props) {
       }),
     [],
   )
+
+  /* ── просьба «покажи это место» с обложки ──
+     Наводим вид и только. Карточку не открываем и точку не заводим: главное
+     место поездки — не точка маршрута, у него нет ни времени, ни техники.
+     Участнику это доступно наравне с владельцем: смотреть можно всем. */
+  useEffect(() => onMapLook((r) => setLookAt({ lat: r.lat, lon: r.lon, at: r.at })), [])
 
   useEffect(() => () => window.clearTimeout(hoverOff.current), [])
 
