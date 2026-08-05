@@ -4,6 +4,8 @@ export const NBSP = ' '
 export const NNBSP = ' '
 export const NDASH = '–'
 export const MDASH = '—'
+/** Разделитель частей подписи: «10 августа · день 1». */
+export const MIDDOT = '·'
 
 /**
  * Число по-русски: дробная часть через запятую, разряды — узкий неразрывный пробел.
@@ -105,6 +107,36 @@ export function fmtRange(a: Date, b: Date): string {
   }
   if (a.getDate() === b.getDate()) return fmtDate(a)
   return `${a.getDate()}${NDASH}${b.getDate()}${NBSP}${MONTHS_GEN[a.getMonth()]}${NBSP}${a.getFullYear()}`
+}
+
+/**
+ * Название дня раскладки по датам поездки: «10 августа · день 1».
+ *
+ * Заказчик 05.08.2026, пункт 6 разбора: «если у тебя календарь здесь 10–14 августа
+ * работает, соответственно везде, где условно эти даты начинают фигурировать, они
+ * появляются при условии, что я их добавляю здесь, в этой обложке». Раскладка —
+ * ровно то место, где даты «начинают фигурировать»: до этого их приходилось
+ * вписывать в каждый день руками второй раз.
+ *
+ * `idx` — порядковый номер дня, считая с нуля.
+ */
+export function autoDayTitle(startIso: string, idx: number): string {
+  const a = new Date(startIso)
+  if (Number.isNaN(a.getTime())) return ''
+  const d = new Date(a.getFullYear(), a.getMonth(), a.getDate() + idx)
+  return `${d.getDate()}${NBSP}${MONTHS_GEN[d.getMonth()]}${NBSP}${MIDDOT}${NBSP}день${NBSP}${idx + 1}`
+}
+
+/**
+ * Похоже ли название дня на выданное автоматом («10 августа · день 3»).
+ *
+ * Нужно, чтобы смена дат в обложке переписала унаследованные названия и НЕ тронула
+ * то, что человек назвал сам («День рыбалки»). Пробелы принимаем любые: в боевом
+ * документе стоят обычные, а автомат ставит неразрывные.
+ */
+export function isAutoDayTitle(t: string): boolean {
+  const s = t.trim().replace(/[  ]/g, ' ')
+  return new RegExp(`^\\d{1,2} (?:${MONTHS_GEN.join('|')})(?: · день \\d+)?$`, 'i').test(s)
 }
 
 /** Начало суток локального времени. */

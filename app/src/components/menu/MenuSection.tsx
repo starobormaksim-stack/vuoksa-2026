@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { Check, ChevronDown, Plus, Trash2, Utensils } from 'lucide-react'
+import { Check, Plus, Trash2, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MenuDay, MenuDish } from '@/lib/types'
 import { readTrip, touch, useTrip } from '@/store'
 import {
-  AddRow, EmptyState, InlineText, RowAction, RowActions, SectionHead, useIsDesktop,
+  AddRow, DataCell, DataHead, DataRow, DataTable, EmptyState, Group, InlineText,
+  newTableScroll, RowAction, RowActions, SectionHead, useIsDesktop,
 } from '@/components/flops'
+import { autoDayTitle } from '@/format'
 import { cn } from '@/lib/utils'
 
 /**
@@ -14,6 +16,19 @@ import { cn } from '@/lib/utils'
  * Эталон — лист «Меню» таблицы заказчика: день заголовком («10 АВГУСТА · ДЕНЬ 1 ·
  * обедо-ужин»), под ним пронумерованные блюда, у каждого название и «сколько»
  * текстом («1 уп. хлеба, 2 уп. паштета, 100 г салями»).
+ *
+ * ⛔ Форма — та же, что у «Сборов», «Закупки» и «Маршрута» (урок У-54, слово
+ * заказчика 05.08.2026: «слева столбец вещей, справа столбцы… чтобы единообразие
+ * было»). День — раскрывающаяся группа `Group`, блюда — `DataTable` с липкой
+ * колонкой названия и прокруткой вбок внутри блока. Прежние карточки дней
+ * плиткой «3 в ряд» были пятой формой списка в сервисе и убраны: раскладка
+ * из трёх узких столбцов не читается как таблица и ни на что в сервисе
+ * не похожа.
+ *
+ * ⛔ Столбцов людей здесь НЕТ, и заводить их нельзя: заказчик 05.08.2026 на прямой
+ * вопрос ответил, что отметка «кто готовит» и «кто несёт продукты» в раскладке
+ * не нужна. Специфика раздела — своя колонка «Сколько брать»: в таблице заказчика
+ * это отдельный столбец, а не приписка под названием.
  *
  * ⚠️ Шторки отсюда убраны целиком (решение заказчика 04.08.2026: «мне не нужен
  * поп-ап, в котором всё написано; это прямо вот здесь, в этой таблице уже должно
@@ -41,6 +56,9 @@ export function MenuSection() {
    * в правке и она обведена, чтобы было видно, куда вводить.
    */
   const [fresh, setFresh] = useState<string | null>(null)
+
+  /* Пролистав вбок один день, человек ждёт того же от соседних — как в «Сборах». */
+  const scroll = useRef(newTableScroll())
 
   /**
    * Разовая миграция при первом чтении раздела, без потери данных:
@@ -132,7 +150,10 @@ export function MenuSection() {
     const id = 'd' + Date.now().toString(36)
     update((s) => {
       s.menu = s.menu ?? []
-      s.menu.push({ i: id, t: '', sub: '', done: false, dishes: [], ua: Date.now() })
+      /* Дата дня берётся из дат поездки, а не вписывается руками (пункт 6 разбора).
+         Дат нет вовсе — день заводится безымянным, как раньше. */
+      const t = autoDayTitle(s.trip.start, s.menu.length)
+      s.menu.push({ i: id, t, sub: '', done: false, dishes: [], ua: Date.now() })
     })
     setOpen((o) => ({ ...o, [id]: true }))
     setFresh(id)
@@ -167,25 +188,24 @@ export function MenuSection() {
           />
         </div>
       ) : (
-        /* Десктоп: дни плиткой 3 в ряд — раскладка читается целиком, как на листе. */
-        <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
-          {days.map((day, idx) => (
-            <DayCard
-              key={day.i}
-              day={day}
-              canEdit={canEdit}
-              open={isOpen(day, idx)}
-              onToggle={() => setOpen((o) => ({ ...o, [day.i]: !isOpen(day, idx) }))}
-              fresh={fresh}
-              onPatch={(f) => patchDay(day.i, f)}
-              onFreshDayEnd={() => finishFreshDay(day.i)}
-              onFreshDishEnd={(id) => finishFreshDish(day.i, id)}
-              onAddDish={(at) => addDish(day.i, at)}
-              onToggleDish={(id) => toggleDish(day.i, id)}
-              onDelDish={(id, dish) => delDish(day.i, id, dish)}
-            />
-          ))}
-        </div>
+        days.map((day, idx) => (
+          <DayCard
+            key={day.i}
+            day={day}
+            canEdit={canEdit}
+            open={isOpen(day, idx)}
+            onToggle={() => setOpen((o) => ({ ...o, [day.i]: !isOpen(day, idx) }))}
+            fresh={fresh}
+            sync={scroll}
+            autoTitle={autoDayTitle(S.trip.start, idx)}
+            onPatch={(f) => patchDay(day.i, f)}
+            onFreshDayEnd={() => finishFreshDay(day.i)}
+            onFreshDishEnd={(id) => finishFreshDish(day.i, id)}
+            onAddDish={(at) => addDish(day.i, at)}
+            onToggleDish={(id) => toggleDish(day.i, id)}
+            onDelDish={(id, dish) => delDish(day.i, id, dish)}
+          />
+        ))
       )}
     </div>
   )
@@ -217,6 +237,24 @@ function endFreshWhenLeft(box: RefObject<HTMLElement | null>, done: () => void) 
   }
 }
 
+/**
+ * То же самое для строки блюда, но искать её надо по метке `data-hit`, а не по ref.
+ *
+ * ⚠️ Причина ровно в переезде на матрицу: название и «сколько» лежат теперь
+ * в РАЗНЫХ ячейках строки, и одним ref их не накрыть. Ref на первую ячейку
+ * считал бы переход во вторую уходом — и новая, ещё пустая строка исчезала бы
+ * ровно в тот миг, когда человек тянется вписать в неё количество.
+ */
+function endFreshWhenLeftRow(id: string, done: () => void) {
+  return () => {
+    window.setTimeout(() => {
+      const active = document.activeElement
+      if (active instanceof Element && active.closest(`[data-hit="${CSS.escape(id)}"]`)) return
+      done()
+    }, 0)
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    День раскладки
    ────────────────────────────────────────────────────────────────────────── */
@@ -227,6 +265,10 @@ interface DayProps {
   open: boolean
   onToggle: () => void
   fresh: string | null
+  /** сцепка прокрутки вбок со всеми остальными днями раздела */
+  sync: RefObject<ReturnType<typeof newTableScroll>>
+  /** название дня по датам поездки — подсказка в пустом поле (пункт 6 разбора) */
+  autoTitle: string
   onPatch: (f: (d: MenuDay) => void) => void
   onFreshDayEnd: () => void
   onFreshDishEnd: (id: string) => void
@@ -236,25 +278,34 @@ interface DayProps {
 }
 
 /**
- * Карточка дня. Заголовок — не кнопка целиком: название и приём пищи в нём
- * правятся на месте, а сворачивает день отдельный значок справа. Полоса под
- * заголовком показывает долю приготовленного — тот же приём, что в «Сборах».
+ * День раскладки — группа той же формы, что раздел «Сборов»: название и приём
+ * пищи правятся прямо в заголовке (`titleEdit`), полоса под ним показывает долю
+ * приготовленного, тело — таблица блюд.
+ *
+ * ⛔ Своей вёрстки заголовка здесь больше нет: она повторяла `Group` руками
+ * и разъезжалась с ним при каждой правке общего оформления (постулат 3).
  */
 function DayCard({
-  day, canEdit, open, onToggle, fresh, onPatch,
+  day, canEdit, open, onToggle, fresh, sync, autoTitle, onPatch,
   onFreshDayEnd, onFreshDishEnd, onAddDish, onToggleDish, onDelDish,
 }: DayProps) {
   const dishes = day.dishes ?? []
   const done = dishes.filter((x) => x.done).length
-  const pct = dishes.length > 0 ? Math.round((done / dishes.length) * 100) : 0
   const isFresh = fresh === day.i
   const head = useRef<HTMLDivElement>(null)
   const endFresh = endFreshWhenLeft(head, onFreshDayEnd)
 
+  /* Две доли рядом — значит наименьшая ширина сетки задаётся числом, иначе доля
+     при вычислении «по содержимому» раздувается до max-content (урок У-74).
+     Сумма минимумов мобильной раскладки: 9 + 9 + 4,5 + 6,5. */
+  const cols =
+    'minmax(var(--ncol),1fr) minmax(var(--qcol),1fr) var(--dcol) var(--acol)'
+
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div ref={head} className="relative flex min-h-14 items-center gap-2 py-1.5 pr-2 pl-4">
-        <div className="min-w-0 flex-1">
+    <Group
+      title={day.t || autoTitle || 'День без названия'}
+      titleEdit={
+        <div ref={head} className="min-w-0 flex-1">
           <InlineText
             value={day.t}
             onSave={(v) => onPatch((d) => { d.t = v })}
@@ -262,7 +313,9 @@ function DayCard({
             autoEdit={isFresh}
             can={canEdit}
             label="Название дня"
-            placeholder={canEdit ? '13 августа · день 4' : undefined}
+            /* Подсказка — та самая дата, которая получится из дат поездки:
+               человек видит, что вписывать её руками не нужно (пункт 6 разбора). */
+            placeholder={canEdit ? autoTitle || '13 августа · день 4' : undefined}
             className="text-body font-[650] text-ink"
           />
           <InlineText
@@ -275,78 +328,83 @@ function DayCard({
             className="text-note text-muted"
           />
         </div>
-
-        {dishes.length > 0 && (
+      }
+      done={done}
+      total={dishes.length}
+      badge={
+        dishes.length > 0 ? (
           <span className="tnum shrink-0 text-note font-semibold text-muted">
-            {done} / {dishes.length}
+            приготовлено: {done} из {dishes.length}
           </span>
-        )}
+        ) : undefined
+      }
+      open={open}
+      onToggle={onToggle}
+    >
+      {dishes.length === 0 ? (
+        <EmptyState
+          icon={Utensils}
+          title="Блюд пока нет"
+          text="В этот день пока ничего не готовим"
+          action={canEdit ? { label: 'Добавить блюдо', onClick: () => onAddDish(0) } : undefined}
+        />
+      ) : (
+        <>
+          <DataTable
+            cols={cols}
+            minW="29rem"
+            label={`Раскладка: ${day.t || 'день без названия'}`}
+            sync={sync}
+            className={cn(
+              '[--acol:6.5rem] [--dcol:4.5rem] [--ncol:9rem] [--qcol:9rem]',
+              'lg:[--ncol:16rem] lg:[--qcol:20rem]',
+            )}
+          >
+            <DataHead>
+              <DataCell head sticky align="left">
+                Блюдо
+              </DataCell>
+              <DataCell head align="left">
+                Сколько брать
+              </DataCell>
+              <DataCell head>Готово</DataCell>
+              <DataCell head className="px-1" />
+            </DataHead>
 
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          aria-label={open ? 'Свернуть день' : 'Развернуть день'}
-          className="grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
-        >
-          <ChevronDown
-            size={20}
-            strokeWidth={1.75}
-            aria-hidden
-            className={cn('transition-transform', open && 'rotate-180')}
-          />
-        </button>
-
-        {/* Полоса под заголовком: без блюд это просто линия, отделяющая заголовок
-            от списка, с блюдами — она же доля приготовленного. */}
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-line" aria-hidden>
-          {dishes.length > 0 && (
-            <span className="block h-full bg-accent transition-[width]" style={{ width: `${pct}%` }} />
-          )}
-        </span>
-      </div>
-
-      {open &&
-        (dishes.length === 0 ? (
-          <EmptyState
-            icon={Utensils}
-            title="Блюд пока нет"
-            text="В этот день пока ничего не готовим"
-            action={canEdit ? { label: 'Добавить блюдо', onClick: () => onAddDish(0) } : undefined}
-          />
-        ) : (
-          <div role="list">
             {dishes.map((dish, k) => {
               /* до миграции у блюда ещё нет i — считаем его тем же ключом, что и она */
               const id = dish.i ?? `${day.i}s${k}`
               return (
-                  <DishRow
-                    key={id}
-                    dish={dish}
-                    id={id}
-                    num={k + 1}
-                    zebra={k % 2 === 1}
-                    canEdit={canEdit}
-                    fresh={fresh === id}
-                    onFreshEnd={() => onFreshDishEnd(id)}
-                    onPatch={(f) =>
-                      onPatch((d) => {
-                        const x = d.dishes?.find((y) => y.i === id)
-                        if (x) f(x)
-                      })
-                    }
-                    onToggle={() => onToggleDish(id)}
-                    onAddBelow={() => onAddDish(k + 1)}
-                    onDelete={() => onDelDish(id, dish)}
-                  />
+                <DishRow
+                  key={id}
+                  dish={dish}
+                  id={id}
+                  num={k + 1}
+                  zebra={k % 2 === 1}
+                  canEdit={canEdit}
+                  fresh={fresh === id}
+                  onFreshEnd={() => onFreshDishEnd(id)}
+                  onPatch={(f) =>
+                    onPatch((d) => {
+                      const x = d.dishes?.find((y) => y.i === id)
+                      if (x) f(x)
+                    })
+                  }
+                  onToggle={() => onToggleDish(id)}
+                  onAddBelow={() => onAddDish(k + 1)}
+                  onDelete={() => onDelDish(id, dish)}
+                />
               )
             })}
-            {canEdit && (
+          </DataTable>
+          {canEdit && (
+            <div className="border-t border-line">
               <AddRow label="Добавить блюдо" onClick={() => onAddDish(dishes.length)} />
-            )}
-          </div>
-        ))}
-    </section>
+            </div>
+          )}
+        </>
+      )}
+    </Group>
   )
 }
 
@@ -369,45 +427,45 @@ interface DishProps {
 }
 
 /**
- * Строка блюда: отметка «приготовили», номер как в таблице заказчика, название
- * и «сколько» — оба правятся на месте. «Сколько» набирается несколькими строками:
- * это длинный текст, а не число («0,5 кг помидоров, 0,5 кг огурцов, 1 уп. салата»).
+ * Строка блюда в матрице: слева закреплены номер и название, рядом «сколько
+ * брать», справа отметка «приготовили» и действия строки.
+ *
+ * «Сколько» набирается несколькими строками: это длинный текст, а не число
+ * («0,5 кг помидоров, 0,5 кг огурцов, 1 уп. салата»), — потому и стоит своей
+ * колонкой, как в таблице заказчика.
  */
 function DishRow({
   dish, id, num, zebra, canEdit, fresh, onFreshEnd, onPatch, onToggle, onAddBelow, onDelete,
 }: DishProps) {
-  const row = useRef<HTMLDivElement>(null)
-  const endFresh = endFreshWhenLeft(row, onFreshEnd)
+  const endFresh = endFreshWhenLeftRow(id, onFreshEnd)
+  const bg = zebra ? 'zebra' : 'surface'
 
   return (
-    <div
-      ref={row}
-      role="listitem"
-      data-hit={id}
-      className={cn(
-        /* `group` — чтобы действия строки проявлялись при наведении на неё целиком. */
-        'group relative flex items-start gap-1 border-t border-line/60 py-1.5 pr-1 pl-2 transition-colors',
-        zebra ? 'bg-zebra' : 'bg-surface',
-        fresh && 'ring-2 ring-accent ring-inset',
-      )}
-    >
-      <DoneMark done={!!dish.done} can={canEdit} name={dish.n} onToggle={onToggle} />
+    <DataRow zebra={zebra} fresh={fresh} dataHit={id}>
+      <DataCell sticky bg={bg} align="left">
+        <span className={cn('flex w-full items-baseline gap-2', dish.done && 'opacity-70')}>
+          <span className="tnum w-4 shrink-0 text-right text-micro text-muted" aria-hidden>
+            {num}
+          </span>
+          <span className="min-w-0 flex-1">
+            <InlineText
+              value={dish.n}
+              onSave={(v) => onPatch((d) => { d.n = v })}
+              onEditEnd={fresh ? endFresh : undefined}
+              autoEdit={fresh}
+              can={canEdit}
+              label="Название блюда"
+              placeholder={canEdit ? 'Например, уха' : undefined}
+              className={cn(
+                'text-body leading-snug font-semibold text-ink',
+                dish.done && 'line-through',
+              )}
+            />
+          </span>
+        </span>
+      </DataCell>
 
-      <span className="tnum w-4 shrink-0 pt-3 text-right text-micro text-muted" aria-hidden>
-        {num}
-      </span>
-
-      <div className={cn('min-w-0 flex-1 py-1.5 pl-1', dish.done && 'opacity-70')}>
-        <InlineText
-          value={dish.n}
-          onSave={(v) => onPatch((d) => { d.n = v })}
-          onEditEnd={fresh ? endFresh : undefined}
-          autoEdit={fresh}
-          can={canEdit}
-          label="Название блюда"
-          placeholder={canEdit ? 'Например, уха' : undefined}
-          className={cn('text-body font-semibold text-ink', dish.done && 'line-through')}
-        />
+      <DataCell align="left" className={cn(dish.done && 'opacity-70')}>
         <InlineText
           value={dish.q}
           onSave={(v) => onPatch((d) => { d.q = v })}
@@ -416,19 +474,25 @@ function DishRow({
           multiline
           label="Сколько брать продуктов"
           placeholder={canEdit ? 'сколько брать' : undefined}
-          className="text-note text-muted"
+          className="text-note leading-snug text-muted"
         />
-      </div>
+      </DataCell>
 
-      <RowActions>
-        {canEdit ? (
-          <RowAction icon={Plus} label="Вставить блюдо ниже" onClick={onAddBelow} />
-        ) : null}
-        {canEdit ? (
-          <RowAction icon={Trash2} tone="danger" label="Удалить блюдо" onClick={onDelete} />
-        ) : null}
-      </RowActions>
-    </div>
+      <DataCell>
+        <DoneMark done={!!dish.done} can={canEdit} name={dish.n} onToggle={onToggle} />
+      </DataCell>
+
+      <DataCell className="px-1">
+        <RowActions>
+          {canEdit ? (
+            <RowAction icon={Plus} label="Вставить блюдо ниже" onClick={onAddBelow} />
+          ) : null}
+          {canEdit ? (
+            <RowAction icon={Trash2} tone="danger" label="Удалить блюдо" onClick={onDelete} />
+          ) : null}
+        </RowActions>
+      </DataCell>
+    </DataRow>
   )
 }
 

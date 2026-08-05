@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Car, ChevronRight, Footprints, MapPinned, Sailboat, Tent, WifiOff, type LucideIcon,
+  Car, ChevronRight, Footprints, MapPinned, Sailboat, Tent, TriangleAlert, WifiOff,
+  type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { LegMode, RoutePoint, State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update, touch, remove } from '@/store'
-import { hasGoogleKey, onGoogleAuthFail } from '@/lib/gmaps'
+import { hasGoogleKey, onGoogleAuthFail, retryGoogle } from '@/lib/gmaps'
 import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
 import { focusInList, onMapLook, onMapRequest, type MapRequest } from '@/lib/mapfocus'
 import { coordLabel, mapCenter, mapPoints } from '@/components/road/roadx'
@@ -104,6 +105,19 @@ function failWhy(code: string): string | null {
   return 'не удалось загрузить карту Google'
 }
 
+/**
+ * Что человек может с этим сделать. Отдельно от причины: причина объясняет,
+ * а это подсказывает следующий шаг. Заказчик 05.08.2026 видел OpenStreetMap
+ * и не знал, почему, — потому что причина стояла подписью в самом мелком кегле
+ * под картой и читалась как украшение (урок У-76).
+ */
+function failFix(code: string): string {
+  if (code === 'auth') return 'Ключ карты не принят этим адресом — это чинится в настройках ключа.'
+  if (code === 'timeout') return 'Скорее всего медленная сеть. Нажмите «Попробовать снова».'
+  if (code.startsWith('import-failed:')) return 'Докачалось не всё. Нажмите «Попробовать снова».'
+  return 'Google не открылся: сеть, блокировщик или расширение браузера. Нажмите «Попробовать снова».'
+}
+
 /** Главное место поездки: та самая «конечная». Пусто — его ещё не отметили. */
 function mainPlace(S: State): TripPlace | null {
   const list = S.trip.places ?? []
@@ -135,6 +149,12 @@ export function TripMap({ S, perms, className }: Props) {
    * Хранится не «да/нет», а код причины: без него откат виден, а объяснить его нечем.
    */
   const [googleDead, setGoogleDead] = useState<string | null>(null)
+  /**
+   * Номер попытки поднять Google. Меняется кнопкой «Попробовать снова» и служит
+   * ключом компонента: карта создаётся один раз за монтирование, и без смены ключа
+   * повтор был бы кнопкой, которая ничего не делает.
+   */
+  const [googleTry, setGoogleTry] = useState(0)
   /** открыт мастер «Разметить маршрут» */
   const [wizard, setWizard] = useState(false)
   /** метка «подгони вид под точки заново»: после разметки маршрут вылезает за экран */
@@ -220,7 +240,7 @@ export function TripMap({ S, perms, className }: Props) {
    * Записать конечную точку поездки. Место может быть ещё не заведено вовсе —
    * тогда собираем его из старого поля trip.place, чтобы не потерять название.
    */
-  const setDest = (lat: number, lon: number) =>
+  const setDest = (lat: number, lon: number) => {
     update((s) => {
       if (!s.trip.places) s.trip.places = []
       const list = s.trip.places
@@ -232,7 +252,25 @@ export function TripMap({ S, perms, className }: Props) {
       place.main = true
       place.lat = lat
       place.lon = lon
+      /* Точку переставили — прежний адрес относится к прежнему месту. */
+      place.addr = ''
     })
+    /* Пункт 6 разбора: «адрес места, точки приезда… везде автоматически
+       показывается». Значит и заводиться он должен сам, тем же геокодером,
+       что подписывает точки маршрута. Не ответил — место живёт с названием,
+       как раньше: неудача чтения ничего не ломает. */
+    void guessDestAddr(lat, lon)
+  }
+
+  /** Спросить адрес конечной точки и подписать её. Молча не отказываем — см. ниже. */
+  const guessDestAddr = async (lat: number, lon: number) => {
+    const g = await reversePlace(lat, lon)
+    if (!g?.addr) return
+    update((s) => {
+      const place = s.trip.places?.find((p) => p.main) ?? s.trip.places?.[0]
+      if (place) place.addr = g.addr
+    })
+  }
 
   /** Открыть карточку точки насовсем (до закрытия или тапа по другой метке). */
   const openCard = (id: string, isFresh = false) => {
@@ -466,8 +504,37 @@ export function TripMap({ S, perms, className }: Props) {
         <div className="flex h-full flex-col">
           <MapSearch near={center} onPick={onPick} hint={searchHint} />
 
+          {/* Откат на чужую карту — это отказ, а не мелочь оформления, и говорить
+              о нём надо в полный голос (постулат 5). До 05.08.2026 причина стояла
+              подписью в самом мелком кегле под картой, и заказчик читал происходящее
+              как «опять сделал OpenStreetMap вместо Google» — урок У-76. */}
+          {osmWhy && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-zebra px-3 py-2">
+              <TriangleAlert size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
+              <p className="min-w-0 flex-1 text-note text-ink">
+                <span className="font-semibold">Карта Google не открылась.</span>{' '}
+                {failFix(googleDead as string)} Пока показываем OpenStreetMap.
+              </p>
+              <Btn
+                tone="secondary"
+                className="shrink-0"
+                onClick={() => {
+                  retryGoogle()
+                  setGoogleDead(null)
+                  setGoogleTry((n) => n + 1)
+                }}
+              >
+                Попробовать снова
+              </Btn>
+            </div>
+          )}
+
           {useGoogle ? (
-            <GoogleRouteMap {...mapProps} onFail={(reason) => setGoogleDead(reason)} />
+            <GoogleRouteMap
+              key={googleTry}
+              {...mapProps}
+              onFail={(reason) => setGoogleDead(reason)}
+            />
           ) : (
             <OsmRouteMap {...mapProps} />
           )}

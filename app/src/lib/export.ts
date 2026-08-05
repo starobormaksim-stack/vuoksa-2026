@@ -73,12 +73,24 @@ function noteRows(obj: Record<string, unknown>, nt: Notes | undefined, width: nu
 
 /* ─────────── Сводка ─────────── */
 
+/** Адрес точки приезда словами; пусто — его ещё не заводили. */
+function destAddr(S: State): string {
+  const list = S.trip.places ?? []
+  const main = list.find((p) => p.main) ?? list[0]
+  const addr = main?.addr?.trim() ?? ''
+  return addr ? `Приезд: ${addr}` : ''
+}
+
 function sheetSummary(S: State): Sheet {
   const c = calcAll(S)
   const rows: Row[] = [
     [title(S.trip.title || 'Поездка')],
     [note(S.trip.sub || '')],
     [note([S.trip.dates, S.trip.route].filter(Boolean).join(' · '))],
+    /* Адрес точки приезда — пункт 6 разбора: заводится один раз на карте
+       и появляется везде, где о поездке рассказывают. Выгрузка — как раз такое
+       место: её открывают в дороге, когда сети уже нет. Пусто — строки нет. */
+    [note(destAddr(S))],
     gap,
     [sect('КЛЮЧЕВЫЕ ЦИФРЫ')],
     headRow('Наименование', 'Значение', 'Ед.', 'Комментарий'),

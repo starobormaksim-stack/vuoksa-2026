@@ -289,7 +289,10 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
       }
     })
     if ((b.ua || 0) > (a.ua || 0)) {
-      e += fields(a, b, ['n', 'c', 'sec', 'by', 'as', 'ord'])
+      /* `url`, `img`, `pat` — ссылка на страницу товара, её фотография и время
+         последнего снятия цены (см. ProductLink в types.ts). Простые значения,
+         значит идут обычным `fields`; пустые — сегодняшнее поведение. */
+      e += fields(a, b, ['n', 'c', 'sec', 'by', 'as', 'ord', 'url', 'img', 'pat'])
       e += jsonFields(a, b, ['o', 'q', 'oby'])
       a.ua = b.ua
     }
@@ -311,6 +314,9 @@ export function mergeInto(S: State, inc: Partial<State> | null | undefined): Mer
       e += fields(a, b, [
         'n', 'q', 'pr', 'prf', 'st', 'u', 'uid', 'who', 'sec', 'c', 'by', 'as', 'qby',
         'payer', 'ord',
+        /* `url`, `img`, `pat` — ссылка на страницу товара, её фотография и время
+           последнего снятия цены (см. ProductLink в types.ts). */
+        'url', 'img', 'pat',
       ])
       /* `o` — кто сколько покупает (id человека → количество). Появилось
          04.08.2026 вместе с отметками покупателей в таблице закупки; без слияния
@@ -432,15 +438,25 @@ export function normalizeDoc(S: State): State {
     if (!Array.isArray(d[k])) d[k] = []
   })
   if (typeof S.updatedAt === 'number') S.updatedAt = new Date(S.updatedAt).toISOString()
+  /* `url` и `img` — пустая строка, `pat` — ноль: это ровно сегодняшнее поведение
+     позиции без ссылки на товар (см. ProductLink в types.ts). Умолчание нужно
+     затем же, зачем оно у остальных полей: без него `fields()` сравнивал бы
+     undefined с пустой строкой и переписывал бы поле на каждом слиянии. */
   S.gear.forEach((g) => {
     if (!g.o) g.o = {}
     if (!g.q) g.q = {}
     if (!g.oby) g.oby = {}
     if (!g.s) g.s = {}
+    if (g.url == null) g.url = ''
+    if (g.img == null) g.img = ''
+    g.pat = g.pat || 0
     g.ua = g.ua || 0
   })
   S.buy.forEach((p) => {
     if (p.who == null) p.who = ''
+    if (p.url == null) p.url = ''
+    if (p.img == null) p.img = ''
+    p.pat = p.pat || 0
     p.ua = p.ua || 0
   })
   S.route.forEach((r) => {

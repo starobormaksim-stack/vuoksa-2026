@@ -17,6 +17,7 @@ export { SectionHead, AddRow } from './SectionHead'
 export type { LegendItem } from './SectionHead'
 export { PhotoCropSheet, usePhotoPick } from './PhotoSheet'
 export { PersonMark, toneStyle } from './PersonMark'
+export { ProductLink } from './ProductLink'
 /* Правка на месте — фундамент переделки 04.08.2026 (шторки заказчик отменил). */
 export {
   InlineText, InlineNum, InlinePick, numText, PersonHead, RowActions, RowAction,

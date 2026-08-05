@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
-import { fmtRange, withDate } from '@/format'
+import { autoDayTitle, fmtRange, isAutoDayTitle, withDate } from '@/format'
+import { touch } from '@/store'
 import { SectionHead } from '@/components/flops'
 import { TripMap } from '@/components/map/TripMap'
 import { TripCover } from './TripCover'
@@ -30,16 +31,31 @@ export function TripSection({ S, perms }: { S: State; perms: Perms }) {
   const canEdit = perms.isEditor()
 
   const saveDates = (a: Date, b: Date) => {
+    const start = withDate(S.trip.start, a, '07:30:00')
     update((s) => ({
       ...s,
       trip: {
         ...s.trip,
-        start: withDate(s.trip.start, a, '07:30:00'),
+        start,
         end: withDate(s.trip.end, b, '18:00:00'),
         dates: fmtRange(a, b),
         datesAuto: true,
       },
     }))
+    /* Пункт 6 разбора: даты заводятся ОДИН раз, здесь, и дальше появляются сами.
+       Раскладка — единственное место, где их приходилось вписывать второй раз
+       руками («10 августа · день 1»). Переписываем только те названия дней,
+       которые выданы автоматом или пусты: «День рыбалки» человек назвал сам,
+       и трогать его нельзя (постулат 4 — ничего из данных не выбрасывать). */
+    update((s) => {
+      for (const [idx, d] of (s.menu ?? []).entries()) {
+        if (d.t.trim() && !isAutoDayTitle(d.t)) continue
+        const next = autoDayTitle(start, idx)
+        if (!next || next === d.t) continue
+        d.t = next
+        touch(d)
+      }
+    })
     setCalOpen(false)
   }
 

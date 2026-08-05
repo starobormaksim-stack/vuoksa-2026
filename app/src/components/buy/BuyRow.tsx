@@ -3,7 +3,10 @@ import { Check, Plus, Trash2 } from 'lucide-react'
 import type { Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { counted, sumOf, unitOf } from '@/lib/buyx'
-import { DataCell, DataRow, InlineNum, InlineText, RowAction, RowActions } from '@/components/flops'
+import {
+  DataCell, DataRow, InlineNum, InlineText, ProductLink, RowAction, RowActions,
+} from '@/components/flops'
+import { saveNameOrUrl } from '@/lib/producturl'
 import { SpendShareEdit } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
 import {
@@ -72,13 +75,31 @@ export function BuyRow({
               required={!fresh}
               autoEdit={fresh}
               placeholder={fresh ? 'Что купить' : undefined}
+              /* Вставили в название адрес — он уезжает в `url`, а названием
+                 остаётся имя сайта, пока человек не напишет своё. Обычный текст
+                 ведёт себя ровно как раньше (см. lib/producturl.ts). */
               onSave={(v) => {
                 saved.current = true
-                onPatch((x) => { x.n = v })
+                onPatch((x) => { saveNameOrUrl(x, v) })
               }}
               onEditEnd={fresh ? () => onFreshEnd(saved.current) : undefined}
               className="text-body font-semibold text-ink"
             />
+
+            {p.url ? (
+              <ProductLink
+                url={p.url}
+                img={p.img}
+                canEdit={canEdit}
+                onClear={() =>
+                  onPatch((x) => {
+                    x.url = ''
+                    x.img = ''
+                    x.pat = 0
+                  })
+                }
+              />
+            ) : null}
             <InlineText
               value={descText(p, S)}
               can={canEdit}

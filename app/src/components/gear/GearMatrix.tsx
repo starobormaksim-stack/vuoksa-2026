@@ -7,8 +7,9 @@ import {
 } from '@/lib/gearx'
 import {
   DataCell, DataHead, DataRow, DataTable, InlineNum, InlineText, PersonHead,
-  RowAction, RowActions, StatusDial, numText, type TableScroll,
+  ProductLink, RowAction, RowActions, StatusDial, numText, type TableScroll,
 } from '@/components/flops'
+import { saveNameOrUrl } from '@/lib/producturl'
 import { NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 
@@ -140,7 +141,11 @@ export function GearMatrix({
               <DataCell sticky bg={bg} align="left">
                 <InlineText
                   value={g.n}
-                  onSave={(v) => patch(g.i, (x) => { x.n = v })}
+                  /* Вставили в название адрес — он уезжает в `url`, а названием
+                     остаётся имя сайта, пока человек не напишет своё (заказчик
+                     05.08.2026: «либо вписываю название товара, либо вставляю
+                     ссылку»). Обычный текст ведёт себя ровно как раньше. */
+                  onSave={(v) => patch(g.i, (x) => { saveNameOrUrl(x, v) })}
                   can={canEdit}
                   label="Название вещи"
                   placeholder="Без названия"
@@ -148,6 +153,21 @@ export function GearMatrix({
                   onEditEnd={onFreshDone}
                   className="text-body font-semibold text-ink"
                 />
+
+                {g.url ? (
+                  <ProductLink
+                    url={g.url}
+                    img={g.img}
+                    canEdit={canEdit}
+                    onClear={() =>
+                      patch(g.i, (x) => {
+                        x.url = ''
+                        x.img = ''
+                        x.pat = 0
+                      })
+                    }
+                  />
+                ) : null}
                 <InlineText
                   value={g.c}
                   onSave={(v) => patch(g.i, (x) => { x.c = v })}

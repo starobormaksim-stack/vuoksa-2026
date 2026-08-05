@@ -78,6 +78,8 @@ export function TripCover({ S, perms, onEditDates }: Props) {
   const trip = S.trip
   const canEdit = perms.isEditor()
   const places = tripPlaces(S)
+  /* Адрес берём у главного места — это и есть точка приезда. */
+  const destAddr = (places.find((p) => p.main) ?? places[0])?.addr?.trim() ?? ''
   const dates = datesLabel(trip)
   const days = daysUntil(trip.start)
   const start = new Date(trip.start)
@@ -276,6 +278,18 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Адрес конечной точки словами. Пункт 6 разбора: «адрес места, точки
+              приезда — это и есть финальная точка, которая тоже везде автоматически
+              показывается». Заводится он один раз — геокодером, когда конечную точку
+              ставят на карте, — и правится там же, а здесь только читается: второго
+              места ввода одного и того же быть не должно (У-53). */}
+          {destAddr && (
+            <p className="flex items-start gap-2 text-note text-muted">
+              <TentTree size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1">{destAddr}</span>
+            </p>
           )}
         </div>
 
