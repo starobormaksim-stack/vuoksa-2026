@@ -117,7 +117,13 @@ function DrawerTitle({
     <DrawerPrimitive.Title
       data-slot="drawer-title"
       className={cn(
-        "font-heading text-base font-medium text-foreground",
+        /* ⛔ Кегли ТОЛЬКО из шкалы проекта (12/13/15,5/20/24/32 в index.css).
+           Заводские `text-base` (16) и `text-sm` (14) — чужие числа, и они
+           расползались по всем шторкам сервиса. Замер карточки участника
+           05.08.2026: шесть кеглей, из них 16 и 14 вне шкалы. Заказчик в тот
+           же день: «заходишь в карточку какого-нибудь участника — там столько
+           разновидностей шрифтов, что с ума сойти можно». */
+        "font-heading text-body font-medium text-foreground",
         className
       )}
       {...props}
@@ -132,7 +138,7 @@ function DrawerDescription({
   return (
     <DrawerPrimitive.Description
       data-slot="drawer-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-note text-muted-foreground", className)}
       {...props}
     />
   )

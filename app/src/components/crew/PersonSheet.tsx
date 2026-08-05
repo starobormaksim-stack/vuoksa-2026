@@ -221,7 +221,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
             <div className="text-body leading-snug font-semibold text-ink">
               Карточка только заведена
             </div>
-            <p className="mt-1 text-sm leading-snug text-ink">
+            <p className="mt-1 text-note leading-snug text-ink">
               {missing.length
                 ? `Осталось вписать ${listRu(missing)}. `
                 : 'Всё вписано. '}
@@ -233,7 +233,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
           <div className="mt-4 rounded-2xl bg-accent-soft p-4">
             <div className="flex items-baseline gap-2">
               <span className="tnum text-title leading-none font-bold text-ink">{ready.pct}%</span>
-              <span className="text-sm text-ink">
+              <span className="text-note text-ink">
                 собрано {ready.done} из {ready.total}
               </span>
             </div>
@@ -281,9 +281,9 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
             </Alert>
             <div className="mt-3 flex flex-col gap-2">
               {person.car || person.role ? (
-                <p className="text-sm text-ink">{person.car || person.role}</p>
+                <p className="text-body text-ink">{person.car || person.role}</p>
               ) : null}
-              {person.desc ? <p className="text-sm leading-snug text-muted">{person.desc}</p> : null}
+              {person.desc ? <p className="text-note leading-snug text-muted">{person.desc}</p> : null}
             </div>
           </>
         )}

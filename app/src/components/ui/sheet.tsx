@@ -112,7 +112,8 @@ function SheetTitle({
     <SheetPrimitive.Title
       data-slot="sheet-title"
       className={cn(
-        "font-heading text-base font-medium text-foreground",
+        /* Кегль из шкалы проекта, а не заводской `text-base` — см. drawer.tsx. */
+        "font-heading text-body font-medium text-foreground",
         className
       )}
       {...props}
@@ -127,7 +128,7 @@ function SheetDescription({
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-note text-muted-foreground", className)}
       {...props}
     />
   )
