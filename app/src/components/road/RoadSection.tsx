@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, CircleHelp, MapPinned, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Idea, Rent, Transport } from '@/lib/types'
 import { useTrip, touch } from '@/store'
+import { useAddRequest } from '@/lib/addnew'
+import { jumpToItem } from '@/lib/jump'
 import {
   AddRow, Btn, DataCell, DataRow, DataTable, EmptyState, Group, InlineText,
   RowAction, RowActions, SectionHead,
@@ -136,7 +138,7 @@ export function RoadSection() {
 
   /* ─────────── добавление ─────────── */
 
-  const addTransport = () => {
+  const addTransport = (): string => {
     const id = 'tr' + Date.now().toString(36)
     update((s) => {
       const kind = s.kinds.find((k) => k.i === 'car') ?? s.kinds[0]
@@ -148,9 +150,10 @@ export function RoadSection() {
       })
     })
     setFresh(id)
+    return id
   }
 
-  const addRent = () => {
+  const addRent = (): string => {
     const id = 'rn' + Date.now().toString(36)
     update((s) => {
       s.rent.push({
@@ -160,7 +163,27 @@ export function RoadSection() {
       })
     })
     setFresh(id)
+    return id
   }
+
+  /* Просьбы общего «плюса»: «расчёт с топливом» — это строка техники с расходом,
+     «аренда» — строка аренды. Заводятся теми же руками, что и по строкам
+     «Добавить технику» / «Добавить аренду» внизу расчёта (см. `lib/addnew.ts`). */
+  const askFuel = useAddRequest('fuel')
+  const askRent = useAddRequest('rent')
+  const askRef = useRef({ fuel: askFuel, rent: askRent })
+  useEffect(() => {
+    if (askFuel !== askRef.current.fuel) {
+      askRef.current.fuel = askFuel
+      jumpToItem('road', addTransport())
+    }
+    if (askRent !== askRef.current.rent) {
+      askRef.current.rent = askRent
+      jumpToItem('road', addRent())
+    }
+    /* Справочники видов и цен топлива берутся из этого же рендера. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askFuel, askRent])
 
   const addIdea = () => {
     const id = 'q' + Date.now().toString(36)

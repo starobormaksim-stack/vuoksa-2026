@@ -5,6 +5,7 @@ import { useTrip } from './store'
 import { useTheme } from './theme'
 import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
+import { jumpToItem, setSectionNav } from './lib/jump'
 import { closeTripsList, firstStepPerson } from './lib/trips'
 import { ClosedList } from './components/auth/ClosedList'
 import { OpeningList } from './components/auth/OpeningList'
@@ -64,29 +65,13 @@ function App() {
     () => typeof location !== 'undefined' && /[?&]trips=1/.test(location.search),
   )
 
-  /* Переход из поиска: прокрутить к разделу, дождаться строки и подсветить её.
-     Строка может быть внутри свёрнутой группы или ещё не отрисованной вкладки,
-     поэтому ищем её не один раз, а несколько подряд — и молча сдаёмся, если не нашли. */
-  const jump = useCallback((sectionId: string, itemId: string) => {
-    goTo(sectionId)
-    let tries = 0
-    const tick = () => {
-      const el = document.querySelector<HTMLElement>(`[data-hit="${CSS.escape(itemId)}"]`)
-      if (el) {
-        el.scrollIntoView({ block: 'center' })
-        el.animate(
-          [
-            { background: 'var(--accent-soft)' },
-            { background: 'var(--accent-soft)' },
-            { background: 'transparent' },
-          ],
-          { duration: 2000, easing: 'ease-out' },
-        )
-        return
-      }
-      if (++tries < 12) window.setTimeout(tick, 120)
-    }
-    window.setTimeout(tick, 160)
+  /* Переход к разделу знает теперь и общий «плюс»: позиция заводится в своём
+     разделе, и человека туда надо увести. Сам переход живёт в `lib/jump.ts`,
+     а сюда отдаётся `goTo` — он гасит наблюдателя активного раздела на время
+     плавной прокрутки. */
+  useEffect(() => {
+    setSectionNav(goTo)
+    return () => setSectionNav(null)
   }, [goTo])
 
   /* Тап по знаку — возврат к началу страницы (и на мобильном, и на десктопе). */
@@ -210,7 +195,7 @@ function App() {
       </main>
 
       <BottomNav sections={SECTIONS} active={active} onSelect={goTo} />
-      <SearchCommand S={S} open={search} onOpenChange={setSearch} onJump={jump} />
+      <SearchCommand S={S} open={search} onOpenChange={setSearch} onJump={jumpToItem} />
       <NetNotice />
       <PermNotice />
       <Toaster />

@@ -2,6 +2,7 @@ import type { State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { calcAll, money, type CalcResult } from '@/lib/calc'
+import { jumpToItem } from '@/lib/jump'
 import { InlineText } from '@/components/flops'
 
 /** Суммы-нули на случай сбоя расчётного ядра — плитки не должны ронять обложку. */
@@ -86,10 +87,23 @@ export function MoneyTiles({ S, perms }: { S: State; perms: Perms }) {
             />
           </div>
           {/* Число прижато к низу своей клетки: подпись сверху может занять одну
-              строку или две, а числа обязаны стоять на одной линии. */}
-          <div className="tnum self-end pt-1 text-head font-bold text-ink lg:text-title">
+              строку или две, а числа обязаны стоять на одной линии.
+
+              Само число — кнопка к своей строке в «Итогах поездки» («Дорога»),
+              где написано, из чего оно сложилось. Те же четыре суммы стоят
+              и там, и здесь — но это не два ответа на один вопрос: обложка
+              показывает результат, расчёт объясняет его. Раньше связи между
+              ними не было вовсе, и повтор читался случайным.
+              ⚠️ Тап по ПОДПИСИ остаётся правкой подписи: два действия на одном
+              месте — это ровно та беда, из-за которой «тап просто не работает». */}
+          <button
+            type="button"
+            onClick={() => jumpToItem('road', 'sum-' + t.slot)}
+            aria-label={`${labelOf(t)}: ${money(sums[t.key], S.doc)}. Показать расчёт`}
+            className="tnum flex min-h-11 w-full items-end self-end pt-1 text-left text-head font-bold text-ink transition-colors hover:text-accent-text lg:text-title"
+          >
             {money(sums[t.key], S.doc)}
-          </div>
+          </button>
         </div>
       ))}
     </div>

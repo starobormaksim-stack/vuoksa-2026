@@ -1,10 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BuySection as BuySec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { orderedPeople } from '@/lib/people'
 import { visibleBlockId } from '@/lib/visible'
+import { askedHere, useAddRequest } from '@/lib/addnew'
+import { jumpToItem } from '@/lib/jump'
 import {
   Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll, useIsDesktop,
 } from '@/components/flops'
@@ -71,7 +73,7 @@ export function BuySection() {
    * Добавить позицию. `afterId` не передан — в конец блока; пустая строка —
    * в самое начало; id строки — сразу под ней.
    */
-  const addItem = (secId: string, afterId?: string) => {
+  const addItem = (secId: string, afterId?: string): string => {
     const id = 'p' + Date.now().toString(36)
     update((s) => {
       const list = s.buy.filter((x) => x.sec === secId).sort(byOrd)
@@ -92,7 +94,25 @@ export function BuySection() {
       })
     })
     setFresh(id)
+    return id
   }
+
+  /* Просьба общего «плюса»: заводим покупку теми же руками, что и по кнопке
+     раздела, раскрываем блок и уводим к строке (см. `lib/addnew.ts`). */
+  const ask = useAddRequest('buy')
+  const askRef = useRef(ask)
+  useEffect(() => {
+    if (ask === askRef.current) return
+    askRef.current = ask
+    const sid = askedHere('buy')
+      ? visibleBlockId(list.current, sorted[0]?.i ?? '')
+      : sorted[0]?.i ?? ''
+    if (!sid) return
+    setClosed((o) => ({ ...o, [sid]: false }))
+    jumpToItem('buy', addItem(sid))
+    /* Списки — из этого же рендера, на котором приехала заявка (см. «Сборы»). */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask])
 
   /** Правка названия новой строки закончилась. Ничего не ввели — строки и не было. */
   const endFresh = (id: string, saved: boolean) => {

@@ -816,6 +816,9 @@ export function RoadCalc({
   for (const t of totals) {
     lines.push({
       key: 'sum-' + t.slot,
+      /* Сюда приходит тап по плитке с обложки: там та же сумма без объяснения,
+         здесь — с разбором, откуда она взялась (`trip/MoneyTiles.tsx`). */
+      hit: 'sum-' + t.slot,
       total: true,
       title: (
         <Title

@@ -16,7 +16,8 @@ import {
   onMapRequest,
   type MapRequest,
 } from '@/lib/mapfocus'
-import { coordLabel, mapCenter, mapPoints } from '@/components/road/roadx'
+import { mapCenter, mapPoints } from '@/components/road/roadx'
+import { goSection } from '@/lib/jump'
 import { Btn } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { GoogleRouteMap, type MapCard, type MapDest } from './GoogleRouteMap'
@@ -430,26 +431,24 @@ export function TripMap({ S, perms, className }: Props) {
           </span>
           <div>
             <div className="text-body font-semibold text-ink">Карта показывается в онлайне</div>
+            {/* ⛔ Здесь стоял СПИСОК точек с координатами — второе перечисление
+                того же маршрута, который лентой показан в «Дороге» и в сеть
+                не ходит вовсе. Постулат 3.5: список живёт ровно в одном месте,
+                сводка допустима числом. Поэтому здесь число и дорога к списку,
+                а не сам список. */}
             <p className="mx-auto mt-1 max-w-72 text-note text-balance text-muted">
               {isOfflineCopy()
-                ? 'Это скачанная копия: она ничего не тянет из сети. Точки маршрута никуда не делись — вот их координаты.'
-                : 'Сейчас сети нет. Точки маршрута никуда не делись — вот их координаты.'}
+                ? 'Это скачанная копия: она ничего не тянет из сети.'
+                : 'Сейчас сети нет.'}{' '}
+              {points.length > 0
+                ? `Точки маршрута никуда не делись: их ${points.length} и они с координатами — в разделе «Дорога».`
+                : 'Точки маршрута ставятся на карте — она вернётся вместе со связью.'}
             </p>
           </div>
           {points.length > 0 && (
-            <ul className="w-full max-w-80 text-left">
-              {points.map((p, idx) => (
-                <li key={p.i} className="flex min-h-11 items-center gap-3 border-t border-line">
-                  <span className="tnum grid size-7 shrink-0 place-items-center rounded-full bg-accent-fill text-note font-bold text-on-accent">
-                    {idx + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">
-                    {p.n}
-                  </span>
-                  <span className="tnum shrink-0 text-note text-muted">{coordLabel(p)}</span>
-                </li>
-              ))}
-            </ul>
+            <Btn tone="secondary" onClick={() => goSection('road')}>
+              Показать маршрут
+            </Btn>
           )}
         </div>
       </Card>

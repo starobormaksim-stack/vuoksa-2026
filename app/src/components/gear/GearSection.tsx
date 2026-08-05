@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Backpack, ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Gear, GearSection as GearSec } from '@/lib/types'
@@ -6,6 +6,8 @@ import { useTrip, touch } from '@/store'
 import { readyOfGroup } from '@/lib/gearx'
 import { orderedPeople } from '@/lib/people'
 import { visibleBlockId } from '@/lib/visible'
+import { askedHere, useAddRequest } from '@/lib/addnew'
+import { jumpToItem } from '@/lib/jump'
 import {
   AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
   newTableScroll, useIsDesktop, type TableScroll,
@@ -93,7 +95,7 @@ export function GearSection() {
    * (`ord` нет ни у одной), поэтому вставка между строками сначала нумерует
    * раздел заново, а потом кладёт новую строку в промежуток.
    */
-  const addAt = (secId: string, before: number) => {
+  const addAt = (secId: string, before: number): string => {
     const id = 'g' + Date.now().toString(36)
     update((s) => {
       const list = s.gear
@@ -122,7 +124,30 @@ export function GearSection() {
       })
     })
     setFresh(id)
+    return id
   }
+
+  /* Просьба общего «плюса» из другого раздела: заводим вещь своими руками —
+     теми же, что и по кнопке раздела, — раскрываем блок (он мог быть свёрнут,
+     и новая строка просто не появилась бы на экране) и уводим к ней.
+     ⚠️ Блок берётся видимый, только если человек читал «Сборы» в момент
+     нажатия: иначе прокрутка ещё не доехала и `visibleBlockId` мерил бы
+     не то место. */
+  const ask = useAddRequest('gear')
+  const askRef = useRef(ask)
+  useEffect(() => {
+    if (ask === askRef.current) return
+    askRef.current = ask
+    const sid = askedHere('gear')
+      ? visibleBlockId(list.current, sections[0]?.i ?? '')
+      : sections[0]?.i ?? ''
+    if (!sid) return
+    setClosed((o) => ({ ...o, [sid]: false }))
+    jumpToItem('gear', addAt(sid, (bySec[sid] ?? []).length))
+    /* Списки берутся из ЭТОГО рендера — того самого, на котором приехала заявка,
+       поэтому они свежие, и остальным зависимостям здесь делать нечего. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask])
 
   /* ─── действия над разделом (только редактору) ─── */
 

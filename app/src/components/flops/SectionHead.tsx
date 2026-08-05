@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { Plus } from 'lucide-react'
+import { ChevronDown, Plus } from 'lucide-react'
 import { useTrip, update } from '@/store'
 import { hintOf, setSectionTitle, titleOf } from '@/lib/sectitles'
+import { allowedKinds, requestAdd } from '@/lib/addnew'
+import { cn } from '@/lib/utils'
 import { InlineText } from './Inline'
 
 /**
@@ -65,6 +67,9 @@ export function SectionHead({
 }) {
   const { S, perms } = useTrip()
   const [openLegend, setOpenLegend] = useState(false)
+  /* открыт ли ряд «что добавить» — четыре вида позиции общего «плюса» */
+  const [openAdd, setOpenAdd] = useState(false)
+  const kinds = allowedKinds(perms)
   const canEdit = !!secId && perms.isEditor()
   const шапка = secId ? titleOf(S, secId, title) : title
 
@@ -142,22 +147,91 @@ export function SectionHead({
           </button>
         )}
 
-        {action && (
-          <button
-            type="button"
-            onClick={action.onClick}
-            /* На узком экране подпись прячется, чтобы не спорить за ширину с
-               названием раздела, — но кнопка не имеет права остаться безымянной:
-               без `aria-label` вслух она читалась просто «кнопка», а глазами
-               выглядела голым плюсом (постулат 4). */
-            aria-label={action.label}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-accent-fill px-4 text-body font-semibold text-on-accent transition-opacity hover:opacity-90"
-          >
-            <Plus size={18} strokeWidth={1.75} aria-hidden />
-            <span className="hidden sm:inline">{action.label}</span>
-          </button>
+        {/* ─── Общий «плюс» ───
+            Кнопка составная (split button): широкая часть делает СВОЁ действие
+            раздела одним нажатием — так она работала всегда, и вещь с покупкой
+            заводятся чаще всего. Узкая часть раскрывает ряд из четырёх видов
+            под полосой: «расчёт с топливом, расчёт с арендой, товар купить,
+            либо просто вещь» (заказчик, 06.08.2026).
+            ⛔ Не шторкой и не выпадающим меню: попапы забракованы трижды
+            (постулат 2). Раскрытие на месте — тем же приёмом, что и «знаки»
+            строкой ниже. Ряд собран по образцу `UnitPick` (постулат 3).
+            У раздела без своего действия («Дорога», «Поездка») плюс один
+            и сразу раскрывает ряд. */}
+        {(action || kinds.length > 0) && (
+          <div className="flex shrink-0 items-center">
+            {action && (
+              <button
+                type="button"
+                onClick={action.onClick}
+                /* На узком экране подпись прячется, чтобы не спорить за ширину с
+                   названием раздела, — но кнопка не имеет права остаться безымянной:
+                   без `aria-label` вслух она читалась просто «кнопка», а глазами
+                   выглядела голым плюсом (постулат 4). */
+                aria-label={action.label}
+                className={cn(
+                  'flex h-11 items-center gap-1.5 bg-accent-fill px-4 text-body font-semibold text-on-accent transition-opacity hover:opacity-90',
+                  kinds.length > 0 ? 'rounded-l-lg' : 'rounded-lg',
+                )}
+              >
+                <Plus size={18} strokeWidth={1.75} aria-hidden />
+                <span className="hidden sm:inline">{action.label}</span>
+              </button>
+            )}
+            {kinds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setOpenAdd((v) => !v)}
+                aria-expanded={openAdd}
+                aria-label={action ? 'Добавить что-то ещё' : 'Добавить позицию'}
+                className={cn(
+                  'grid size-11 place-items-center bg-accent-fill text-on-accent transition-opacity hover:opacity-90',
+                  action ? 'rounded-r-lg border-l border-on-accent/25' : 'rounded-lg',
+                )}
+              >
+                {action ? (
+                  <ChevronDown
+                    size={18}
+                    strokeWidth={1.75}
+                    aria-hidden
+                    className={cn('transition-transform', openAdd && 'rotate-180')}
+                  />
+                ) : (
+                  <Plus size={18} strokeWidth={1.75} aria-hidden />
+                )}
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Ряд видов позиции. Строка заводится в СВОЁМ разделе, и человека туда
+          уводит: «один список — один раздел» (постулат 3.5) от общего плюса
+          не отменяется.
+          На широком экране ряд прижат вправо — под свою кнопку: слева от него
+          полтора экрана пустоты и чужая легенда, и связь «нажал плюс — вот что
+          можно» читалась бы не сразу (закон близости). */}
+      {openAdd && kinds.length > 0 && (
+        <div className="pb-3 lg:text-right">
+          <span className="block text-micro text-muted">Что добавить</span>
+          <span className="mt-1 flex flex-wrap items-center gap-1 lg:justify-end">
+            {kinds.map((k) => (
+              <button
+                key={k.kind}
+                type="button"
+                onClick={() => {
+                  setOpenAdd(false)
+                  requestAdd(k.kind)
+                }}
+                aria-label={k.aria}
+                className="grid h-11 min-w-11 place-items-center rounded-md border border-line-strong px-3 text-note text-ink transition-colors hover:bg-zebra/70 active:bg-zebra"
+              >
+                {k.label}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
 
       {есть && openLegend && (
         <ul className="flex flex-wrap gap-x-4 gap-y-1 pb-3 lg:hidden" aria-label="Условные обозначения">
