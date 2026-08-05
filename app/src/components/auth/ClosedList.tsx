@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Lock } from 'lucide-react'
+import { Lock, Luggage, Tent } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Btn } from '@/components/flops'
 import { Logo } from '@/components/Logo'
 import { OwnerLogin } from '@/components/auth/OwnerLogin'
+import { openTripsList } from '@/lib/trips'
 
 /**
  * Экран закрытого листа: человек не назвался, и поездки ему не видно.
@@ -78,14 +79,21 @@ export function ClosedList({
           className="grid size-11 place-items-center rounded-full bg-zebra text-accent-text"
           aria-hidden
         >
-          <Lock size={20} strokeWidth={1.75} />
+          {denied ? <Lock size={20} strokeWidth={1.75} /> : <Tent size={20} strokeWidth={1.75} />}
         </span>
-        <h1 className="text-title font-[650] text-ink">Этот лист закрыт</h1>
+        {/* Два разных случая, и путать их нельзя. Ключ не признали — это отказ,
+            и человек обязан прочитать, что произошло. Зашёл без ключа вовсе —
+            это НЕ отказ, а первое знакомство: заказчик 05.08.2026 просил
+            «человеческий вход для человека, который ещё не зарегистрирован».
+            Встречать новичка словом «закрыт» — значит выгонять того, кто пришёл. */}
+        <h1 className="text-title font-[650] text-ink">
+          {denied ? 'Этот лист закрыт' : 'Сборный лист поездки'}
+        </h1>
         <p className="text-body leading-relaxed text-balance text-ink">
           {denied
             ? 'Ключ, с которым вы пришли, поездка не признала. Так бывает, когда ' +
               'владелец поменял вам права.'
-            : 'Поездку видит только её команда. Зайдите по своей личной ссылке.'}
+            : 'Заведите свою поездку или откройте чужую по личной ссылке.'}
         </p>
         {/* Вошедший по почте обязан прочитать, что сеанс СОСТОЯЛСЯ, — иначе он решит,
             что письмо не сработало, и будет слать его снова. Полоска `PermNotice`
@@ -93,11 +101,22 @@ export function ClosedList({
             не доходит: молчаливых отказов не бывает (постулат 5). */}
         {signedInAs && (
           <p className="text-note leading-relaxed text-balance text-muted">
-            Вы вошли как <span className="font-semibold break-all">{signedInAs}</span>. Одной
-            почты мало — откройте свою ссылку целиком, вместе с ключом.
+            Вы вошли как <span className="font-semibold break-all">{signedInAs}</span>. В эту
+            поездку почта не пускает — её открывает личная ссылка. Свои поездки у вас свои.
           </p>
         )}
       </div>
+
+      {/* ⛔ Выход из тупика. Вошедший по почте НЕ участник этой поездки упирался
+          в «одной почты мало» и не имел куда пойти: список поездок живёт в меню «⋯»,
+          а меню — внутри листа, до которого он не доходит. Своя поездка заводится
+          именно в списке, поэтому дверь туда стоит здесь. */}
+      {signedInAs && (
+        <Btn scale="lg" className="w-full" onClick={() => openTripsList()}>
+          <Luggage size={18} strokeWidth={1.75} aria-hidden />
+          Мои поездки
+        </Btn>
+      )}
 
       <div className="flex flex-col gap-5 rounded-xl border border-line bg-surface p-4">
         <div className="flex flex-col gap-2">
@@ -138,10 +157,18 @@ export function ClosedList({
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
-        <p className="text-note font-semibold text-ink">Вы владелец поездки?</p>
-        <OwnerLogin showLogo={false} />
-      </div>
+      {/* Вход почтой — он же регистрация: первый вход с нового адреса заводит
+          учётную запись сам (`create_user: true` в lib/auth.ts). Вошедшему второй
+          раз это не нужно — ему выше стоит кнопка «Мои поездки». */}
+      {!signedInAs && (
+        <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
+          <p className="text-note font-semibold text-ink">Своя поездка</p>
+          <OwnerLogin
+            showLogo={false}
+            hint="Заведите свою поездку — письмо и заводит её, и открывает."
+          />
+        </div>
+      )}
     </div>
   )
 }

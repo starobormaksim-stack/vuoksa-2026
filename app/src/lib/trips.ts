@@ -349,7 +349,12 @@ interface IndexRow {
 export async function listTrips(email: string): Promise<TripsIndex> {
   const mail = (email || '').trim().toLowerCase()
   const here = currentTripId()
-  const seen = new Set([here, ...seenTrips()])
+  /* ⛔ Открытую сейчас поездку показываем, только если у браузера ЕСТЬ ключ.
+     Иначе посторонний, зашедший на голый адрес и открывший список, читал бы
+     название чужой поездки и имя того, кто её правил, — а лист от него закрыт
+     ровно затем, чтобы этого не было. Дверь в список теперь стоит и на закрытом
+     экране (components/auth/ClosedList.tsx), так что случай стал обычным. */
+  const seen = new Set(savedKey() ? [here, ...seenTrips()] : seenTrips())
   let why = ''
   let rows: IndexRow[] = []
 

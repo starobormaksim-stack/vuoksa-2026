@@ -1,24 +1,24 @@
 import { useState } from 'react'
-import { Backpack, Camera, Check, ImageOff, Link2, UserMinus, X } from 'lucide-react'
+import { Backpack, Camera, ImageOff, Link2, UserMinus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Person } from '@/lib/types'
 import type { Perm, Perms } from '@/lib/perm'
-import { linkFor, permName, permRights } from '@/lib/perm'
+import { PERM_ORDER, linkFor, permName, permShort } from '@/lib/perm'
 import type { PersonTone } from '@/lib/people'
 import { scrollToSection } from '@/sections'
 import {
   Btn,
   PersonMark,
   PhotoCropSheet,
-  PickSheet,
   ResponsiveSheet,
   SheetRow,
   TextSheet,
   usePhotoPick,
-  type PickOption,
 } from '@/components/flops'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { initialOf, newKey } from './ids'
 
@@ -33,42 +33,12 @@ import { initialOf, newKey } from './ids'
  */
 
 /** Что открыто вторым уровнем. */
-type Level2 = null | 'name' | 'car' | 'desc' | 'perm'
+type Level2 = null | 'name' | 'car' | 'desc'
 
-/**
- * Чего уровень не может. permRights() перечисляет только разрешённое (менять его нельзя —
- * это общая модель прав), поэтому разницу между владельцем и редактором договариваем здесь.
- */
-const CANT: Record<Perm, string[]> = {
-  chief: [],
-  editor: ['Видит и раздаёт личные ссылки команды', 'Меняет карточку и права владельца'],
-  member: [
-    'Меняет цены, количества и общие параметры',
-    'Меняет права и состав команды',
-    'Скачивает офлайн-копию и раздаёт ссылки',
-  ],
+/** С прописной: permName() отдаёт строчными («владелец») — так он стоит в подписях. */
+function capital(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
 }
-
-/** Пункт permRights() сформулирован отрицанием («Файл не скачивает…») — ему нужен крестик. */
-const NEGATIVE = /\bне\s/i
-
-const PERM_OPTIONS: PickOption[] = [
-  {
-    id: 'chief',
-    title: 'Владелец',
-    hint: 'Всё в документе, офлайн-копия и раздача личных ссылок',
-  },
-  {
-    id: 'editor',
-    title: 'Редактор',
-    hint: 'Правит списки, деньги, маршрут и меню. Карточку владельца не трогает, файл не скачивает',
-  },
-  {
-    id: 'member',
-    title: 'Участник',
-    hint: 'Ведёт свой список и своё описание. За других не отмечает, общие параметры не меняет',
-  },
-]
 
 /** Перечисление словами: «машину или роль, описание и фотографию». */
 function listRu(parts: string[]): string {
@@ -99,9 +69,23 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
 
   const canEdit = perms.canEditPerson(person)
   const canSetPerm = perms.canSetPerm(person)
-  const rights = permRights(person.perm)
-  const cans = rights.filter((t) => !NEGATIVE.test(t))
-  const cants = [...rights.filter((t) => NEGATIVE.test(t)), ...CANT[person.perm]]
+
+  /* Смена роли по образцу канала в Телеграме: выбор стоит на месте, а не в шторке
+     (постулат 2 — попапов нет), и меняет права одним нажатием. */
+  const setPerm = (next: Perm) => {
+    if (next === person.perm) return
+    onPatch((p) => {
+      p.perm = next
+      /* Ключ меняется вместе с правами (lib/perm.ts). Свой ключ не трогаем:
+         иначе человек тут же потеряет собственные полномочия в открытой вкладке. */
+      if (p.id !== perms.me) p.key = newKey()
+    })
+    toast(
+      person.id === perms.me
+        ? `${person.name} теперь ${permName(next)}`
+        : `${person.name} теперь ${permName(next)} — старая ссылка больше не действует`,
+    )
+  }
 
   /** Чего в карточке ещё нет — этим и заменяется пустая готовность у нового человека. */
   const missing = [
@@ -253,14 +237,6 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
               empty={!person.desc}
               onClick={() => setLvl('desc')}
             />
-            {canSetPerm && (
-              <SheetRow
-                label="Права"
-                value={permName(person.perm)}
-                hint="Смена прав меняет личную ссылку: старая перестанет действовать"
-                onClick={() => setLvl('perm')}
-              />
-            )}
           </div>
         ) : (
           <>
@@ -285,28 +261,48 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
           </>
         )}
 
-        {/* Что уровень может и чего не может (7.3) */}
+        {/* Права: три роли одним списком, отметка у выбранной, смена одним нажатием.
+            Не положено менять — строк выбора нет вовсе (постулат 6), стоит одна
+            строка о том, кто этот человек. */}
         <div className="mt-5">
-          <div className="text-note font-semibold text-muted">
-            Что может {permName(person.perm)}
-          </div>
-          <ul className="mt-2 flex flex-col gap-2">
-            {cans.map((t) => (
-              <li key={t} className="flex items-start gap-2 text-note leading-snug text-ink">
-                <Check size={18} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-accent-text" />
-                <span>{t}</span>
-              </li>
-            ))}
-            {cants.map((t) => (
-              <li
-                key={t}
-                className="flex items-start gap-2 text-note leading-snug text-ink opacity-60"
+          <div className="text-note font-semibold text-muted">Права</div>
+          {canSetPerm ? (
+            <>
+              <RadioGroup
+                className="mt-2 gap-0"
+                value={person.perm}
+                onValueChange={(v) => setPerm(v as Perm)}
               >
-                <X size={18} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
-                <span>{t}</span>
-              </li>
-            ))}
-          </ul>
+                {PERM_ORDER.map((r) => (
+                  <Label
+                    key={r}
+                    htmlFor={`perm-${person.id}-${r}`}
+                    className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-line/70 py-2 last:border-b-0"
+                  >
+                    <RadioGroupItem
+                      id={`perm-${person.id}-${r}`}
+                      value={r}
+                      className="shrink-0 border-line-strong"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-body font-semibold text-ink">
+                        {capital(permName(r))}
+                      </span>
+                      <span className="block text-note leading-snug text-muted">{permShort(r)}</span>
+                    </span>
+                  </Label>
+                ))}
+              </RadioGroup>
+              {/* Правило, а не жест: почему смена роли гасит ссылку (постулат 7). */}
+              <p className="mt-2 text-micro leading-snug text-muted">
+                Смена роли гасит прежнюю личную ссылку.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-note leading-snug text-ink">
+              {capital(permName(person.perm))} — {permShort(person.perm).toLowerCase()}
+            </p>
+          )}
         </div>
 
         <div className="mt-6 flex flex-col gap-2 border-t border-line pt-4">
@@ -383,30 +379,6 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
         multiline
         placeholder="За что отвечает и что важно про него знать"
         onDone={(v) => onPatch((p) => { p.desc = v })}
-      />
-      <PickSheet
-        open={lvl === 'perm'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Права"
-        subtitle={person.name}
-        value={person.perm}
-        options={PERM_OPTIONS}
-        onPick={(id) => {
-          const next = id as Perm
-          if (next === person.perm) return
-          onPatch((p) => {
-            p.perm = next
-            /* Ключ меняется вместе с правами (lib/perm.ts). Свой ключ не трогаем:
-               иначе человек тут же потеряет собственные полномочия в открытой вкладке. */
-            if (p.id !== perms.me) p.key = newKey()
-          })
-          toast(
-            person.id === perms.me
-              ? `${person.name} теперь ${permName(next)}`
-              : `${person.name} теперь ${permName(next)} — старая ссылка больше не действует`,
-          )
-        }}
       />
 
       {/* Кадрирование: что видно в рамке — то и ложится в person.photo */}

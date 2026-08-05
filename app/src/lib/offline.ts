@@ -260,6 +260,42 @@ function fileName(S: State, now: Date): string {
   return `${name} · ${p(now.getDate())}.${p(now.getMonth() + 1)}.${now.getFullYear()}.html`
 }
 
+/**
+ * Отдать файл человеку самым родным для его устройства способом.
+ *
+ * Заказчик 05.08.2026: «функционал в части сохранения офлайн-версии и скачивания
+ * должен быть более, скажем так, нативен и удобен». На телефоне «скачать» —
+ * это ссылка с `download`, и файл молча падает в общую папку загрузок: на iOS его
+ * потом ищут, а половина людей не находит вовсе. Системный лист «Поделиться»
+ * предлагает «Сохранить в Файлы», отправить себе в мессенджер или открыть в Excel —
+ * то есть человек сам говорит, куда положить.
+ *
+ * Порядок honest fallback: устройство листа не умеет — обычное скачивание,
+ * как было. Человек закрыл лист сам (`AbortError`) — это не отказ, второй раз
+ * навязываться нечем, файл не скачиваем.
+ *
+ * ⚠️ `navigator.share` требует «живого» нажатия. После долгого `await` Safari
+ * иногда считает жест истёкшим и отвечает `NotAllowedError` — тогда уходим
+ * на скачивание, а не оставляем человека без файла (постулат 5).
+ */
+export async function deliver(data: BlobPart, name: string, type: string): Promise<void> {
+  const nav = typeof navigator === 'undefined' ? null : navigator
+  if (nav?.share && nav.canShare) {
+    try {
+      const file = new File([data], name, { type })
+      if (nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: name })
+        return
+      }
+    } catch (e) {
+      /* Передумал — файл ему не нужен, и скачивать его за спиной незачем. */
+      if ((e as { name?: string })?.name === 'AbortError') return
+      /* Всё остальное — устройство не смогло; отдаём обычным скачиванием. */
+    }
+  }
+  download(data, name, type)
+}
+
 /** Отдать байты браузеру на скачивание. */
 export function download(data: BlobPart, name: string, type: string): void {
   const url = URL.createObjectURL(new Blob([data], { type }))
@@ -273,19 +309,42 @@ export function download(data: BlobPart, name: string, type: string): void {
 }
 
 /**
+ * ⛔ Убрать из копии ЧУЖИЕ личные ключи, оставив ключ самого человека.
+ *
+ * Офлайн-копию теперь забирает не только владелец, а вся команда (требование
+ * заказчика 05.08.2026). Но копия — это весь документ одним файлом, и в нём лежат
+ * `people[].key` всех: участник, открывший скачанный файл в блокноте, получил бы
+ * ключ владельца. Ровно так утекала сборка в уроке У-65, и повторять это нельзя.
+ *
+ * Свой ключ остаётся — иначе в собственной копии человек перестал бы быть собой
+ * и потерял бы там свои же полномочия. Владелец получает документ целиком:
+ * ссылки команды раздаёт он, и его копия обязана быть полноценной.
+ *
+ * ⚠️ Копия сети не касается вовсе (`isOfflineCopy()` закрывает синхронизацию),
+ * поэтому пустые ключи в неё не попадут обратно на сервер.
+ */
+export function withoutOthersKeys(S: State, meId: string): State {
+  const people = (S.people || []).map((p) => (p.id === meId ? p : { ...p, key: '' }))
+  return { ...S, people }
+}
+
+/**
  * Скачать офлайн-копию с текущими данными.
  * Внутри самой копии это «Сохранить копию заново»: заготовка та же, данные свежие.
+ *
+ * `meId` — чей ключ оставить в файле. Пусто — документ уезжает целиком (владелец).
  */
-export async function saveOfflineCopy(S: State): Promise<boolean> {
+export async function saveOfflineCopy(S: State, meId = ''): Promise<boolean> {
   const inside = isOfflineCopy()
   try {
     const now = new Date()
-    const html = offlineHtml(await template(), S, fmtDate(now))
-    download(html, fileName(S, now), 'text/html;charset=utf-8')
+    const doc = meId ? withoutOthersKeys(S, meId) : S
+    const html = offlineHtml(await template(), doc, fmtDate(now))
+    await deliver(html, fileName(S, now), 'text/html;charset=utf-8')
     toast(
       inside
         ? 'Копия сохранена заново — сегодняшние правки уже в ней'
-        : 'Копия скачана. Откроется без интернета',
+        : 'Копия у вас. Откроется без интернета',
     )
     return true
   } catch {

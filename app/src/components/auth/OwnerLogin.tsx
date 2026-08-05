@@ -36,7 +36,21 @@ import { sendMagicLink } from '@/lib/auth'
  */
 const RESEND_AFTER = 60
 
-export function OwnerLogin({ showLogo = true }: { showLogo?: boolean } = {}) {
+export function OwnerLogin({
+  showLogo = true,
+  hint,
+}: {
+  showLogo?: boolean
+  /**
+   * Чем этот вход является ЗДЕСЬ. По умолчанию — «почтой входит владелец»:
+   * так он читается в меню и в списке поездок. Но на закрытом экране тем же
+   * письмом человек заводит СВОЮ первую поездку (первый вход с нового адреса
+   * создаёт учётную запись сам), и фраза про владельца читается там как отказ:
+   * «раз я не владелец — мне сюда нельзя». Заказчик 05.08.2026 просил
+   * «человеческий вход для человека, который ещё не зарегистрирован».
+   */
+  hint?: string
+} = {}) {
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState('')
   const [busy, setBusy] = useState(false)
@@ -84,7 +98,7 @@ export function OwnerLogin({ showLogo = true }: { showLogo?: boolean } = {}) {
             «гигантское количество текста… это лишнее». Осталось то, без чего
             человек не поймёт, кому этот вход и что делать дальше. */}
         <p className="text-body leading-relaxed text-balance text-ink">
-          Почтой входит владелец. Остальные — по личным ссылкам из «Команды».
+          {hint || 'Почтой входит владелец. Остальные — по личным ссылкам из «Команды».'}
         </p>
         <p className="text-note leading-relaxed text-balance text-muted">
           Пришлём ссылку для входа. Пароль не нужен.

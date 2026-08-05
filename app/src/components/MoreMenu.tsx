@@ -23,7 +23,7 @@ import { ResponsiveSheet, Btn } from '@/components/flops'
 import { OwnerLogin } from '@/components/auth/OwnerLogin'
 import { useTrip } from '@/store'
 import { linkFor, permName } from '@/lib/perm'
-import { download, isOfflineCopy, offlineInfo, saveOfflineCopy } from '@/lib/offline'
+import { deliver, isOfflineCopy, offlineInfo, saveOfflineCopy } from '@/lib/offline'
 import { tripFileName, tripWorkbook } from '@/lib/export'
 import { openTripsList } from '@/lib/trips'
 import { currentSession, onAuthChange, signOut, type Session } from '@/lib/auth'
@@ -36,11 +36,11 @@ const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
  * Меню «⋯» в шапке.
  *
  * Что кому положено (постулат «не положено — кнопки нет»):
- *   · «Скачать таблицу» — всем, кто видит поездку: это выгрузка, а не правка;
- *   · «Ссылки команды» — только владельцу, это его полномочия;
- *   · «Скачать офлайн-копию» — владельцу; но внутри самой копии «Сохранить копию
- *     заново» доступно любому: это его собственный файл на его компьютере,
- *     и запрещать человеку сохранять свою работу не за что.
+ *   · «Скачать таблицу» и «Скачать офлайн-копию» — всем из команды. Требование
+ *     заказчика 05.08.2026: «имеется эта возможность у каждого из участников
+ *     команды». Это выгрузка того, что человек и так видит, а не правка;
+ *     чужие личные ключи из файла вычищаются (lib/offline.ts);
+ *   · «Ссылки команды» — только владельцу, это его полномочия.
  */
 export function MoreMenu() {
   const { S, perms } = useTrip()
@@ -78,11 +78,13 @@ export function MoreMenu() {
   }
 
   /* Книга Excel собирается прямо в браузере (см. lib/xlsx.ts). Молча упасть она
-     не имеет права: не собралась — человек должен прочитать об этом словами. */
-  const saveSheet = () => {
+     не имеет права: не собралась — человек должен прочитать об этом словами.
+     `deliver` на телефоне открывает системный лист «Поделиться» («Сохранить
+     в Файлы», отправить себе), на компьютере — обычное скачивание. */
+  const saveSheet = async () => {
     try {
-      download(tripWorkbook(S), tripFileName(S), XLSX_TYPE)
-      toast('Таблица скачана. Открывается в Excel, Гугл-таблицах и на телефоне')
+      await deliver(tripWorkbook(S), tripFileName(S), XLSX_TYPE)
+      toast('Таблица у вас. Открывается в Excel, Гугл-таблицах и на телефоне')
     } catch {
       toast('Таблицу собрать не вышло — попробуйте ещё раз или обновите страницу')
     }
@@ -109,9 +111,14 @@ export function MoreMenu() {
               Мои поездки
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem className="min-h-11 gap-2" onSelect={saveSheet}>
+          <DropdownMenuItem
+            className="min-h-11 gap-2"
+            onSelect={() => {
+              void saveSheet()
+            }}
+          >
             <FileSpreadsheet size={18} strokeWidth={1.75} aria-hidden />
-            Скачать таблицу Excel
+            Забрать таблицу Excel
           </DropdownMenuItem>
           {chief && (
             <DropdownMenuItem className="min-h-11 gap-2" onSelect={() => setLinks(true)}>
@@ -119,11 +126,13 @@ export function MoreMenu() {
               Ссылки команды
             </DropdownMenuItem>
           )}
-          {(chief || offline) && (
+          {perms.canSaveFile() && (
             <DropdownMenuItem
               className="min-h-11 gap-2"
               onSelect={() => {
-                void saveOfflineCopy(S)
+                /* Владельцу — документ целиком: ссылки команды раздаёт он.
+                   Остальным — со своим ключом и без чужих (lib/offline.ts). */
+                void saveOfflineCopy(S, chief ? '' : perms.me)
               }}
             >
               {offline ? (
@@ -131,7 +140,7 @@ export function MoreMenu() {
               ) : (
                 <Download size={18} strokeWidth={1.75} aria-hidden />
               )}
-              {offline ? 'Сохранить копию заново' : 'Скачать офлайн-копию'}
+              {offline ? 'Сохранить копию заново' : 'Забрать офлайн-копию'}
             </DropdownMenuItem>
           )}
           {sess ? (
