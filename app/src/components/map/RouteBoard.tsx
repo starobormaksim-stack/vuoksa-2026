@@ -5,8 +5,9 @@ import type { Perms } from '@/lib/perm'
 import { remove, touch, update } from '@/store'
 import { onListFocus, type ListFocus } from '@/lib/mapfocus'
 import { RouteTiming } from '@/components/road/RouteTiming'
+import { RouteStrip } from '@/components/road/RouteStrip'
 import { RoutePointSheet } from '@/components/road/RoutePointSheet'
-import { TextSheet } from '@/components/flops'
+import { TextSheet, useIsDesktop } from '@/components/flops'
 import { plural } from '@/format'
 
 /**
@@ -37,6 +38,7 @@ interface Props {
 
 export function RouteBoard({ S, perms }: Props) {
   const canEdit = perms.isEditor()
+  const desktop = useIsDesktop()
   const [sheet, setSheet] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   /** какую точку подсветить в ленте: по её метке тапнули на карте */
@@ -97,22 +99,46 @@ export function RouteBoard({ S, perms }: Props) {
             прилипала бы к верху ЭТОГО блока, то есть никуда (замер 05.08.2026:
             уезжала на y = −237). На десктопе своя прокрутка по высоте остаётся —
             там шапка честно липнет к верху блока. */}
+        {/* ⛔ Две плотности одной логики, а не два продукта — ровно как
+            в «Сборах» и «Закупке». На широком экране остаётся матрица
+            «точка × люди»: там видно, кто едет каким этапом, не раскрывая
+            ни одной строки. На телефоне колонка точки была 13 rem, и название
+            вставало в ней по два-три слова, — там лента. Модель, права
+            и правка общие, рисуется ровно один вид. */}
         <section className="overflow-clip rounded-xl border border-line bg-surface shadow-sm lg:max-h-[600px] lg:overflow-y-auto">
-          <RouteTiming
-            points={S.route}
-            people={S.people}
-            perms={perms}
-            canEdit={canEdit}
-            onToggle={(id) =>
-              patch(id, (p) => {
-                p.done = !p.done
-              })
-            }
-            onOpen={setSheet}
-            onAdd={() => setAdding(true)}
-            activeId={active?.pointId ?? null}
-            activeAt={active?.at}
-          />
+          {desktop ? (
+            <RouteTiming
+              points={S.route}
+              people={S.people}
+              perms={perms}
+              canEdit={canEdit}
+              onToggle={(id) =>
+                patch(id, (p) => {
+                  p.done = !p.done
+                })
+              }
+              onOpen={setSheet}
+              onAdd={() => setAdding(true)}
+              activeId={active?.pointId ?? null}
+              activeAt={active?.at}
+            />
+          ) : (
+            <RouteStrip
+              points={S.route}
+              people={S.people}
+              perms={perms}
+              canEdit={canEdit}
+              onToggle={(id) =>
+                patch(id, (p) => {
+                  p.done = !p.done
+                })
+              }
+              onOpen={setSheet}
+              onAdd={() => setAdding(true)}
+              activeId={active?.pointId ?? null}
+              activeAt={active?.at}
+            />
+          )}
         </section>
       </section>
 

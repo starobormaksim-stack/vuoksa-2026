@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { Check, MapPin, MapPinPlus, Route, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Person, RoutePoint } from '@/lib/types'
@@ -68,24 +68,28 @@ interface Props {
   activeAt?: number
 }
 
-export function RouteTiming({
-  points, people, perms, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
-}: Props) {
-  const box = useRef<HTMLDivElement | null>(null)
-
-  /**
-   * Подсвеченная точка может оказаться за краем списка — подводим её к глазам.
-   *
-   * ⛔ `scrollIntoView` здесь нельзя, хотя он и стоял раньше: он прокручивает
-   * ВСЕХ прокручиваемых предков, а не только список, и `block:'nearest'` этого
-   * не отменяет. Пока список стоял справа от карты, разницы не было — они были
-   * на одном уровне. Теперь карта уехала в «Поездку», и наведение из карты
-   * утаскивало страницу на 351 px: карта, по которой человек только что попал
-   * пальцем, уезжала вверх из вида.
-   *
-   * Поэтому двигаем ТОЛЬКО собственную прокрутку списка, руками. Страница
-   * не трогается вовсе — замер: `scrollY` до и после совпадает.
-   */
+/**
+ * Подсвеченная точка может оказаться за краем списка — подводим её к глазам.
+ *
+ * ⛔ `scrollIntoView` здесь нельзя, хотя он и стоял раньше: он прокручивает
+ * ВСЕХ прокручиваемых предков, а не только список, и `block:'nearest'` этого
+ * не отменяет. Пока список стоял справа от карты, разницы не было — они были
+ * на одном уровне. Теперь карта уехала в «Поездку», и наведение из карты
+ * утаскивало страницу на 351 px: карта, по которой человек только что попал
+ * пальцем, уезжала вверх из вида.
+ *
+ * Поэтому двигаем ТОЛЬКО собственную прокрутку списка, руками. Страница
+ * не трогается вовсе — замер: `scrollY` до и после совпадает.
+ *
+ * ⚠️ Вынесено в хук ради `road/RouteStrip.tsx`: лента на телефоне — тот же
+ * список тех же точек, и наведение с карты обязано работать в ней так же.
+ * Копия этой механики второй раз разъехалась бы с первой.
+ */
+export function useRouteFocus(
+  box: RefObject<HTMLDivElement | null>,
+  activeId?: string | null,
+  activeAt?: number,
+): void {
   useEffect(() => {
     if (!activeId) return
     const wrap = box.current
@@ -99,7 +103,14 @@ export function RouteTiming({
     const bottom = top + el.offsetHeight
     if (top < pane.scrollTop) pane.scrollTop = top
     else if (bottom > pane.scrollTop + pane.clientHeight) pane.scrollTop = bottom - pane.clientHeight
-  }, [activeId, activeAt])
+  }, [box, activeId, activeAt])
+}
+
+export function RouteTiming({
+  points, people, perms, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
+}: Props) {
+  const box = useRef<HTMLDivElement | null>(null)
+  useRouteFocus(box, activeId, activeAt)
 
   const patch = (id: string, f: (p: RoutePoint) => void) =>
     update((s) => {
@@ -299,7 +310,7 @@ export function RouteTiming({
 }
 
 /** Кружок этапа: 32 px внутри цели касания 44 px (правило 8). */
-function Dot({ done }: { done: boolean }) {
+export function Dot({ done }: { done: boolean }) {
   return (
     <span
       className={cn(
@@ -318,7 +329,7 @@ function Dot({ done }: { done: boolean }) {
  * не кричит: тире. Одно нажатие ставит отметку, второе снимает.
  * Права нет — рисуется только состояние, без кнопки (постулат 6).
  */
-function Rider({
+export function Rider({
   on, can, label, onSet,
 }: {
   on: boolean
@@ -363,7 +374,7 @@ function Rider({
  * на точку карту. Координат нет и правка разрешена — вместо кнопки предложение
  * поставить точку на карте.
  */
-function PlaceRow({
+export function PlaceRow({
   point, canEdit, onAddr,
 }: {
   point: RoutePoint
