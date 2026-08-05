@@ -21,6 +21,19 @@ export function sumOf(p: Buy): number {
   return p.q * priceOf(p)
 }
 
+/**
+ * Сумма позиции по ПЛАНОВОЙ цене — та, что была прикинута до магазина.
+ *
+ * ⛔ `sumOf` не трогаем: на нём держатся контрольные цифры (21 385 / 26 005 /
+ * 47 390 / 11 848 ₽). Это отдельная величина, нужная только для сравнения
+ * «сколько собирались потратить против того, что вышло» (заказчик 05.08.2026:
+ * «в общем расчёте тоже должна быть планируемая стоимость и фактическая
+ * стоимость, чтобы можно было даже сравнить разницу»).
+ */
+export function planSumOf(p: Buy): number {
+  return p.q * p.pr
+}
+
 /** Позиция идёт в общий счёт. */
 export function counted(p: Buy): boolean {
   return p.st === 'buy'
@@ -138,6 +151,10 @@ export interface BuyBreak {
   personal: BreakRow[]
   /** сумма по общим разделам (== buyTotal) */
   total: number
+  /** та же сумма по ПЛАНОВЫМ ценам — для сравнения с `total` */
+  plan: number
+  /** сколько считаемых позиций стоят ещё без фактической цены */
+  noFact: number
   /** факт вписан хотя бы у одной позиции */
   anyFact: boolean
 }
@@ -148,6 +165,8 @@ export function buyBreak(S: State): BuyBreak {
   const sections: BreakRow[] = []
   const personal: BreakRow[] = []
   let total = 0
+  let plan = 0
+  let noFact = 0
   let anyFact = false
 
   for (const sec of [...S.buySections].sort((a, b) => a.ord - b.ord)) {
@@ -158,6 +177,8 @@ export function buyBreak(S: State): BuyBreak {
     else {
       sections.push(row)
       total += sum
+      plan += rows.reduce((s, p) => s + planSumOf(p), 0)
+      noFact += rows.filter((p) => !(p.prf > 0)).length
     }
   }
   for (const p of S.buy) if (p.prf > 0) anyFact = true
@@ -175,7 +196,7 @@ export function buyBreak(S: State): BuyBreak {
   }
   const excluded = ['has', 'ask', 'skip'].map((k) => groups[k]).filter(Boolean)
 
-  return { sections, excluded, personal, total, anyFact }
+  return { sections, excluded, personal, total, plan, noFact, anyFact }
 }
 
 /** Русская плюрализация для «4 позиции». */

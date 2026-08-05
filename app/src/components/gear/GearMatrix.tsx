@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type RefObject } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 import { ListPlus, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import type { Gear, Person } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
@@ -7,7 +7,7 @@ import {
 } from '@/lib/gearx'
 import {
   DataCell, DataHead, DataRow, DataTable, InlineNum, InlineText, PersonHead,
-  RowAction, RowActions, RowInsert, StatusDial, numText, type TableScroll,
+  RowAction, RowActions, StatusDial, numText, type TableScroll,
 } from '@/components/flops'
 import { NBSP } from '@/format'
 import { cn } from '@/lib/utils'
@@ -83,8 +83,13 @@ export function GearMatrix({
     return () => document.removeEventListener('pointerdown', off, true)
   }, [qtyAt])
 
+  /* Первая колонка ТЯНЕТСЯ, а не стоит по своей ширине: заказчик 05.08.2026 —
+     «с правой стороны до хера пустого пространства, я не понимаю, зачем ты его
+     оставляешь». Пустота была ровно от того, что сетка вставала по содержимому
+     (936 px при блоке 1205), а остаток отдавался распорке. Теперь остаток
+     достаётся названиям вещей, и хвостовой распорки не нужно вовсе. */
   const cols =
-    `var(--ncol) repeat(${people.length}, var(--pcol)) var(--tcol) var(--acol) minmax(0,1fr)`
+    `minmax(var(--ncol),1fr) repeat(${people.length}, var(--pcol)) var(--tcol) var(--acol)`
 
   return (
     <DataTable
@@ -92,12 +97,13 @@ export function GearMatrix({
       label={`Кто что везёт: ${label}`}
       sync={sync}
       /* Ширина колонок задана переменными, чтобы шапка и строки считали её одинаково.
-         `min-w-max` держит сетку шире блока — лист листается вбок внутри блока,
-         у страницы горизонтальной прокрутки нет (постулат 7). */
+         Прокрутку вбок внутри блока держит `w-max min-w-full` самого DataTable:
+         на узком экране сетка шире блока и листается, на широком — растягивается
+         до его ширины. ⛔ `min-w-max` сюда возвращать нельзя: он снимает растяжение
+         и возвращает пустое поле справа (замер: сетка 936 при блоке 1205). */
       className={cn(
-        '[--acol:5.5rem] [--ncol:10rem] [--pcol:6rem] [--tcol:4rem]',
+        '[--acol:6.5rem] [--ncol:10rem] [--pcol:6rem] [--tcol:4rem]',
         'lg:[--ncol:20rem] lg:[--pcol:7rem] lg:[--tcol:5rem]',
-        '[&>[role=grid]]:min-w-max',
       )}
     >
       <DataHead>
@@ -130,13 +136,7 @@ export function GearMatrix({
         const canEdit = perms.canEditItem(g)
         const isFresh = fresh === g.i
         return (
-          <Fragment key={g.i}>
-            {/* role="presentation": полоса вставки живёт между строками таблицы,
-                и разметке сетки она не строка, а прослойка */}
-            <div role="presentation">
-              <RowInsert onInsert={() => onInsert(idx)} label={`Завести вещь перед «${g.n}»`} />
-            </div>
-            <DataRow zebra={idx % 2 === 1} alarm={alarm} fresh={isFresh} dataHit={g.i}>
+          <DataRow key={g.i} zebra={idx % 2 === 1} alarm={alarm} fresh={isFresh} dataHit={g.i}>
               <DataCell sticky bg={bg} align="left">
                 <InlineText
                   value={g.n}
@@ -234,15 +234,15 @@ export function GearMatrix({
 
               <DataCell className="px-1">
                 <RowActions>
-                  {/* На телефоне наведения нет, поэтому вставку там даёт сама строка;
-                      на десктопе её даёт полоса между строками (RowInsert). */}
-                  <span className="contents lg:hidden">
-                    <RowAction
-                      icon={ListPlus}
-                      label={`Завести вещь после «${g.n}»`}
-                      onClick={() => onInsert(idx + 1)}
-                    />
-                  </span>
+                  {/* Вставка живёт в САМОЙ строке и на обеих ширинах. Прежде
+                      на десктопе её давала невидимая полоса между строками —
+                      то есть орган, о котором человек узнавал случайно. Двух
+                      органов одного действия не бывает (урок У-58). */}
+                  <RowAction
+                    icon={ListPlus}
+                    label={`Завести вещь после «${g.n}»`}
+                    onClick={() => onInsert(idx + 1)}
+                  />
                   {perms.canDel(g) && (
                     <RowAction
                       icon={Trash2}
@@ -253,8 +253,7 @@ export function GearMatrix({
                   )}
                 </RowActions>
               </DataCell>
-            </DataRow>
-          </Fragment>
+          </DataRow>
         )
       })}
     </DataTable>

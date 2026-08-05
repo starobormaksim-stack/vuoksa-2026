@@ -1,5 +1,5 @@
 import type { Buy, State } from '@/lib/types'
-import { counted, statusName, sumOf } from '@/lib/buyx'
+import { counted, planSumOf, statusName, sumOf } from '@/lib/buyx'
 
 /**
  * Мелочи раздела «Закупка», которых нет в общей библиотеке.
@@ -87,6 +87,11 @@ export function setBuyer(p: BuyItem, id: string, qty: number, me: string): void 
 /** Подытог блока: только то, что действительно покупаем. */
 export function secSum(rows: Buy[]): number {
   return rows.filter(counted).reduce((s, p) => s + sumOf(p), 0)
+}
+
+/** Тот же подытог по ПЛАНОВЫМ ценам — чтобы видеть разницу прямо под блоком. */
+export function secPlan(rows: Buy[]): number {
+  return rows.filter(counted).reduce((s, p) => s + planSumOf(p), 0)
 }
 
 /**

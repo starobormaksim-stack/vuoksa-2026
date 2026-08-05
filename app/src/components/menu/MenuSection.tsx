@@ -1,10 +1,10 @@
-import { Fragment, useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Check, ChevronDown, Plus, Trash2, Utensils } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MenuDay, MenuDish } from '@/lib/types'
 import { readTrip, touch, useTrip } from '@/store'
 import {
-  AddRow, EmptyState, InlineText, RowAction, RowActions, RowInsert, SectionHead, useIsDesktop,
+  AddRow, EmptyState, InlineText, RowAction, RowActions, SectionHead, useIsDesktop,
 } from '@/components/flops'
 import { cn } from '@/lib/utils'
 
@@ -320,11 +320,8 @@ function DayCard({
               /* до миграции у блюда ещё нет i — считаем его тем же ключом, что и она */
               const id = dish.i ?? `${day.i}s${k}`
               return (
-                <Fragment key={id}>
-                  {canEdit && (
-                    <RowInsert onInsert={() => onAddDish(k)} label="Вставить блюдо выше" />
-                  )}
                   <DishRow
+                    key={id}
                     dish={dish}
                     id={id}
                     num={k + 1}
@@ -342,7 +339,6 @@ function DayCard({
                     onAddBelow={() => onAddDish(k + 1)}
                     onDelete={() => onDelDish(id, dish)}
                   />
-                </Fragment>
               )
             })}
             {canEdit && (

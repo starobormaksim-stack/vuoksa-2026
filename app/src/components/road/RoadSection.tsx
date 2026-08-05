@@ -252,9 +252,13 @@ export function RoadSection() {
           />
         ) : (
           <>
-            <DataTable cols={IDEA_COLS} label="Вопросы: что уточнить до выезда">
+            <DataTable
+              cols={IDEA_COLS}
+              minW={IDEA_COLS_MIN}
+              label="Вопросы: что уточнить до выезда"
+            >
               {/* Полоса строк шириной со свои колонки, а не с экран (см. «Расчёт дороги»). */}
-              <div role="rowgroup" className="w-max min-w-full">
+              <div role="rowgroup" className="w-full">
                 <DataRow zebra>
                   <DataCell sticky bg="zebra" align="left" head>
                     Вопрос
@@ -401,8 +405,15 @@ export function RoadSection() {
   )
 }
 
-/** Вопрос · на ком · решён. Первая колонка липкая, как и в расчёте. */
-const IDEA_COLS = 'minmax(12rem,1fr) 8rem 4rem'
+/**
+ * Вопрос · на ком · решён. Первая колонка липкая, как и в расчёте, и тянется
+ * не одна: иначе «на ком» и «решён» уезжают в крайний правый угол (см. COLS
+ * в `RoadCalc.tsx`).
+ */
+const IDEA_COLS = 'minmax(12rem,1fr) minmax(8rem,0.35fr) 4rem'
+
+/** Сумма минимумов IDEA_COLS: 12 + 8 + 4. Зачем — см. `minW` в DataTable. */
+const IDEA_COLS_MIN = '24rem'
 
 /** Кружок «вопрос решён»: 24 px внутри цели касания 44 px. */
 function Dot({ done }: { done: boolean }) {

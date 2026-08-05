@@ -1,6 +1,8 @@
 import type { State } from '@/lib/types'
 import { money } from '@/lib/calc'
 import { buyBreak, plurItems } from '@/lib/buyx'
+import { NBSP } from '@/format'
+import { cn } from '@/lib/utils'
 
 /**
  * Итог закупки. Подытоги блоков теперь стоят под самими блоками, как в таблице
@@ -8,12 +10,23 @@ import { buyBreak, plurItems } from '@/lib/buyx'
  * те же числа вторым списком («очень много лишнего», 04.08.2026). Здесь остаётся
  * только то, чего больше нигде нет: общий счёт, доля с каждого и сколько денег
  * лежит в позициях без галочки «Берём».
+ *
+ * ─── План, факт и разница (заказчик 05.08.2026) ───
+ * «В общем расчёте тоже должна быть планируемая стоимость и фактическая
+ * стоимость, чтобы можно было даже сравнить разницу». Обе колонки в таблице
+ * были и раньше (`Buy.pr` и `Buy.prf`), но итог считался один.
+ *
+ * ⛔ Общий счёт остаётся ровно тем, чем был, — на нём держатся контрольные цифры.
+ * Он и есть «факт»: там, где фактическая цена ещё не вписана, в него идёт
+ * плановая (`priceOf`). Это сказано словами под числом, иначе человек прочитал бы
+ * незаполненный факт как настоящий (постулат 5).
  */
 export function BuyTotals({ S }: { S: State }) {
   const b = buyBreak(S)
   const per = S.people.length > 0 ? b.total / S.people.length : 0
   const outSum = b.excluded.reduce((s, r) => s + r.sum, 0)
   const outCount = b.excluded.reduce((s, r) => s + (r.count || 0), 0)
+  const diff = b.total - b.plan
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4 shadow-sm">
@@ -23,6 +36,43 @@ export function BuyTotals({ S }: { S: State }) {
           {money(b.total, S.doc)}
         </span>
       </div>
+
+      {/* Пока ни одной фактической цены не вписано, план и счёт — одно и то же
+          число, и сравнивать нечего: две одинаковые строки и «разница 0 ₽»
+          были бы шумом. Поэтому сравнение появляется вместе с первым фактом. */}
+      {b.anyFact && (
+        <>
+          <div className="mt-3 flex items-center gap-3 border-t border-line pt-3">
+            <span className="min-w-0 flex-1 text-note text-muted">По плановым ценам</span>
+            <span className="tnum shrink-0 text-note text-muted">{money(b.plan, S.doc)}</span>
+          </div>
+
+          <div className="mt-1.5 flex items-center gap-3">
+            <span className="min-w-0 flex-1 text-note text-muted">
+              {diff === 0
+                ? 'Разница с планом'
+                : diff > 0
+                  ? 'Дороже плана на'
+                  : 'Дешевле плана на'}
+            </span>
+            <span
+              className={cn(
+                'tnum shrink-0 text-note font-semibold',
+                diff === 0 ? 'text-muted' : 'text-ink',
+              )}
+            >
+              {money(Math.abs(diff), S.doc)}
+            </span>
+          </div>
+        </>
+      )}
+
+      {b.noFact > 0 && (
+        <p className={cn('text-micro text-muted', b.anyFact ? 'mt-1.5' : 'mt-3')}>
+          У {b.noFact}{NBSP}
+          {plurItems(b.noFact)} фактическая цена ещё не вписана — там в счёт идёт плановая
+        </p>
+      )}
 
       <div className="mt-3 flex items-center gap-3 border-t border-line pt-3">
         <span className="min-w-0 flex-1 text-body text-ink">

@@ -28,6 +28,14 @@ interface Props {
   /** порядок колонок-людей; тот же во всех блоках раздела */
   people: Person[]
   zebra: boolean
+  /**
+   * Есть ли право заводить позиции. Это НЕ то же, что право править эту строку:
+   * участник заводит свои позиции, но чужие не правит. Раньше вставку между
+   * строками давала отдельная полоса (`RowInsert`) с этим же правилом — полосы
+   * больше нет, и правило переехало на кнопку в строке, чтобы участник вставку
+   * не потерял.
+   */
+  canAdd: boolean
   /** только что добавленная строка: подсветка и сразу открытая правка названия */
   fresh: boolean
   onPatch: (f: (x: BuyItem) => void) => void
@@ -38,7 +46,7 @@ interface Props {
 }
 
 export function BuyRow({
-  p, S, perms, people, zebra, fresh, onPatch, onDelete, onInsert, onFreshEnd,
+  p, S, perms, people, zebra, canAdd, fresh, onPatch, onDelete, onInsert, onFreshEnd,
 }: Props) {
   const canEdit = perms.canEditItem(p)
   const canQty = canEdit && perms.canEditQty(p)
@@ -194,7 +202,7 @@ export function BuyRow({
 
       <DataCell align="right" className="px-1">
         <RowActions>
-          {canEdit ? (
+          {canAdd ? (
             <RowAction key="ins" icon={Plus} label="Вставить строку ниже" onClick={onInsert} />
           ) : null}
           {perms.canDel(p) ? (

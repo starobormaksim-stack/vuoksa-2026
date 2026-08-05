@@ -1,15 +1,15 @@
-import { Fragment, type RefObject } from 'react'
+import { type RefObject } from 'react'
 import { ShoppingCart } from 'lucide-react'
 import type { BuySection, Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { money } from '@/lib/calc'
 import {
-  AddRow, DataCell, DataHead, DataTable, EmptyState, PersonHead, RowInsert,
+  AddRow, DataCell, DataHead, DataTable, EmptyState, PersonHead,
   type TableScroll,
 } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { BuyRow } from './BuyRow'
-import { colsFor, secSum, type BuyItem } from './buylocal'
+import { colsFor, secPlan, secSum, type BuyItem } from './buylocal'
 
 /**
  * Один блок закупки таблицей — как лист заказчика: строка на позицию, колонки
@@ -39,6 +39,7 @@ export function BuyTable({
 }: Props) {
   const canAdd = perms.isEditor() || !!perms.me
   const sum = secSum(rows)
+  const plan = secPlan(rows)
 
   if (rows.length === 0) {
     return (
@@ -57,9 +58,6 @@ export function BuyTable({
         cols={colsFor(people.length)}
         label={`Закупка · ${sec.t}`}
         sync={scroll}
-        /* `min-w-max` держит сетку шире блока: лист листается вбок внутри блока,
-           а у страницы горизонтальной прокрутки нет ни на одной ширине. */
-        className="[&>[role=grid]]:min-w-max"
       >
         <DataHead>
           <DataCell head sticky align="left">
@@ -104,27 +102,25 @@ export function BuyTable({
           <DataCell head className="px-1" />
         </DataHead>
 
+        {/* Полосы вставки между строками здесь больше нет: она была видна только
+            под курсором, а то же действие уже стоит видимой кнопкой в самой строке
+            (`BuyRow`, «Вставить строку ниже»). Двух органов одного действия
+            не бывает — урок У-58, требование заказчика 05.08.2026. */}
         {rows.map((p, idx) => (
-          <Fragment key={p.i}>
-            {canAdd && (
-              <RowInsert
-                onInsert={() => onAdd(sec.i, idx === 0 ? '' : rows[idx - 1].i)}
-                label={p.n ? `Вставить строку перед «${p.n}»` : 'Вставить строку'}
-              />
-            )}
-            <BuyRow
-              p={p}
-              S={S}
-              perms={perms}
-              people={people}
-              zebra={idx % 2 === 1}
-              fresh={fresh === p.i}
-              onPatch={(f) => onPatch(p.i, f)}
-              onDelete={() => onDelete(p)}
-              onInsert={() => onAdd(sec.i, p.i)}
-              onFreshEnd={(saved) => onFreshEnd(p.i, saved)}
-            />
-          </Fragment>
+          <BuyRow
+            key={p.i}
+            p={p}
+            S={S}
+            perms={perms}
+            people={people}
+            zebra={idx % 2 === 1}
+            canAdd={canAdd}
+            fresh={fresh === p.i}
+            onPatch={(f) => onPatch(p.i, f)}
+            onDelete={() => onDelete(p)}
+            onInsert={() => onAdd(sec.i, p.i)}
+            onFreshEnd={(saved) => onFreshEnd(p.i, saved)}
+          />
         ))}
       </DataTable>
 
@@ -138,6 +134,12 @@ export function BuyTable({
         <span className="min-w-0 flex-1 text-note font-semibold text-muted">
           {sec.personal ? 'Подытог · в общий бюджет не входит' : 'Подытог'}
         </span>
+        {/* План рядом с итогом, а не вместо него: столбец «Цена, план» человек
+            складывает глазами, и его сумма обязана быть написана (урок У-63,
+            требование заказчика 05.08.2026). Пусто — плановых цен в блоке нет. */}
+        {plan > 0 && plan !== sum && (
+          <span className="tnum shrink-0 text-note text-muted">по плану {money(plan, S.doc)}</span>
+        )}
         <span className="tnum shrink-0 text-body font-bold text-ink">{money(sum, S.doc)}</span>
       </div>
     </>

@@ -579,43 +579,6 @@ export function InlinePick({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Вставка строки в любом месте
-   ────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Полоса между строками: «я не должен листать до самого конца, чтобы добавить
- * ещё одну вещь» (заказчик, 04.08.2026).
- *
- * На десктопе полоса невидима, пока на неё не навели, — иначе между каждой парой
- * строк висело бы по кнопке и таблица превратилась бы в решето. На телефоне
- * наведения нет, поэтому там вставку даёт «Вставить строку ниже» в действиях
- * самой строки (см. RowActions).
- */
-export function RowInsert({ onInsert, label }: { onInsert: () => void; label: string }) {
-  return (
-    <div className="relative hidden h-0 lg:block">
-      <button
-        type="button"
-        onClick={onInsert}
-        aria-label={label}
-        className={cn(
-          'group absolute inset-x-0 -top-2 z-10 grid h-4 w-full place-items-center',
-          'opacity-0 transition-opacity focus-visible:opacity-100 hover:opacity-100',
-        )}
-      >
-        <span className="absolute inset-x-4 h-px bg-accent" aria-hidden />
-        <span
-          className="relative grid size-5 place-items-center rounded-full bg-accent text-on-accent"
-          aria-hidden
-        >
-          <Plus size={12} strokeWidth={1.75} />
-        </span>
-      </button>
-    </div>
-  )
-}
-
-/* ──────────────────────────────────────────────────────────────────────────
    Шапка колонки: человек
    ────────────────────────────────────────────────────────────────────────── */
 
@@ -667,9 +630,18 @@ export function PersonHead({
    ────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Действия в самой строке, а не в шторке (постулат 2). Рисуются тихо: на десктопе
- * проявляются при наведении на строку (`group-hover`), на телефоне видны всегда,
- * потому что наведения там не существует.
+ * Действия в самой строке, а не в шторке (постулат 2). Видны ВСЕГДА и на обеих
+ * ширинах.
+ *
+ * ⛔ Прежде на десктопе они проявлялись только при наведении (`lg:opacity-0`
+ * + `group-hover`). Заказчик 05.08.2026: «вот эти плюсики и удаление тех или иных
+ * строк — они не видны, при наведении только видны… было бы неплохо, чтобы это
+ * условно с правой стороны». Действие, о существовании которого человек узнаёт
+ * только случайно наведя мышь, — это отсутствующее действие (родня постулата 4).
+ *
+ * Решето из корзин при этом не получается: значки приглушены (`text-muted`,
+ * толщина 1,75), а фон под ними появляется только под курсором — колонка действий
+ * читается как поле, а не как ряд кнопок.
  *
  * Пустой список действий не рисует ничего — так участник без прав не видит
  * ни серых кнопок, ни заглушек (постулат 5).
@@ -677,11 +649,7 @@ export function PersonHead({
 export function RowActions({ children }: { children: ReactNode }) {
   const items = Array.isArray(children) ? children.filter(Boolean) : children
   if (!items || (Array.isArray(items) && items.length === 0)) return null
-  return (
-    <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
-      {items}
-    </span>
-  )
+  return <span className="flex shrink-0 items-center gap-0.5">{items}</span>
 }
 
 /** Одно действие строки: значок 18 px, зона нажатия 44 × 44, подпись словами. */
