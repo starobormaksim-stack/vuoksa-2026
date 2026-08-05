@@ -92,7 +92,12 @@ export function RouteBoard({ S, perms }: Props) {
             бы из вида, а она теперь на другом конце страницы.
             Договор записан в `road/RouteTiming.tsx`: «карта рядом должна
             остаться на месте». */}
-        <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm lg:max-h-[600px] lg:overflow-y-auto">
+        {/* ⛔ `overflow-clip`, а не `overflow-hidden`: `hidden` делает блок
+            прокручиваемым, и липкая шапка ленты («Точка · Пройдено · имена»)
+            прилипала бы к верху ЭТОГО блока, то есть никуда (замер 05.08.2026:
+            уезжала на y = −237). На десктопе своя прокрутка по высоте остаётся —
+            там шапка честно липнет к верху блока. */}
+        <section className="overflow-clip rounded-xl border border-line bg-surface shadow-sm lg:max-h-[600px] lg:overflow-y-auto">
           <RouteTiming
             points={S.route}
             people={S.people}

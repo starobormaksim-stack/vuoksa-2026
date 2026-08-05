@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode, type RefObject } from 'react'
+import { Children, isValidElement, useCallback, useRef, type ReactNode, type RefObject } from 'react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -25,12 +25,18 @@ import { cn } from '@/lib/utils'
 export interface TableScroll {
   /** видимые сейчас области прокрутки — по одной на блок */
   nodes: Set<HTMLElement>
+  /**
+   * Липкие шапки этих же блоков. Шапка стоит ВНЕ области прокрутки (иначе она
+   * не прилипает — см. разбор в `DataTable`), поэтому вбок её двигаем сами,
+   * и делать это надо для всех блоков раздела сразу.
+   */
+  heads: Set<HTMLElement>
   x: number
   busy: boolean
 }
 
 export function newTableScroll(): TableScroll {
-  return { nodes: new Set(), x: 0, busy: false }
+  return { nodes: new Set(), heads: new Set(), x: 0, busy: false }
 }
 
 interface TableProps {
@@ -55,6 +61,9 @@ interface TableProps {
 }
 
 export function DataTable({ cols, minW, label, sync, children, className }: TableProps) {
+  /** внутренняя обёртка липкой шапки: её и двигаем вбок вслед за телом */
+  const headInner = useRef<HTMLDivElement>(null)
+
   /* Прокрутку соседей ставим напрямую в DOM: перерисовывать таблицу на каждый
      кадр прокрутки незачем. `busy` гасит эхо-события от соседей. */
   const attach = useCallback(
@@ -62,7 +71,10 @@ export function DataTable({ cols, minW, label, sync, children, className }: Tabl
       if (!el || !sync) return
       const s = sync.current
       s.nodes.add(el)
-      if (s.x) el.scrollLeft = s.x
+      if (s.x) {
+        el.scrollLeft = s.x
+        shiftHead(headInner.current, s.x)
+      }
       return () => {
         s.nodes.delete(el)
       }
@@ -70,24 +82,88 @@ export function DataTable({ cols, minW, label, sync, children, className }: Tabl
     [sync],
   )
 
+  /** шапка блока в общем списке шапок раздела — чтобы двигались все сразу */
+  const attachHead = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el || !sync) return
+      const s = sync.current
+      s.heads.add(el)
+      if (s.x) shiftHead(el, s.x)
+      return () => {
+        s.heads.delete(el)
+      }
+    },
+    [sync],
+  )
+
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (!sync) return
+    const el = e.currentTarget
+    if (!sync) {
+      shiftHead(headInner.current, el.scrollLeft)
+      return
+    }
     const s = sync.current
     if (s.busy) return
-    const el = e.currentTarget
     s.x = el.scrollLeft
     s.busy = true
     for (const n of s.nodes) if (n !== el) n.scrollLeft = s.x
+    /* Шапки двигаем ВСЕ, включая свою: они вне областей прокрутки, и эхо-событий
+       от них не бывает. */
+    for (const h of s.heads) shiftHead(h, s.x)
     requestAnimationFrame(() => {
       s.busy = false
     })
   }
 
+  /**
+   * Шапка живёт ОТДЕЛЬНО от тела, и это вынужденно, а не по вкусу.
+   *
+   * Внутри области с `overflow-x: auto` вертикальный `visible` по правилам CSS
+   * молча становится `auto`, а `clip` — `hidden`: блок в любом случае оказывается
+   * прокручиваемым по вертикали. Липкая шапка тогда прилипает к верху ЭТОГО блока,
+   * а он высотой во всё содержимое (замер 05.08.2026: 1070 px), то есть не липнет
+   * никуда — при прокрутке страницы шапка уезжала вверх (y = −394).
+   *
+   * Поэтому шапка вынута из области прокрутки, прилипает к экрану под верхней
+   * панелью, а вбок её двигает `shiftHead` вслед за телом. Требование заказчика
+   * 05.08.2026: «когда я листаю список, нужно, чтобы имена прилипали… иначе
+   * сложно понять, кому это делегируется».
+   */
+  const kids = Children.toArray(children)
+  const head = kids.filter((k) => isValidElement(k) && k.type === DataHead)
+  const body = kids.filter((k) => !(isValidElement(k) && k.type === DataHead))
+  const gridW = minW ? 'w-full' : 'w-min min-w-full'
+
   return (
-    <div ref={attach} onScroll={onScroll} className={cn('overflow-x-auto', className)}>
+    <div role="grid" aria-label={label} className={cn('relative', className)}>
+      {head.length > 0 && (
+        <div
+          role="presentation"
+          /* Под верхней панелью И под липкой полосой раздела: они стоят друг
+             на друге, и без второго слагаемого имена прятались под «Сборами». */
+          className="sticky top-[calc(var(--header-h)+var(--sec-h))] z-20 overflow-hidden bg-surface"
+        >
+          <div
+            ref={(el) => {
+              headInner.current = el
+              return attachHead(el)
+            }}
+            role="presentation"
+            className={gridW}
+            style={{ ['--cols' as string]: cols, minWidth: minW }}
+          >
+            {head}
+          </div>
+        </div>
+      )}
+
+      {/* `overflow-y-hidden` явно: при одном лишь `overflow-x-auto` вертикальная
+          ось становится `auto`, браузер резервирует место под полосу прокрутки,
+          и тело оказывается на 10 px уже шапки (замер: 1205 против 1215) —
+          колонки разъезжаются. */}
+      <div ref={attach} onScroll={onScroll} className="overflow-x-auto overflow-y-hidden">
       <div
-        role="grid"
-        aria-label={label}
+        role="presentation"
         /**
          * Ширина сетки — `min-content`, но не меньше ширины блока. Оба слагаемых
          * обязательны и делают разное.
@@ -105,21 +181,42 @@ export function DataTable({ cols, minW, label, sync, children, className }: Tabl
          * длинному содержимому ячейки, и с долевыми колонками таблица раздувалась
          * до 1869 px при блоке 1215 — прокрутка появлялась там, где всё помещалось.
          */
-        className={minW ? 'w-full' : 'w-min min-w-full'}
+        className={gridW}
         style={{ ['--cols' as string]: cols, minWidth: minW }}
       >
-        {children}
+        {body}
+      </div>
       </div>
     </div>
   )
 }
 
-/** Шапка таблицы: те же колонки, что и у строк, снизу — волосяная линия. */
+/**
+ * Сдвинуть шапку вслед за телом. Не `scrollLeft`, а `transform`: у шапки своей
+ * прокрутки нет вовсе, и заводить её незачем — сдвиг по кадрам дешевле
+ * и не порождает эхо-событий прокрутки.
+ */
+function shiftHead(el: HTMLElement | null, x: number): void {
+  if (el) el.style.transform = x ? `translateX(${-x}px)` : ''
+}
+
+/**
+ * Шапка таблицы: те же колонки, что и у строк, снизу — волосяная линия.
+ *
+ * Прилипает к верху экрана при прокрутке списка. Слово заказчика 05.08.2026:
+ * «когда я листаю список, нужно, чтобы имена прилипали… иначе сложно понять,
+ * кому это делегируется, если пропадает эта прилипшая плашка с именами
+ * и фотографиями». Столбец без заголовка — это столбец без смысла: в «Сборах»
+ * четыре одинаковых кружка подряд, и чей который, сказать нечем.
+ *
+ * `top` — высота верхней панели: она перекрывает страницу, и без поправки шапка
+ * прилипала бы ПОД ней. `--header-h` — одно число на весь проект (`index.css`).
+ */
 export function DataHead({ children }: { children: ReactNode }) {
   return (
     <div
       role="row"
-      className="grid items-stretch border-b border-line bg-surface"
+      className="sticky top-(--header-h) z-20 grid items-stretch border-b border-line bg-surface"
       style={{ gridTemplateColumns: 'var(--cols)' }}
     >
       {children}

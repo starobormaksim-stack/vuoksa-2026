@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Car, ChevronRight, Footprints, MapPinned, Sailboat, Tent, TriangleAlert, WifiOff,
+  Car, ChevronRight, Footprints, MapPinned, MapPinPlus, Sailboat, Tent, TriangleAlert, WifiOff,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -136,6 +136,17 @@ export function TripMap({ S, perms, className }: Props) {
   const [placing, setPlacing] = useState<string | null>(null)
   /** ждём тап для конечной точки поездки */
   const [placingMain, setPlacingMain] = useState(false)
+  /**
+   * Ждём тап для НОВОЙ точки маршрута — режим включается кнопкой «Точка».
+   *
+   * Тап по пустому месту заводил точку и раньше, но узнать об этом было неоткуда:
+   * заказчик 05.08.2026 — «я вот забил туда условную информацию по разным точкам,
+   * но толку я не увидел… если я хочу добавить новую точку, я её даже должен…».
+   * Невидимый жест на телефоне равен отсутствующей функции: наведения там нет,
+   * подсказаться нечему. Поэтому у действия появился видимый орган, парный
+   * «Конечной», а прежний тап остался как быстрый путь для тех, кто его знает.
+   */
+  const [placingNew, setPlacingNew] = useState(false)
   /** карточка, оставленная открытой: по метке тапнули или точку только что поставили */
   const [pinned, setPinned] = useState<string | null>(null)
   /** карточка под курсором: показывается, пока курсор на метке или на ней самой */
@@ -187,7 +198,10 @@ export function TripMap({ S, perms, className }: Props) {
       onMapRequest((r) => {
         setFocus(r)
         setPlacing(r.mode === 'place' ? r.pointId : null)
-        if (r.mode === 'place') setPlacingMain(false)
+        if (r.mode === 'place') {
+          setPlacingMain(false)
+          setPlacingNew(false)
+        }
         /* Показать точку — значит и открыть её карточку: связь ленты и карты
            двусторонняя, и «показать» должно давать столько же, сколько тап по метке. */
         if (r.mode === 'show') {
@@ -306,6 +320,8 @@ export function TripMap({ S, perms, className }: Props) {
       void guessAddr(id, lat, lon)
       return
     }
+    /* Ждали именно новую точку — ожидание кончилось, дальше обычный путь. */
+    setPlacingNew(false)
     const id = addPoint(lat, lon, 'Новая точка', '')
     openCard(id, true)
     void guessAddr(id, lat, lon)
@@ -332,6 +348,7 @@ export function TripMap({ S, perms, className }: Props) {
       openCard(id)
       return
     }
+    setPlacingNew(false)
     const id = addPoint(hit.lat, hit.lon, shortPlaceName(hit.addr), hit.addr)
     openCard(id)
   }
@@ -561,6 +578,15 @@ export function TripMap({ S, perms, className }: Props) {
                   Отменить
                 </Btn>
               </>
+            ) : placingNew ? (
+              <>
+                <span className="min-w-0 flex-1 text-note text-ink">
+                  Тапните по карте, где новая точка маршрута
+                </span>
+                <Btn tone="ghost" className="shrink-0" onClick={() => setPlacingNew(false)}>
+                  Отменить
+                </Btn>
+              </>
             ) : (
               <>
                 {canEdit && unplaced.length > 0 ? (
@@ -593,19 +619,37 @@ export function TripMap({ S, perms, className }: Props) {
                   )
                 )}
                 {canEdit && (
-                  <Btn
-                    tone="secondary"
-                    className="ml-auto shrink-0"
-                    aria-label="Указать конечную точку поездки тапом по карте"
-                    onClick={() => {
-                      setPlacing(null)
-                      setPlacingMain(true)
-                      toast('Тапните по карте, где конечная точка')
-                    }}
-                  >
-                    <Tent size={16} strokeWidth={1.75} aria-hidden />
-                    Конечная
-                  </Btn>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    {/* Главное действие карты — завести точку. Оно было доступно
+                        только жестом, а жест на телефоне неоткуда узнать (пункт 11
+                        разбора). Кнопка заливкой, потому что это «продолжить»,
+                        а «Конечная» рядом — действие пореже и стоит контуром. */}
+                    <Btn
+                      aria-label="Добавить точку маршрута тапом по карте"
+                      onClick={() => {
+                        setPlacing(null)
+                        setPlacingMain(false)
+                        setPlacingNew(true)
+                        toast('Тапните по карте, где новая точка')
+                      }}
+                    >
+                      <MapPinPlus size={16} strokeWidth={1.75} aria-hidden />
+                      Точка
+                    </Btn>
+                    <Btn
+                      tone="secondary"
+                      aria-label="Указать конечную точку поездки тапом по карте"
+                      onClick={() => {
+                        setPlacing(null)
+                        setPlacingNew(false)
+                        setPlacingMain(true)
+                        toast('Тапните по карте, где конечная точка')
+                      }}
+                    >
+                      <Tent size={16} strokeWidth={1.75} aria-hidden />
+                      Конечная
+                    </Btn>
+                  </div>
                 )}
               </>
             )}

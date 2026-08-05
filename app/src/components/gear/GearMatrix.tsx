@@ -9,7 +9,8 @@ import {
   DataCell, DataHead, DataRow, DataTable, InlineNum, InlineText, PersonHead,
   ProductLink, RowAction, RowActions, StatusDial, numText, type TableScroll,
 } from '@/components/flops'
-import { saveNameOrUrl } from '@/lib/producturl'
+import { safeUrl, saveNameOrUrl } from '@/lib/producturl'
+import { applyCard, clearGrab, grabProduct } from '@/lib/product'
 import { NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 
@@ -60,6 +61,14 @@ export function GearMatrix({
 }: Props) {
   /** ячейка с раскрытым счётчиком — «вещь:человек»; открыта всегда одна */
   const [qtyAt, setQtyAt] = useState('')
+
+  /**
+   * Прочитать карточку товара со страницы и положить снятое в вещь.
+   * ⛔ Что именно кладётся, решает `applyCard` (`lib/product.ts`) — правило про
+   * цену живёт в одном месте на оба раздела.
+   */
+  const grabItem = (id: string, url: string) =>
+    void grabProduct(id, url, (card) => patch(id, (x) => applyCard(x, card)))
   /** строка, у которой выбирается единица измерения */
   const [unitAt, setUnitAt] = useState('')
 
@@ -145,7 +154,14 @@ export function GearMatrix({
                      остаётся имя сайта, пока человек не напишет своё (заказчик
                      05.08.2026: «либо вписываю название товара, либо вставляю
                      ссылку»). Обычный текст ведёт себя ровно как раньше. */
-                  onSave={(v) => patch(g.i, (x) => { saveNameOrUrl(x, v) })}
+                  onSave={(v) => {
+                    patch(g.i, (x) => { saveNameOrUrl(x, v) })
+                    /* Вставили адрес — тут же спрашиваем карточку у посредника.
+                       У вещи цены нет вовсе, поэтому приедут только название
+                       и фотография (`applyCard` в lib/product.ts). */
+                    const u = safeUrl(v)
+                    if (u) grabItem(g.i, u)
+                  }}
                   can={canEdit}
                   label="Название вещи"
                   placeholder="Без названия"
@@ -158,14 +174,17 @@ export function GearMatrix({
                   <ProductLink
                     url={g.url}
                     img={g.img}
+                    itemId={g.i}
                     canEdit={canEdit}
-                    onClear={() =>
+                    onRefresh={() => grabItem(g.i, g.url as string)}
+                    onClear={() => {
+                      clearGrab(g.i)
                       patch(g.i, (x) => {
                         x.url = ''
                         x.img = ''
                         x.pat = 0
                       })
-                    }
+                    }}
                   />
                 ) : null}
                 <InlineText

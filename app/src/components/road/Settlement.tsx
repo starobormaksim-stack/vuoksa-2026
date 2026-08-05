@@ -148,7 +148,9 @@ export function Settlement({ S, me }: { S: State; me?: string | null }) {
 /** Оболочка блока — та же карточка, что у «Расчёта дороги». */
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+    /* `overflow-clip`, а не `hidden`: `hidden` делает блок прокручиваемым,
+       и липкая шапка таблицы внутри перестаёт прилипать (см. `DataTable`). */
+    <section className="overflow-clip rounded-xl border border-line bg-surface shadow-sm">
       <div className="border-b border-line px-4 py-3">
         <h3 className="text-head font-[650] text-ink">Взаиморасчёты</h3>
         <p className="mt-0.5 text-note leading-snug text-muted">

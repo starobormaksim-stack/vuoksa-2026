@@ -9,11 +9,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  InputGroup,
-  InputGroupAddon,
-} from "@/components/ui/input-group"
 import { SearchIcon, CheckIcon } from "lucide-react"
+
+/*
+ * ⚠️ Кегли здесь — шкала проекта (12 / 13 / 15,5 / 20 …), а не `text-sm`
+ * и `text-xs` из образца shadcn. Заказчик 05.08.2026: «я нажимаю на поиск,
+ * и там какая-то херобора… наверху всё перекошено, дизайн не единообразен,
+ * и размеры у тебя все везде по-разному». Замер это подтвердил: поле ввода
+ * было 30 px высоты при цели касания 44, кегль 14 px — чужой шкале, а строки
+ * находок под ним 53 px. Чужие кегли приезжают из компонента-органа, а не
+ * из экрана (урок У-71), поэтому чинится здесь, а не в SearchCommand.tsx.
+ */
 
 function Command({
   className,
@@ -23,7 +29,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground",
+        "flex size-full flex-col overflow-hidden rounded-xl! bg-popover text-popover-foreground",
         className
       )}
       {...props}
@@ -76,20 +82,22 @@ function CommandInput({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
   return (
-    <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
-        <CommandPrimitive.Input
-          data-slot="command-input"
-          className={cn(
-            "w-full text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
-            className
-          )}
-          {...props}
-        />
-        <InputGroupAddon>
-          <SearchIcon className="size-4 shrink-0 opacity-50" />
-        </InputGroupAddon>
-      </InputGroup>
+    /* Поле во всю ширину окна, значок слева, волосяная линия снизу — так же,
+       как шапка отделена от содержимого в шторках. Высота 52 (шкала 36 · 44 · 52):
+       это главный орган окна, и он не может быть мельче строки находки. */
+    <div
+      data-slot="command-input-wrapper"
+      className="flex h-13 shrink-0 items-center gap-3 border-b border-line px-4"
+    >
+      <SearchIcon size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
+      <CommandPrimitive.Input
+        data-slot="command-input"
+        className={cn(
+          "h-13 w-full bg-transparent text-body text-ink outline-hidden placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        {...props}
+      />
     </div>
   )
 }
@@ -102,7 +110,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+        "no-scrollbar max-h-72 scroll-py-2 overflow-x-hidden overflow-y-auto p-1.5 outline-none",
         className
       )}
       {...props}
@@ -117,7 +125,7 @@ function CommandEmpty({
   return (
     <CommandPrimitive.Empty
       data-slot="command-empty"
-      className={cn("py-6 text-center text-sm", className)}
+      className={cn("py-6 text-center text-note text-muted", className)}
       {...props}
     />
   )
@@ -131,7 +139,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
+        "overflow-hidden text-foreground **:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pt-3 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:text-micro **:[[cmdk-group-heading]]:font-semibold **:[[cmdk-group-heading]]:text-muted",
         className
       )}
       {...props}
@@ -161,7 +169,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-zebra data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
+        "group/command-item relative flex min-h-11 cursor-default items-center gap-3 rounded-lg px-3 py-2 text-body outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-zebra data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
         className
       )}
       {...props}
@@ -180,7 +188,7 @@ function CommandShortcut({
     <span
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto text-xs tracking-widest text-muted-foreground group-data-selected/command-item:text-foreground",
+        "ml-auto text-micro tracking-widest text-muted group-data-selected/command-item:text-foreground",
         className
       )}
       {...props}

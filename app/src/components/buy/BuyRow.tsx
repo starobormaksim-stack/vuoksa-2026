@@ -6,7 +6,8 @@ import { counted, sumOf, unitOf } from '@/lib/buyx'
 import {
   DataCell, DataRow, InlineNum, InlineText, ProductLink, RowAction, RowActions,
 } from '@/components/flops'
-import { saveNameOrUrl } from '@/lib/producturl'
+import { safeUrl, saveNameOrUrl } from '@/lib/producturl'
+import { applyCard, clearGrab, grabProduct } from '@/lib/product'
 import { SpendShareEdit } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
 import {
@@ -57,6 +58,14 @@ export function BuyRow({
   const take = counted(p)
   const saved = useRef(false)
 
+  /**
+   * Прочитать карточку товара со страницы и положить снятое в позицию.
+   * ⛔ Цена ложится только в «Цена, план» и только в пустое место — правило живёт
+   * в `applyCard` (`lib/product.ts`), здесь его повторять нельзя, разъедется.
+   */
+  const grab = (url: string) =>
+    void grabProduct(p.i, url, (card) => onPatch((x) => applyCard(x, card)))
+
   return (
     <DataRow zebra={zebra} fresh={fresh} dataHit={p.i}>
       <DataCell sticky bg={bg} align="left">
@@ -81,6 +90,11 @@ export function BuyRow({
               onSave={(v) => {
                 saved.current = true
                 onPatch((x) => { saveNameOrUrl(x, v) })
+                /* Вставили именно адрес — тут же спрашиваем у посредника название,
+                   фотографию и цену. Один раз, в минуту вставки: фоном обновлять
+                   нельзя, иначе бюджет менялся бы сам собой. */
+                const u = safeUrl(v)
+                if (u) grab(u)
               }}
               onEditEnd={fresh ? () => onFreshEnd(saved.current) : undefined}
               className="text-body font-semibold text-ink"
@@ -90,14 +104,17 @@ export function BuyRow({
               <ProductLink
                 url={p.url}
                 img={p.img}
+                itemId={p.i}
                 canEdit={canEdit}
-                onClear={() =>
+                onRefresh={() => grab(p.url as string)}
+                onClear={() => {
+                  clearGrab(p.i)
                   onPatch((x) => {
                     x.url = ''
                     x.img = ''
                     x.pat = 0
                   })
-                }
+                }}
               />
             ) : null}
             <InlineText

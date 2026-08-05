@@ -98,7 +98,12 @@ export function Group({
   return (
     /* Рамка карточки — единственное, что отделяет группу от фона. Тень отсюда убрана:
        она ничего не сообщала, а рядом с волосяной линией читалась как вторая граница. */
-    <section className={cn('overflow-hidden rounded-2xl border border-line bg-surface', className)}>
+    /* ⛔ `overflow-clip`, а НЕ `overflow-hidden`. Обрезают углы они одинаково,
+       но `hidden` делает блок прокручиваемым (просто без полос), и липкая шапка
+       таблицы внутри прилипает к верху ЭТОЙ группы — то есть никуда, потому что
+       группа высотой во весь список. Замер 05.08.2026: шапка уезжала на y = −492.
+       `clip` прокручиваемым блок не делает, и шапка находит настоящий экран. */
+    <section className={cn('overflow-clip rounded-2xl border border-line bg-surface', className)}>
       <h3 className="relative flex items-stretch">
         {titleEdit ? (
           /* Название правится на месте, поэтому оно НЕ внутри кнопки сворачивания:

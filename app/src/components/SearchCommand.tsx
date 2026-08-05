@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CommandDialog,
   CommandEmpty,
@@ -14,7 +14,23 @@ import type { MenuDay } from '@/lib/types'
  * Поиск по всему листу (docs/v2-ux-redesign.md, 14).
  * Механика v1 сохранена: находка знает свой раздел, тап открывает раздел
  * и подсвечивает строку по атрибуту data-hit.
+ *
+ * Пункт 12 разбора 05.08.2026: «я нажимаю на поиск, и там какая-то херобора…
+ * наверху всё перекошено, дизайн не единообразен, и размеры у тебя все везде
+ * по-разному». Замер показал две разные беды, и чинятся они в разных местах:
+ * кегли и высоты органа — в `ui/command.tsx` (урок У-71), а свалка из 217 строк
+ * до единой буквы запроса — здесь. Пустой запрос теперь показывает, ЧТО и ГДЕ
+ * ищется, а находки разложены по разделам с заголовками.
  */
+
+/** Крупные разделы в том порядке, в каком они идут по странице. */
+const GROUPS: { section: string; title: string }[] = [
+  { section: 'gear', title: 'Сборы' },
+  { section: 'buy', title: 'Закупка' },
+  { section: 'road', title: 'Дорога' },
+  { section: 'menu', title: 'Меню' },
+  { section: 'crew', title: 'Команда' },
+]
 
 export interface Hit {
   key: string
@@ -87,6 +103,15 @@ export function SearchCommand({
   onJump: (section: string, itemId: string) => void
 }) {
   const hits = useMemo(() => buildHits(S), [S])
+  const [q, setQ] = useState('')
+
+  /* Закрыли окно — запрос забыт. Иначе следующее открытие показывает прошлую
+     находку, а человек читает это как «поиск застрял». */
+  useEffect(() => {
+    if (!open) setQ('')
+  }, [open])
+
+  const asked = q.trim().length > 0
 
   return (
     <CommandDialog
@@ -94,40 +119,64 @@ export function SearchCommand({
       onOpenChange={onOpenChange}
       title="Поиск по листу"
       description="Ищем по названиям и примечаниям"
+      className="sm:max-w-[560px]"
     >
-      <CommandInput placeholder="Что ищем?" />
+      <CommandInput placeholder="Что ищем?" value={q} onValueChange={setQ} />
       {/* dvh, а не vh: на iOS и во встроенном браузере Телеграма `vh` считается
           по самому большому окну, и при видимых панелях низ списка уезжает за экран. */}
       <CommandList className="max-h-[60dvh]">
-        <CommandEmpty>
-          <div className="px-4 py-6 text-center">
-            <div className="text-body font-[650] text-ink">Ничего не нашлось</div>
-            <p className="mt-1 text-note text-muted">
-              Попробуйте другое слово — ищем по названиям и примечаниям
+        {!asked ? (
+          /* До первой буквы показывать все позиции листа бессмысленно: это
+             простыня на две сотни строк, в которой ничего не найти глазами.
+             Вместо неё — что именно ищется и сколько всего есть. */
+          <div className="px-4 py-8 text-center">
+            <div className="text-body font-semibold text-ink">Поиск по всему листу</div>
+            <p className="mx-auto mt-1 max-w-80 text-note text-balance text-muted">
+              Ищем по названиям и примечаниям в сборах, закупке, дороге, меню и команде.
+              Всего позиций: {hits.length}
             </p>
           </div>
-        </CommandEmpty>
-        <CommandGroup>
-          {hits.map((h) => (
-            <CommandItem
-              key={h.key}
-              value={`${h.title} ${h.note} ${h.sectionTitle}`}
-              onSelect={() => {
-                onJump(h.section, h.itemId)
-                onOpenChange(false)
-              }}
-              className="min-h-14 items-start gap-1"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-semibold text-ink">{h.title}</span>
-                <span className="block truncate text-note text-muted">
-                  {h.sectionTitle}
-                  {h.note ? ` · ${h.note}` : ''}
-                </span>
-              </span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        ) : (
+          <>
+            <CommandEmpty>
+              <div className="px-4 py-6 text-center">
+                <div className="text-body font-semibold text-ink">Ничего не нашлось</div>
+                <p className="mt-1 text-note text-muted">
+                  Попробуйте другое слово — ищем по названиям и примечаниям
+                </p>
+              </div>
+            </CommandEmpty>
+            {GROUPS.map(({ section, title }) => {
+              const list = hits.filter((h) => h.section === section)
+              if (list.length === 0) return null
+              return (
+                <CommandGroup key={section} heading={title}>
+                  {list.map((h) => (
+                    <CommandItem
+                      key={h.key}
+                      value={`${h.title} ${h.note} ${h.sectionTitle}`}
+                      onSelect={() => {
+                        onJump(h.section, h.itemId)
+                        onOpenChange(false)
+                      }}
+                      className="items-start"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body font-semibold text-ink">
+                          {h.title}
+                        </span>
+                        <span className="block truncate text-note text-muted">
+                          {h.sectionTitle}
+                          {h.note ? ` · ${h.note}` : ''}
+                        </span>
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )
+            })}
+          </>
+        )}
       </CommandList>
     </CommandDialog>
   )
