@@ -61,8 +61,9 @@ import { docKey, seedFor } from './lib/trips.ts'
 const KEY = docKey()
 
 /**
- * Сид, из которого добирается недостающее. У Вуоксы это весь `seed-v2.json`,
- * у прочих поездок — только справочники: чужие вещи и маршрут в них не едут.
+ * Сид, из которого добирается недостающее, — только строение листа и справочники
+ * (`data/seed-base.json`). Данных поездки в нём нет ни у кого: всё, что импортирует
+ * приложение, уезжает в публичный файл сайта (урок У-65). Лист приезжает с сервера.
  * Считается один раз: он не меняется, пока открыта одна и та же поездка.
  */
 const SEED: State = seedFor()
@@ -104,6 +105,15 @@ let net: { state: NetState; msg: string } = { state: 'off', msg: '' }
  * Это не обрыв связи, а «вы не из этой поездки», и экран об этом другой.
  */
 let denied = false
+/**
+ * Первое чтение с сервера уже закончилось (листом, отказом или обрывом).
+ *
+ * До него о правах судить не по чему: заводской сид людей не содержит вовсе
+ * (`data/seed-base.json`, урок У-65), поэтому `checkAuth()` сверять ключ не с чем
+ * и `perms.authed` заведомо ложно. Показать в эту минуту «Этот лист закрыт» значит
+ * отказать человеку, который всё сделал правильно, — а он прочитает это как поломку.
+ */
+let opened = false
 let presence: Presence[] = []
 let perms: Perms = makePerms(doc, null, false)
 
@@ -276,8 +286,9 @@ interface Snapshot {
   presence: Presence[]
   signIn: SignIn
   denied: boolean
+  opened: boolean
 }
-let snapshot: Snapshot = { S: doc, perms, net, presence, signIn, denied }
+let snapshot: Snapshot = { S: doc, perms, net, presence, signIn, denied, opened }
 
 /** Пересобрать снимок и разбудить подписчиков — только если что-то правда изменилось. */
 function emit(): void {
@@ -287,10 +298,11 @@ function emit(): void {
     snapshot.net === net &&
     snapshot.presence === presence &&
     snapshot.signIn === signIn &&
-    snapshot.denied === denied
+    snapshot.denied === denied &&
+    snapshot.opened === opened
   )
     return
-  snapshot = { S: doc, perms, net, presence, signIn, denied }
+  snapshot = { S: doc, perms, net, presence, signIn, denied, opened }
   listeners.forEach((l) => l())
 }
 
@@ -413,6 +425,13 @@ function setDenied(v: boolean): void {
   emit()
 }
 
+/** Первое чтение состоялось — с этой минуты воротам есть на что смотреть. */
+function setOpened(): void {
+  if (opened) return
+  opened = true
+  emit()
+}
+
 function setPresence(list: Presence[]): void {
   const same =
     presence.length === list.length &&
@@ -449,6 +468,10 @@ function startSync(): void {
        сервер — `trip_read`. Подробности у readKey() в lib/perm.ts. */
     getReadKey: () => readKey(auth),
     onDenied: setDenied,
+    onFirstRead: setOpened,
+    /* Пустой документ строку на сервере НЕ создаёт: это затёрло бы лист команды
+       (см. Sync.pull). Признак содержимого — люди: без них лист бессмыслен. */
+    hasContent: () => (doc.people || []).length > 0,
     getMe: () => {
       const me = perms.mePerson
       return me ? { id: me.id, name: me.name } : null
@@ -479,6 +502,8 @@ export interface TripApi {
   signIn: SignIn
   /** сервер не отдал лист по нашему ключу — человек не из этой поездки */
   denied: boolean
+  /** первое чтение с сервера уже закончилось — до него правами судить рано */
+  opened: boolean
   isHere: (id: string) => boolean
 }
 
@@ -491,6 +516,7 @@ export function readTrip(): Omit<TripApi, 'update' | 'remove' | 'isHere'> {
     presence: snapshot.presence,
     signIn: snapshot.signIn,
     denied: snapshot.denied,
+    opened: snapshot.opened,
   }
 }
 
@@ -510,6 +536,7 @@ export function useTrip(): TripApi {
     presence: snap.presence,
     signIn: snap.signIn,
     denied: snap.denied,
+    opened: snap.opened,
     isHere,
   }
 }

@@ -1,4 +1,4 @@
-// Миграция данных поездки: src/seed.json (модель v1) → app/src/data/seed-v2.json (модель v2).
+// Миграция данных поездки: src/seed.json (модель v1) → app/fixtures/seed-sample.json (модель v2).
 // Схема и таблица переезда: docs/v2-architecture.md. Скрипт падает, если хоть одна из
 // контрольных сумм не совпала с боевыми цифрами v1 — это приёмочный тест миграции.
 //   запуск: node app/scripts/migrate.mjs   (из корня репозитория)
@@ -167,6 +167,9 @@ const moved = 15 + (S.logNotes || []).length + (S.calcRows || []).length + (S.ca
 console.log('  перенесено значений логистики: ' + moved + ' из 43')
 if (!ok || moved !== 43) { console.error('Миграция НЕ прошла сверку — файл не записан.'); process.exit(1) }
 
-mkdirSync(join(root, 'app', 'src', 'data'), { recursive: true })
-writeFileSync(join(root, 'app', 'src', 'data', 'seed-v2.json'), JSON.stringify(V2))
-console.log('app/src/data/seed-v2.json записан (' + Math.round(JSON.stringify(V2).length / 1024) + ' КБ)')
+// ⛔ Пишем в app/fixtures/, а НЕ в app/src/data/: всё, что лежит в src/, может быть
+// импортировано и уехать в публичный файл сайта вместе с именами и личными ключами
+// (урок У-65). Это образец для проверок, а не сид приложения.
+mkdirSync(join(root, 'app', 'fixtures'), { recursive: true })
+writeFileSync(join(root, 'app', 'fixtures', 'seed-sample.json'), JSON.stringify(V2))
+console.log('app/fixtures/seed-sample.json записан (' + Math.round(JSON.stringify(V2).length / 1024) + ' КБ)')

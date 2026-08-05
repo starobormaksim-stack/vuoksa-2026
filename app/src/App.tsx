@@ -7,6 +7,7 @@ import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
 import { closeTripsList, firstStepPerson } from './lib/trips'
 import { ClosedList } from './components/auth/ClosedList'
+import { OpeningList } from './components/auth/OpeningList'
 import { FirstStep } from './components/trips/FirstStep'
 import { TripsScreen } from './components/trips/TripsScreen'
 import { TopNav } from './components/TopNav'
@@ -39,7 +40,7 @@ import { Toaster } from './components/ui/sonner'
  * раздел, попавший в эту полосу.
  */
 function App() {
-  const { S, perms, denied, signIn } = useTrip()
+  const { S, perms, denied, opened, signIn } = useTrip()
   const { dark, toggle } = useTheme()
   const [search, setSearch] = useState(false)
   const reduce = useReducedMotion()
@@ -132,10 +133,15 @@ function App() {
      наберёт руками. Назвался ≠ опознан.
      Заодно это закрывает дыру «голый адрес = права владельца» (урок У-01):
      до этой правки `myPerm()` при пустом `me` отдавал chief.
-     Поездка, которую этот браузер видит впервые, людей в сиде не имеет — там ключ
-     подтвердится только после первого чтения с сервера, и экран снимется сам.
+     ⛔ Но судить об этом можно только ПОСЛЕ первого чтения с сервера. Заводской сид
+     людей не содержит вовсе (`data/seed-base.json`, урок У-65), поэтому в первую
+     секунду ключ сверять не с чем и `perms.authed` заведомо ложно. Показать в эту
+     минуту «Этот лист закрыт» значит отказать человеку, который всё сделал верно, —
+     он прочитает это как поломку и пойдёт просить новую ссылку. До ответа сервера
+     на экране `OpeningList`, а решают ворота уже по факту.
      Офлайн-копия сюда не попадает: файл самодостаточен, его скачал владелец,
      и сети у него нет вовсе. */
+  if (!офлайн && !opened && !denied && !perms.authed) return <OpeningList />
   if (!офлайн && (denied || !perms.authed))
     return <ClosedList denied={denied || perms.stale} signedInAs={signIn.email} />
 

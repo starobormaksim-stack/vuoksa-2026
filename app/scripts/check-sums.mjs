@@ -14,7 +14,10 @@ import { calcAll, money } from '../src/lib/calc.ts'
 import { shares, wholeSettle } from '../src/lib/settle.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const S = JSON.parse(readFileSync(join(root, 'src', 'data', 'seed-v2.json'), 'utf8'))
+/* Полный образец поездки лежит ВНЕ `src/` — в `app/fixtures/`. Так сборка его
+   не видит физически: пока он был в `src/data/`, один статический импорт увёз
+   имена, ключи и все списки в публичный файл сайта (урок У-65). Читаем с диска. */
+const S = JSON.parse(readFileSync(join(root, 'fixtures', 'seed-sample.json'), 'utf8'))
 
 const r = calcAll(S)
 const ai92 = r.cans.find((c) => c.fuel === 'ai92')
