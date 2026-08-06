@@ -163,9 +163,20 @@ export function holders(g: Gear, people: Person[]): Person[] {
   return people.filter((p) => (g.o?.[p.id] || 0) > 0)
 }
 
-/** Всего штук по позиции (сумма по всем людям). */
-export function totalQty(g: Gear): number {
-  return Object.values(g.o || {}).reduce((s, n) => s + (n || 0), 0)
+/**
+ * Всего штук по позиции — сумма по людям, которые СЕЙЧАС в поездке.
+ *
+ * ⛔ Список людей обязателен. Заказчик 06.08.2026: «сверху написано „сапоги
+ * резиновые, 4 штуки“… открываешь внутрь: три человека, три штуки». Так и было:
+ * Женю убрали из поездки, а его единицы остались в 31 позиции — сумма считала
+ * их, а раскрытая подробность рисует строки только по нынешним людям. Число
+ * на полоске обязано совпадать с тем, что под ней (У-104).
+ *
+ * ⛔ Чужие числа из документа НЕ удаляются (постулат 4): вернётся человек —
+ * вернётся и его единица. Мы их только не складываем.
+ */
+export function totalQty(g: Gear, people: Person[]): number {
+  return people.reduce((s, p) => s + (g.o?.[p.id] || 0), 0)
 }
 
 /** Готовность одного человека: сколько его позиций доведено до «упаковано»/«в машине». */
@@ -420,7 +431,7 @@ export function holdersLine(g: Gear, people: Person[]): string {
   const hs = holders(g, people)
   if (hs.length === 0) return 'пока никто не везёт'
   const head = hs.length === 1 ? `везёт ${hs[0].name}` : `везут ${collective(hs.length)}`
-  return `${head}, всего ${qtyLabel(totalQty(g), unitOf(g))}`
+  return `${head}, всего ${qtyLabel(totalQty(g, people), unitOf(g))}`
 }
 
 /**

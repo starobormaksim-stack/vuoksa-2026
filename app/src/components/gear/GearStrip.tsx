@@ -69,7 +69,7 @@ export function GearStrip({
         const canEdit = perms.canEditItem(g)
         const isFresh = fresh === g.i
         const open = openId === g.i || isFresh
-        const total = totalQty(g)
+        const total = totalQty(g, people)
         /* Свёрнутая полоска обязана сама говорить, кто уже везёт: иначе решить,
            раскрывать её или нет, нельзя (NN/g про progressive disclosure). */
         const carriers = people

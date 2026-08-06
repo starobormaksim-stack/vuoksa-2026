@@ -253,7 +253,7 @@ export function GearMatrix({
 
               <DataCell>
                 <span className="tnum text-body font-semibold text-ink">
-                  {numText(totalQty(g))}
+                  {numText(totalQty(g, people))}
                 </span>
                 {canEdit ? (
                   <button
