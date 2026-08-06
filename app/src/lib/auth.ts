@@ -336,6 +336,22 @@ export async function fetchTripOwner(key: string): Promise<TripOwner> {
 }
 
 /**
+ * В адресе лежит код входа из письма — человек прямо сейчас входит.
+ *
+ * Нужно ДО первого чтения листа: пока код не обменян на сеанс, запрос уйдёт
+ * от общего ключа, сервер ответит «не ваш лист», и человек увидит «Этот лист
+ * закрыт» на пути в собственный кабинет (У-102). Смотрим обе формы, которыми
+ * GoTrue возвращает человека: код в запросе и токены в решётке.
+ */
+export function hasAuthCodeInUrl(): boolean {
+  if (typeof location === 'undefined') return false
+  const q = new URLSearchParams(location.search)
+  const type = q.get('type') || ''
+  const код = !!q.get('token_hash') && (type === 'magiclink' || type === 'email' || type === 'signup')
+  return код || (location.hash || '').indexOf('access_token=') !== -1
+}
+
+/**
  * Поднять сеанс при запуске приложения. Зовётся один раз из store.ts.
  * Возвращает того, кто вошёл (или null).
  */

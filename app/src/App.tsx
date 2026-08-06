@@ -5,6 +5,7 @@ import { useTrip } from './store'
 import { useTheme } from './theme'
 import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
+import { personalizeManifest } from './lib/homescreen'
 import { jumpToItem, setSectionNav } from './lib/jump'
 import { closeTripsList, firstStepPerson } from './lib/trips'
 import { ClosedList } from './components/auth/ClosedList'
@@ -41,7 +42,7 @@ import { Toaster } from './components/ui/sonner'
  * раздел, попавший в эту полосу.
  */
 function App() {
-  const { S, perms, denied, opened, signIn } = useTrip()
+  const { S, perms, denied, opened, signIn, entering } = useTrip()
   const { dark, toggle } = useTheme()
   const [search, setSearch] = useState(false)
   const reduce = useReducedMotion()
@@ -73,6 +74,17 @@ function App() {
     setSectionNav(goTo)
     return () => setSectionNav(null)
   }, [goTo])
+
+  /* Ярлык на домашнем экране должен открывать СВОЙ лист, а не общий адрес:
+     у приложения с домашнего экрана хранилище своё, и запомненного ключа там
+     нет (`lib/homescreen.ts`). Личный манифест собирается в браузере, как только
+     человек опознан, и в файл сайта не попадает. В офлайн-копии не нужен:
+     она и так самодостаточна. */
+  const меня = perms.mePerson
+  useEffect(() => {
+    if (офлайн) return
+    void personalizeManifest(меня)
+  }, [меня, офлайн])
 
   /* Тап по знаку — возврат к началу страницы (и на мобильном, и на десктопе). */
   const goHome = useCallback(() => {
@@ -126,7 +138,10 @@ function App() {
      на экране `OpeningList`, а решают ворота уже по факту.
      Офлайн-копия сюда не попадает: файл самодостаточен, его скачал владелец,
      и сети у него нет вовсе. */
-  if (!офлайн && !opened && !denied && !perms.authed) return <OpeningList />
+  /* ⛔ `entering` — человек прямо сейчас входит по ссылке из письма. Пока код
+     не обменян на сеанс, любой отказ ложен: чтение уходило бы от общего ключа
+     (У-102). Ждём здесь же, тем же экраном, а не показываем «лист закрыт». */
+  if (!офлайн && (entering || (!opened && !denied && !perms.authed))) return <OpeningList />
   if (!офлайн && (denied || !perms.authed))
     return <ClosedList denied={denied || perms.stale} signedInAs={signIn.email} />
 

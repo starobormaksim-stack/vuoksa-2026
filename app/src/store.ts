@@ -47,7 +47,7 @@ import type { State } from './lib/types.ts'
 import type { Auth, Perms } from './lib/perm.ts'
 import { checkAuth, makePerms, readKey } from './lib/perm.ts'
 import { clone, forget, mergeInto, mergeSeed, normalizeDoc } from './lib/merge.ts'
-import { fetchTripOwner, initAuth, onAuthChange } from './lib/auth.ts'
+import { fetchTripOwner, hasAuthCodeInUrl, initAuth, onAuthChange } from './lib/auth.ts'
 import type { Session, TripOwner } from './lib/auth.ts'
 import { Sync } from './lib/sync.ts'
 import type { NetState, Presence } from './lib/sync.ts'
@@ -114,6 +114,18 @@ let denied = false
  * отказать человеку, который всё сделал правильно, — а он прочитает это как поломку.
  */
 let opened = false
+/**
+ * Человек прямо сейчас входит по ссылке из письма.
+ *
+ * ⛔ Пока это так, вердикт «лист закрыт» выносить нельзя. Заказчик 06.08.2026:
+ * «по ссылке с почты я перехожу сначала на центральную страницу, и она уже через
+ * какое-то время перезагружается и входит в кабинет». Причина: чтение листа
+ * стартовало одновременно с обменом кода из письма, уходило БЕЗ токена владельца,
+ * сервер честно отвечал «не ваш лист» — и человек полсекунды читал «Этот лист
+ * закрыт», прежде чем сеанс поднимался и лист приезжал вторым чтением.
+ * Теперь при коде в адресе первое чтение ждёт входа (У-102).
+ */
+let entering = hasAuthCodeInUrl()
 let presence: Presence[] = []
 let perms: Perms = makePerms(doc, null, false)
 
@@ -287,8 +299,9 @@ interface Snapshot {
   signIn: SignIn
   denied: boolean
   opened: boolean
+  entering: boolean
 }
-let snapshot: Snapshot = { S: doc, perms, net, presence, signIn, denied, opened }
+let snapshot: Snapshot = { S: doc, perms, net, presence, signIn, denied, opened, entering }
 
 /** Пересобрать снимок и разбудить подписчиков — только если что-то правда изменилось. */
 function emit(): void {
@@ -299,10 +312,11 @@ function emit(): void {
     snapshot.presence === presence &&
     snapshot.signIn === signIn &&
     snapshot.denied === denied &&
-    snapshot.opened === opened
+    snapshot.opened === opened &&
+    snapshot.entering === entering
   )
     return
-  snapshot = { S: doc, perms, net, presence, signIn, denied, opened }
+  snapshot = { S: doc, perms, net, presence, signIn, denied, opened, entering }
   listeners.forEach((l) => l())
 }
 
@@ -451,7 +465,20 @@ function startSync(): void {
      ответ про владельца листа.
      Подписка ставится ДО initAuth(): она же и получит первое событие. */
   onAuthChange(onSession)
-  void initAuth()
+  /* ⛔ Единственное исключение: человек пришёл по ссылке из письма. Тогда чтение
+     ждёт входа — иначе первый запрос уходит от общего ключа, сервер отвечает
+     «не ваш лист», и по дороге в свой кабинет человек читает «Этот лист закрыт»
+     (У-102). Ждём только вход, а не ответ про владельца: он приходит позже
+     и на чтение не влияет. */
+  if (entering) {
+    void initAuth().finally(() => {
+      entering = false
+      emit()
+      sync?.start()
+    })
+  } else {
+    void initAuth()
+  }
   sync = new Sync({
     applyRemote,
     stampDoc: (stamp, author) => {
@@ -479,7 +506,7 @@ function startSync(): void {
     onNet: setNet,
     onPresence: setPresence,
   })
-  sync.start()
+  if (!entering) sync.start()
 }
 
 /** Остановить синхронизацию (нужно разве что тестам). */
@@ -504,6 +531,8 @@ export interface TripApi {
   denied: boolean
   /** первое чтение с сервера уже закончилось — до него правами судить рано */
   opened: boolean
+  /** человек прямо сейчас входит по ссылке из письма — отказывать ему рано (У-102) */
+  entering: boolean
   isHere: (id: string) => boolean
 }
 
@@ -517,6 +546,7 @@ export function readTrip(): Omit<TripApi, 'update' | 'remove' | 'isHere'> {
     signIn: snapshot.signIn,
     denied: snapshot.denied,
     opened: snapshot.opened,
+    entering: snapshot.entering,
   }
 }
 
@@ -537,6 +567,7 @@ export function useTrip(): TripApi {
     signIn: snap.signIn,
     denied: snap.denied,
     opened: snap.opened,
+    entering: snap.entering,
     isHere,
   }
 }
