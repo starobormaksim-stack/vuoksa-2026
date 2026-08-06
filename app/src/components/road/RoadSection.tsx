@@ -63,6 +63,8 @@ export function RoadSection() {
   const [fresh, setFresh] = useState<string | null>(null)
   /** идёт запрос к маршрутизатору */
   const [mapBusy, setMapBusy] = useState(false)
+  /** показан второй шаг очистки: сами действия с числами (см. wipeRoute) */
+  const [wiping, setWiping] = useState(false)
 
   const dist = S.trip.dist
   const ideas = S.ideas ?? []
@@ -210,6 +212,52 @@ export function RoadSection() {
     setFresh(id)
   }
 
+  /* ─────────── очистить логистику ───────────
+     Заказчик 06.08.2026, поздний вечер: «У тебя невозможно удалить всё, что уже
+     забито было. Я не всё могу удалить. В логистике хотелось бы всё вычистить
+     оттуда, если хочу».
+
+     Строки убирались по одной, и «вычистить всё» означало два десятка нажатий.
+     ⛔ `confirm()` запрещён (постулат 9), поэтому подтверждение — второй шаг
+     прямо в полосе: сначала «Очистить», потом два ИМЕНОВАННЫХ действия
+     с числами. Снятое возвращается кнопкой в сообщении: разрушительное
+     действие обязано иметь обратный ход, иначе им страшно пользоваться. */
+
+  const wipeRoute = () => {
+    const gone = S.route
+    update((s) => {
+      s.route = []
+    })
+    setWiping(false)
+    toast(`Точки маршрута убраны ${MDASH} было ${gone.length}`, {
+      action: {
+        label: 'Вернуть',
+        onClick: () =>
+          update((s) => {
+            s.route = gone
+          }),
+      },
+    })
+  }
+
+  const wipeTransport = () => {
+    const gone = S.transport
+    update((s) => {
+      s.transport = []
+    })
+    setWiping(false)
+    toast(`Техника убрана ${MDASH} было ${gone.length}`, {
+      description: 'Вместе с ней из расчёта ушло её топливо',
+      action: {
+        label: 'Вернуть',
+        onClick: () =>
+          update((s) => {
+            s.transport = gone
+          }),
+      },
+    })
+  }
+
   /* ─────────── полоса «посчитать по карте» ─────────── */
 
   const mapStrip = (
@@ -228,6 +276,33 @@ export function RoadSection() {
             ) : (
               <Btn tone="ghost" onClick={() => setAuto(dist.auto)}>
                 Считать по карте
+              </Btn>
+            ))}
+
+          {/* Очистка стоит последней и сдвинута вправо: это действие, которым
+              пользуются раз в поездку, и оно не должно стоять рядом с тем,
+              что нажимают каждый день. */}
+          {(S.route.length > 0 || S.transport.length > 0) &&
+            (wiping ? (
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {S.route.length > 0 && (
+                  <Btn tone="ghost" onClick={wipeRoute}>
+                    Убрать все точки ({S.route.length})
+                  </Btn>
+                )}
+                {S.transport.length > 0 && (
+                  <Btn tone="ghost" onClick={wipeTransport}>
+                    Убрать всю технику ({S.transport.length})
+                  </Btn>
+                )}
+                <Btn tone="ghost" onClick={() => setWiping(false)}>
+                  Отмена
+                </Btn>
+              </div>
+            ) : (
+              <Btn tone="ghost" className="ml-auto" onClick={() => setWiping(true)}>
+                <Trash2 size={18} strokeWidth={1.75} aria-hidden />
+                Очистить
               </Btn>
             ))}
         </div>

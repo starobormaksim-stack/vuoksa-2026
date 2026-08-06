@@ -3,6 +3,7 @@ import type { RoutePoint, Transport } from '@/lib/types'
 import { GOOGLE_MAP_ID, googleFailCode, loadGoogleMaps } from '@/lib/gmaps'
 import { cn } from '@/lib/utils'
 import {
+  LINE_CASING, LINE_CASING_W, LINE_W,
   destPinEl, googleDash, markStyles, pointPinEl, threads, type MapTone,
 } from './marks'
 import { threadKey, type RoadShapes } from './shapes'
@@ -76,10 +77,13 @@ interface Props {
   onAdd: (lat: number, lon: number) => void
   /** маркер перетащили — обновить координаты точки */
   onMove: (id: string, lat: number, lon: number) => void
-  /** тап по метке — показать эту точку в ленте рядом */
+  /** тап по метке — открыть её карточку */
   onSelect: (id: string) => void
-  /** курсор над меткой (десктоп): null — ушёл */
-  onHover?: (id: string | null) => void
+  /** тап по самой линии нитки — вставить точку в середину маршрута */
+  onLine?: (tr: string, lat: number, lon: number) => void
+  /* ⛔ Слушателя наведения здесь больше нет. Заказчик 06.08.2026, поздний вечер:
+     «при наведении на точки не нужно, чтобы они показывали, что там есть,
+     потому что при нажатии — да». Карточка открывается ТОЛЬКО нажатием. */
   /** конечная точка поездки (trip.places, main) */
   dest?: MapDest | null
   /** метку конечной перетащили */
@@ -137,7 +141,7 @@ function gmaps(): typeof google.maps {
 }
 
 export function GoogleRouteMap({
-  points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
+  points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onLine,
   dest, onMoveDest, fitAt, lookAt, card, onFail, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
@@ -153,8 +157,8 @@ export function GoogleRouteMap({
 
   /* Обработчики меняются на каждой перерисовке, а карта создаётся один раз —
      держим свежие ссылки в ref, иначе Google позовёт устаревшее замыкание. */
-  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onHover, onMoveDest, onFail })
-  cb.current = { canEdit, onAdd, onMove, onSelect, onHover, onMoveDest, onFail }
+  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onLine, onMoveDest, onFail })
+  cb.current = { canEdit, onAdd, onMove, onSelect, onLine, onMoveDest, onFail }
 
   /* ── создание карты ──
      Одна повторная попытка на сетевые причины и обязательный доклад наверх на всех
@@ -251,7 +255,9 @@ export function GoogleRouteMap({
 
     points.forEach((p, idx) => {
       const st = styles.get(p.i)
-      const el = pointPinEl(idx + 1, p.done, st?.tone ?? list[0].tone, st?.leg)
+      /* Номер — свой у каждой ветки, с единицы (см. MarkStyle.no). */
+      const no = st?.no ?? idx + 1
+      const el = pointPinEl(no, p.done, st?.tone ?? list[0].tone, st?.leg)
       const mk = new maps.marker.AdvancedMarkerElement({
         position: { lat: p.lat as number, lng: p.lon as number },
         map: m,
@@ -260,16 +266,12 @@ export function GoogleRouteMap({
         /* Без gmpClickable маркер вообще не получает событий — и тап по нему
            проваливается на карту, то есть ставит новую точку поверх старой. */
         gmpClickable: true,
-        title: `${idx + 1}. ${p.n || 'Точка без названия'}`,
+        title: `${no}. ${p.n || 'Точка без названия'}`,
       })
       mk.addListener('gmp-click', () => cb.current.onSelect(p.i))
       mk.addListener('dragend', (e: google.maps.MapMouseEvent) => {
         if (e.latLng) cb.current.onMove(p.i, e.latLng.lat(), e.latLng.lng())
       })
-      /* Наведение — это подсказка, а не выбор: слушаем сам узел метки.
-         На телефоне наведения нет, там ту же карточку открывает тап. */
-      el.addEventListener('pointerenter', () => cb.current.onHover?.(p.i))
-      el.addEventListener('pointerleave', () => cb.current.onHover?.(null))
       markers.current.set(p.i, { mk, el })
     })
 
@@ -282,15 +284,48 @@ export function GoogleRouteMap({
     lines.current.forEach((l) => l.setMap(null))
     lines.current = list
       .filter((t) => t.points.length > 1)
-      .map((t) => {
+      .flatMap((t) => {
         const road = shapes?.get(threadKey(t))
-        return new maps.Polyline({
-          path: road
-            ? road.map(([lat, lng]) => ({ lat, lng }))
-            : t.points.map((p) => ({ lat: p.lat as number, lng: p.lon as number })),
+        const path = road
+          ? road.map(([lat, lng]) => ({ lat, lng }))
+          : t.points.map((p) => ({ lat: p.lat as number, lng: p.lon as number }))
+        /* Две линии на нитку: снизу кремовая обводка, сверху цветная нить.
+           Порядок задаётся zIndex, а не порядком создания: у Google полилинии
+           сами по себе не наслаиваются предсказуемо. Подробности —
+           LINE_CASING в marks.ts. */
+        const casing = new maps.Polyline({
+          path,
           map: m,
+          strokeColor: LINE_CASING,
+          strokeOpacity: 0.9,
+          strokeWeight: LINE_CASING_W,
+          zIndex: 1,
+        })
+        const line = new maps.Polyline({
+          path,
+          map: m,
+          zIndex: 2,
           ...strokeOf(maps, t.tone),
         })
+        /* Зона нажатия на линию: сама линия 6 px, пальцем в неё не попасть.
+           Почти прозрачная, а не полностью: у совсем невидимой линии Google
+           событий не отдаёт. По линии нажали — точка встаёт в СЕРЕДИНУ
+           маршрута (см. `onLine` в TripMap.tsx). Клик по полилинии до карты
+           не доходит, поэтому второй точки в конце не появляется. */
+        const hit = new maps.Polyline({
+          path,
+          map: m,
+          strokeColor: t.tone.fill,
+          strokeOpacity: 0.01,
+          strokeWeight: 18,
+          zIndex: 3,
+          clickable: true,
+        })
+        hit.addListener('click', (e: google.maps.PolyMouseEvent) => {
+          if (!cb.current.canEdit || !cb.current.onLine || !e.latLng) return
+          cb.current.onLine(t.tr, e.latLng.lat(), e.latLng.lng())
+        })
+        return [casing, line, hit]
       })
 
     /* Подгоняем вид один раз: дальше человек сам решает, куда смотреть. */
@@ -437,13 +472,13 @@ export function GoogleRouteMap({
 function strokeOf(maps: typeof google.maps, tone: MapTone): google.maps.PolylineOptions {
   const parts = googleDash(tone.dash)
   if (!parts) {
-    return { strokeColor: tone.fill, strokeOpacity: 0.85, strokeWeight: 3 }
+    return { strokeColor: tone.fill, strokeOpacity: 1, strokeWeight: LINE_W }
   }
   return {
     /* Прерывистой линии у Google нет: сплошную гасят и выкладывают значками. */
     strokeColor: tone.fill,
     strokeOpacity: 0,
-    strokeWeight: 3,
+    strokeWeight: LINE_W,
     icons: parts.map((part) => ({
       icon:
         part.shape === 'dot'
@@ -451,15 +486,15 @@ function strokeOf(maps: typeof google.maps, tone: MapTone): google.maps.Polyline
               path: maps.SymbolPath.CIRCLE,
               scale: part.scale,
               fillColor: tone.fill,
-              fillOpacity: 0.9,
+              fillOpacity: 1,
               strokeOpacity: 0,
             }
           : {
               path: 'M 0,-1 0,1',
               scale: part.scale,
               strokeColor: tone.fill,
-              strokeOpacity: 0.9,
-              strokeWeight: 3,
+              strokeOpacity: 1,
+              strokeWeight: LINE_W,
             },
       offset: part.offset,
       repeat: part.repeat,

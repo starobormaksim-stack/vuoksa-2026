@@ -79,10 +79,12 @@ interface Props {
   onKeep: () => void
   onDelete: () => void
   onClose: () => void
-  /** карточку трогают — держать её открытой, даже если курсор ушёл с метки */
-  onPin: () => void
-  onPointerEnter: () => void
-  onPointerLeave: () => void
+  /* ⛔ Здесь были `onPin`, `onPointerEnter` и `onPointerLeave` — вся оснастка
+     карточки, открытой НАВЕДЕНИЕМ: держать её, пока курсор идёт с метки на неё,
+     и закрывать с задержкой. Наведение отменено заказчиком 06.08.2026, поздний
+     вечер: «при наведении на точки не нужно, чтобы они показывали, что там
+     есть, потому что при нажатии — да». Карточка теперь только нажимается,
+     значит держать её ничем не надо: она и так открыта до закрытия. */
 }
 
 /** Значок участка — тот же, что карта рисует в углу метки. */
@@ -94,7 +96,7 @@ const LEG_ICONS: Record<LegMode, LucideIcon> = {
 
 export function MapPointCard({
   point, index, canEdit, transports, people, perms, busy, fresh, flat,
-  onPatch, onKeep, onDelete, onClose, onPin, onPointerEnter, onPointerLeave,
+  onPatch, onKeep, onDelete, onClose,
 }: Props) {
   /** раскрыты ли подробности точки: метка этапа, дорога, расстояние, координаты */
   const [more, setMore] = useState(false)
@@ -133,9 +135,6 @@ export function MapPointCard({
   return (
     <div
       onKeyDownCapture={keys}
-      onPointerDown={onPin}
-      onPointerEnter={onPointerEnter}
-      onPointerLeave={onPointerLeave}
       className={cn(
         'bg-surface p-2',
         flat ? 'w-full' : 'w-64 rounded-xl border border-line shadow-lg',

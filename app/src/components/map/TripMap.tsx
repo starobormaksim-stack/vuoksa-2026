@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
-  LoaderCircle, LocateFixed, MapPinPlus, Tent, TriangleAlert, WifiOff,
+  LoaderCircle, LocateFixed, MapPinPlus, Maximize2, Minimize2, TriangleAlert, WifiOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { RoutePoint, State, TripPlace } from '@/lib/types'
@@ -10,6 +10,7 @@ import { hasGoogleKey, onGoogleAuthFail, retryGoogle } from '@/lib/gmaps'
 import { reversePlace, shortPlaceName, humanAddr, type PlaceFound } from '@/lib/geocode'
 import { onAskPlaceMain, onMapLook, onMapPoint } from '@/lib/mapfocus'
 import { mapCenter, mapPoints } from '@/components/road/roadx'
+import { calcLegsByMap } from '@/components/road/legs'
 import { MDASH, plural } from '@/format'
 import { Btn, useIsDesktop } from '@/components/flops'
 import { cn } from '@/lib/utils'
@@ -18,7 +19,7 @@ import { OsmRouteMap } from './OsmRouteMap'
 import { RouteMarkSheet } from './RouteMarkSheet'
 import { MapSearch } from './MapSearch'
 import { MapPointCard } from './MapPointCard'
-import { threads } from './marks'
+import { insertAfter, markStyles, threads } from './marks'
 import { RouteBranches } from './RouteBranches'
 import { useRoadShapes } from './shapes'
 
@@ -57,8 +58,13 @@ interface Props {
   className?: string
 }
 
-/** Сколько ждём, прежде чем закрыть карточку, за которой ушёл курсор, мс. */
-const HOVER_OFF_MS = 260
+/**
+ * Пауза перед авторасчётом километров, мс. Человек ставит точки подряд, и
+ * считать после каждой значило бы дёргать маршрутизатор пять раз ради одного
+ * ответа. Полторы секунды — время, за которое палец не успевает поставить
+ * следующую точку, но и ждать этого числа не приходится.
+ */
+const AUTO_LEGS_MS = 1500
 
 /**
  * Сколько ждём геопозицию. Спутник в лесу отвечает не сразу, но десять секунд —
@@ -172,6 +178,29 @@ export function TripMap({ S, perms, className }: Props) {
   const list = threads(points, S.transport)
   const road = useRoadShapes(list, live && !copy)
 
+  /* ── Авторасчёт километров по мере расстановки точек ──
+     Заказчик 06.08.2026, поздний вечер: «при добавлении маршрута для
+     определённого вида транспорта — авто или водного, неважно — он сразу же
+     берёт расчёты по точкам, ведёт авторасчёты по точкам в логистике».
+     До этого километры считались только по нажатию «Посчитать по карте»
+     в «Дороге»: человек расставлял точки, смотрел на маршрут и не понимал,
+     почему в деньгах ничего не поменялось.
+
+     Слепок — те же нитки, что рисует карта, и ТОЛЬКО координаты: расчёт
+     сам пишет `p.leg` в документ, и завись он от всего подряд — гонял бы
+     сам себя по кругу. Пауза нужна, чтобы расстановка пяти точек подряд
+     стоила одного запроса, а не пяти. */
+  const legSig = list
+    .map((t) => `${t.tr}~${t.leg ?? ''}~${t.points.map((p) => `${p.lat},${p.lon}`).join(';')}`)
+    .join('|')
+  useEffect(() => {
+    if (!canEdit || !live || copy) return
+    const timer = window.setTimeout(() => {
+      void calcLegsByMap({ adopt: true })
+    }, AUTO_LEGS_MS)
+    return () => window.clearTimeout(timer)
+  }, [legSig, canEdit, live, copy])
+
   /** какой точке ждём координаты: следующий тап по карте отдаст их именно ей */
   const [placing, setPlacing] = useState<string | null>(null)
   /** ждём тап для конечной точки поездки */
@@ -187,10 +216,16 @@ export function TripMap({ S, perms, className }: Props) {
    * «Конечной», а прежний тап остался как быстрый путь для тех, кто его знает.
    */
   const [placingNew, setPlacingNew] = useState(false)
-  /** карточка, оставленная открытой: по метке тапнули или точку только что поставили */
+  /**
+   * Открытая карточка метки.
+   *
+   * ⛔ Второго состояния — «карточка под курсором» — больше нет. Заказчик
+   * 06.08.2026, поздний вечер: «при наведении на точки не нужно, чтобы они
+   * показывали, что там есть, потому что при нажатии — да». Наведение открывало
+   * карточку на десктопе, и она выскакивала под рукой при каждом проходе мыши
+   * над меткой — прямо посреди расстановки точек.
+   */
   const [pinned, setPinned] = useState<string | null>(null)
-  /** карточка под курсором: показывается, пока курсор на метке или на ней самой */
-  const [hover, setHover] = useState<string | null>(null)
   /** точка, поставленная последним тапом: Esc убирает её целиком */
   const [fresh, setFresh] = useState<string | null>(null)
   /** у какой точки сейчас спрашивают адрес — карточка говорит об этом словами */
@@ -224,9 +259,21 @@ export function TripMap({ S, perms, className }: Props) {
   const [lookAt, setLookAt] = useState<{ lat: number; lon: number; at: number } | null>(null)
   /** спрашиваем у устройства, где мы: ответ идёт до десяти секунд, и это надо показать */
   const [locBusy, setLocBusy] = useState(false)
-
-  /** Отложенное закрытие карточки: курсор мог уйти с метки НА карточку. */
-  const hoverOff = useRef(0)
+  /**
+   * Карта раскрыта на весь экран.
+   *
+   * Заказчик 06.08.2026, поздний вечер: «по-хорошему я бы хотел, чтобы… было бы
+   * хорошо, если бы можно было на весь экран развернуть и там уже точки
+   * выставлять… А карту можно раскрывать условно максимально широко.
+   * На мобильнике — и здесь прям уже точки расставлять».
+   *
+   * Это не шторка и не поп-ап (постулат 2): тот же самый блок карты, те же
+   * органы, та же карточка метки — просто он занимает весь экран. Разметка
+   * одна на оба состояния, поэтому разъехаться им нечем, а карта не
+   * пересоздаётся: Leaflet ловит новый размер своим ResizeObserver, Google —
+   * сам.
+   */
+  const [full, setFull] = useState(false)
 
   const patch = useCallback(
     (id: string, f: (p: RoutePoint) => void) =>
@@ -288,7 +335,23 @@ export function TripMap({ S, perms, className }: Props) {
     [],
   )
 
-  useEffect(() => () => window.clearTimeout(hoverOff.current), [])
+  /* ── полный экран ──
+     Пока карта развёрнута, страница под ней не прокручивается: иначе жест
+     «протащить карту» на телефоне уводит вместе с ней весь лист. Esc —
+     выход, тот же, что у любого раскрытого органа. */
+  useEffect(() => {
+    if (!full) return
+    const was = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFull(false)
+    }
+    window.addEventListener('keydown', esc)
+    return () => {
+      document.body.style.overflow = was
+      window.removeEventListener('keydown', esc)
+    }
+  }, [full])
 
   /**
    * Подставить адрес по координатам. Название точки не трогаем: его пишет человек
@@ -345,6 +408,49 @@ export function TripMap({ S, perms, className }: Props) {
   }
 
   /**
+   * Нажали на саму линию маршрута — вставить точку В СЕРЕДИНУ, между теми
+   * двумя точками, чей участок нажали.
+   *
+   * Заказчик 06.08.2026, поздний вечер: «Если у меня уже существует какой-то
+   * маршрут, я могу в нём добавить ещё какую-то точку, нажав на вот эту линию
+   * и переместив точку внутри линии, как хочу, и тогда маршрут будет
+   * перестраиваться на карте автоматически». Дальше её двигают как любую
+   * другую — перетаскиванием метки, и линия пересчитывается сама.
+   *
+   * Точка достаётся ТОЙ ЖЕ ветке, чью линию нажали, а не активной: человек
+   * целился в конкретный маршрут, и переспрашивать его об этом нечем.
+   */
+  const onLine = (tr: string, lat: number, lon: number) => {
+    if (!canEdit) return
+    const thread = list.find((t) => t.tr === tr)
+    if (!thread) return
+    const k = insertAfter(thread.points, lat, lon)
+    if (k < 0) return
+    const afterId = thread.points[k].i
+    const id = 'rp' + Date.now().toString(36)
+    const branch = S.transport.find((t) => t.i === tr)
+    update((s) => {
+      const at = s.route.findIndex((p) => p.i === afterId)
+      if (at < 0) return
+      s.route.splice(at + 1, 0, {
+        i: id, n: 'Новая точка', time: '', c: '', done: false, lat, lon, addr: '',
+        lab: '', labT: '', mode: branch?.leg || 'road', tr: branch?.i ?? '',
+        leg: 0, legSrc: '',
+        ord: 0, ua: Date.now(),
+      })
+      /* `ord` задаёт порядок в выгрузке (`lib/export.ts`, `byOrd`). Вставка
+         в середину сбила бы его, поэтому перенумеровываем весь маршрут:
+         поле остаётся тем же, меняются только числа в нём. */
+      s.route.forEach((p, i) => {
+        p.ord = (i + 1) * 10
+      })
+    })
+    openCard(id, true)
+    void guessAddr(id, lat, lon)
+    toast(`Точка встала между «${thread.points[k].n || 'точкой'}» и следующей`)
+  }
+
+  /**
    * Записать конечную точку поездки. Место может быть ещё не заведено вовсе —
    * тогда собираем его из старого поля trip.place, чтобы не потерять название.
    */
@@ -380,18 +486,14 @@ export function TripMap({ S, perms, className }: Props) {
     })
   }
 
-  /** Открыть карточку точки насовсем (до закрытия или тапа по другой метке). */
+  /** Открыть карточку точки (до закрытия или тапа по другой метке). */
   const openCard = (id: string, isFresh = false) => {
-    window.clearTimeout(hoverOff.current)
-    setHover(null)
     setPinned(id)
     setFresh(isFresh ? id : null)
   }
 
   const closeCard = () => {
-    window.clearTimeout(hoverOff.current)
     setPinned(null)
-    setHover(null)
     setFresh(null)
   }
 
@@ -497,17 +599,6 @@ export function TripMap({ S, perms, className }: Props) {
   /** Тап по метке: открыть её карточку. Там теперь вся точка целиком. */
   const onSelect = (id: string) => openCard(id)
 
-  /** Курсор пришёл на метку или ушёл с неё. */
-  const onHover = (id: string | null) => {
-    window.clearTimeout(hoverOff.current)
-    if (id) {
-      setHover(id)
-      return
-    }
-    /* Не закрываем сразу: курсор мог идти с метки на саму карточку. */
-    hoverOff.current = window.setTimeout(() => setHover(null), HOVER_OFF_MS)
-  }
-
   /** Координаты, найденные мастером: адрес подставляем, только если своего нет. */
   const setCoords = useCallback(
     (id: string, lat: number, lon: number, addr: string) =>
@@ -572,15 +663,18 @@ export function TripMap({ S, perms, className }: Props) {
   const osmWhy = !live ? 'сети нет, показываем сохранённое' : googleDead ? failWhy(googleDead) : null
 
   /* ── карточка метки ── */
-  const shownId = pinned ?? hover
-  const shown = shownId ? points.find((p) => p.i === shownId) : null
+  const shown = pinned ? points.find((p) => p.i === pinned) : null
+  /* Номер точки берём тот же, что нарисован в её метке, — по своей ветке
+     и с единицы (см. MarkStyle.no в marks.ts). Иначе карточка называла бы
+     точку одним числом, а кружок на карте — другим. */
+  const styles = markStyles(list)
   /* Сама карточка. Кто её держит — карта или полоса под ней — решается ниже
      по ширине экрана, но собирается она в одном месте и одна. */
   const cardNode = shown ? (
     <MapPointCard
       key={shown.i}
       point={shown}
-      index={points.findIndex((p) => p.i === shown.i) + 1}
+      index={styles.get(shown.i)?.no ?? 1}
       canEdit={canEdit}
       transports={S.transport}
       people={S.people}
@@ -596,15 +690,6 @@ export function TripMap({ S, perms, className }: Props) {
         toast(`«${shown.n}» убрана из маршрута`)
       }}
       onClose={closeCard}
-      onPin={() => {
-        window.clearTimeout(hoverOff.current)
-        setPinned(shown.i)
-      }}
-      onPointerEnter={() => window.clearTimeout(hoverOff.current)}
-      onPointerLeave={() => {
-        if (pinned) return
-        hoverOff.current = window.setTimeout(() => setHover(null), HOVER_OFF_MS)
-      }}
     />
   ) : null
 
@@ -613,9 +698,9 @@ export function TripMap({ S, perms, className }: Props) {
         id: shown.i,
         lat: shown.lat as number,
         lon: shown.lon as number,
-        /* Вид подводим только под карточку, открытую насовсем: от наведения
-           мышью карта не должна уезжать из-под руки. */
-        pan: pinned === shown.i,
+        /* Карточка открывается только нажатием, а к нажатой метке вид подвести
+           надо всегда: она могла быть у самого края. */
+        pan: true,
         /* На телефоне карта карточку не держит — она стоит полосой ниже.
            Карте всё равно сказано, какая метка открыта: подвести к ней вид
            нужно и там, иначе метка остаётся за краем видимой части. */
@@ -633,7 +718,7 @@ export function TripMap({ S, perms, className }: Props) {
     onAdd,
     onMove,
     onSelect,
-    onHover,
+    onLine,
     dest,
     onMoveDest: setDest,
     fitAt,
@@ -666,19 +751,20 @@ export function TripMap({ S, perms, className }: Props) {
           под свой `min-h-[280px]` и ниже, а карточке срезало бы низ (У-112).
           `cn` здесь не украшение: погасить чужую высоту умеет только
           tailwind-merge, порядок классов в строке этого не делает. */}
-      <Card className={cn(className, !desktop && cardNode && 'h-auto')}>
+      {/* Развёрнутая карта накрывает страницу целиком. Место, которое блок
+          занимал в колонке, при этом пустует — но его и не видно: сверху
+          лежит сама карта во весь экран. `h-dvh` вместо `h-screen` —
+          на телефоне адресная строка Safari съедает `vh`, и низ карты
+          вместе с кнопками уезжал бы под неё. */}
+      <Card
+        className={cn(
+          className,
+          !desktop && cardNode && 'h-auto',
+          full && 'fixed inset-0 z-50 h-dvh w-screen rounded-none border-0 shadow-none',
+        )}
+      >
         <div className="flex h-full flex-col">
           <MapSearch near={center} onPick={onPick} hint={searchHint} />
-
-          {/* ── Ветки маршрута ──
-              Выбор вида транспорта ДО расстановки точек, его «×2», лишние
-              километры, экипаж и цвет. Полоса стоит над картой по прямой
-              просьбе заказчика: «над картой или прям на карте… ты выбираешь
-              сначала вид транспорта, потом начинаешь расставлять точки».
-              ⛔ Пробег каждой ветки написан ЗДЕСЬ и только здесь: прежняя
-              строка под картой и легенда показывали ровно это же третий раз
-              (постулат 3.5). */}
-          <RouteBranches S={S} canEdit={canEdit} active={activeTr} onActive={setActiveTr} />
 
           {/* Откат на чужую карту — это отказ, а не мелочь оформления, и говорить
               о нём надо в полный голос (постулат 5). До 05.08.2026 причина стояла
@@ -691,10 +777,15 @@ export function TripMap({ S, perms, className }: Props) {
           {!live ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-zebra px-3 py-2">
               <WifiOff size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
+              {/* В полном экране объяснение короче: там каждая строка отнимает
+                  место у самой карты, ради которой экран и раскрыли. Свернул —
+                  прочитал целиком. */}
               <p className="min-w-0 flex-1 text-note text-ink">
-                <span className="font-semibold">Сети нет — карта сохранённая.</span> Видны те места,
-                которые уже открывали при связи. Точку поставить можно: правки остаются в браузере
-                и уедут в лист, когда связь вернётся.
+                <span className="font-semibold">Сети нет — карта сохранённая.</span>{' '}
+                {full
+                  ? 'Точку поставить можно.'
+                  : 'Видны те места, которые уже открывали при связи. Точку поставить можно: правки ' +
+                    'остаются в браузере и уедут в лист, когда связь вернётся.'}
               </p>
             </div>
           ) : (
@@ -703,7 +794,7 @@ export function TripMap({ S, perms, className }: Props) {
                 <TriangleAlert size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
                 <p className="min-w-0 flex-1 text-note text-ink">
                   <span className="font-semibold">Карта Google не открылась.</span>{' '}
-                  {failFix(googleDead as string)} Пока показываем OpenStreetMap.
+                  {full ? 'Пока OpenStreetMap.' : `${failFix(googleDead as string)} Пока показываем OpenStreetMap.`}
                 </p>
                 <Btn
                   tone="secondary"
@@ -720,15 +811,41 @@ export function TripMap({ S, perms, className }: Props) {
             )
           )}
 
-          {useGoogle ? (
-            <GoogleRouteMap
-              key={googleTry}
-              {...mapProps}
-              onFail={(reason) => setGoogleDead(reason)}
-            />
-          ) : (
-            <OsmRouteMap {...mapProps} />
-          )}
+          {/* Карта и кнопка «во весь экран» поверх неё. Обёртка нужна ровно
+              за этим: собственную разметку карт трогать нельзя — их две,
+              и они обязаны выглядеть одинаково. */}
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {useGoogle ? (
+              <GoogleRouteMap
+                key={googleTry}
+                {...mapProps}
+                onFail={(reason) => setGoogleDead(reason)}
+              />
+            ) : (
+              <OsmRouteMap {...mapProps} />
+            )}
+            {/* ⚠️ `z-20`: панели Leaflet живут на 400–800, но лежат внутри
+                своего слоя (`isolate` в OsmRouteMap), поэтому наружу не лезут.
+                Карточка метки внутри карты стоит на `z-10` — кнопка выше её
+                намеренно: выйти из полного экрана надо уметь всегда. */}
+            <button
+              type="button"
+              onClick={() => setFull((v) => !v)}
+              aria-pressed={full}
+              aria-label={full ? 'Свернуть карту' : 'Развернуть карту на весь экран'}
+              title={full ? 'Свернуть карту' : 'Развернуть карту на весь экран'}
+              className={
+                'absolute top-2 right-2 z-20 grid size-11 place-items-center rounded-lg ' +
+                'border border-line bg-surface text-ink shadow-md transition-colors hover:bg-zebra'
+              }
+            >
+              {full ? (
+                <Minimize2 size={20} strokeWidth={1.75} aria-hidden />
+              ) : (
+                <Maximize2 size={20} strokeWidth={1.75} aria-hidden />
+              )}
+            </button>
+          </div>
 
           {/* Карточка открытой метки на телефоне — полосой ПОД картой.
               Плавающим окном над меткой она там не помещается: 366 px карточки
@@ -741,6 +858,18 @@ export function TripMap({ S, perms, className }: Props) {
             <div className="shrink-0 border-t border-line">{cardNode}</div>
           )}
 
+          {/* ── Транспорт этого маршрута ──
+              Стоит ПОД картой по прямой просьбе заказчика 06.08.2026, поздний
+              вечер: «С правой стороны у тебя должна быть просто карта,
+              аккуратненько, наверху найти. А снизу автотранспорт: первая
+              строка — автотранспорт, то есть человек, который на нём едет,
+              цвет, обратно тем же путём или нет, вне маршрута километры,
+              название автотранспорта, расход». До этого полоса стояла НАД
+              картой и отжимала её вниз — карта на телефоне начиналась
+              с третьего экрана.
+              ⛔ Пробег каждой ветки написан ЗДЕСЬ и только здесь (У-118). */}
+          <RouteBranches S={S} canEdit={canEdit} active={activeTr} onActive={setActiveTr} />
+
           <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-t border-line px-3 py-2">
             {/* Маршрут словами и сколько в нём точек. Обе строки стояли шапкой
                 ленты в «Дороге» (`RouteBoard`), а ленту заказчик отменил
@@ -749,10 +878,16 @@ export function TripMap({ S, perms, className }: Props) {
                 нет вовсе; число точек — единственное, по чему видно, что точек
                 больше, чем меток: те, что без координат, на карте не рисуются
                 (постулат 4, У-53 наоборот — здесь не дубль, а единственное место). */}
-            {S.trip.route ? (
+            {/* ⚠️ В полном экране этих строк нет. Замер 06.08.2026 на 390:
+                нижний блок съедал 194 px из 844, то есть почти четверть экрана,
+                который человек и раскрывал ради карты. Описание маршрута
+                и число точек никуда не делись — они на месте, стоит свернуть.
+                Строка «какая карта и какая сборка» остаётся всегда: она нужна
+                ровно в тот момент, когда с картой что-то не так (У-30…У-32). */}
+            {S.trip.route && !full ? (
               <p className="w-full text-note leading-snug text-muted">{S.trip.route}</p>
             ) : null}
-            <p className="w-full text-micro text-muted">
+            <p className={cn('w-full text-micro text-muted', full && 'hidden')}>
               <span className="tnum">{S.route.length}</span>{' '}
               {plural(S.route.length, 'точка', 'точки', 'точек')} в маршруте
               {unplaced.length > 0 ? (
@@ -766,7 +901,7 @@ export function TripMap({ S, perms, className }: Props) {
             {/* Почему линия прямая — словами, а не догадкой (постулат 5, У-32).
                 Молчаливый откат заказчик читает как «сервис сломан», и он прав:
                 прямая через залив выглядит ровно как ошибка расчёта. */}
-            {road.note && <p className="w-full text-micro text-muted">{road.note}</p>}
+            {road.note && !full && <p className="w-full text-micro text-muted">{road.note}</p>}
 
             {waiting ? (
               <>
@@ -861,19 +996,17 @@ export function TripMap({ S, perms, className }: Props) {
                       )}
                       Я здесь
                     </Btn>
-                    <Btn
-                      tone="secondary"
-                      aria-label="Указать конечную точку поездки тапом по карте"
-                      onClick={() => {
-                        setPlacing(null)
-                        setPlacingNew(false)
-                        setPlacingMain(true)
-                        toast('Тапните по карте, где конечная точка')
-                      }}
-                    >
-                      <Tent size={16} strokeWidth={1.75} aria-hidden />
-                      Конечная
-                    </Btn>
+                    {/* ⛔ Здесь стояла кнопка «Конечная». Заказчик 06.08.2026,
+                        поздний вечер: «карта идиотски сделана с этими снизу
+                        какими-то конечными точками… Конечная точка указывается
+                        только на карте единожды, и она с левой стороны, вот там,
+                        где обложка указывается».
+                        Функция не потеряна и терять её нельзя (постулат 4):
+                        место без координат ставится значком на обложке
+                        (`askPlaceMain` в `trip/TripCover.tsx`), а поставленное
+                        переносится перетаскиванием самой метки на карте
+                        (`onMoveDest`). Обоим путям кнопка была не нужна —
+                        она была третьим входом в то же самое. */}
                   </div>
                 )}
               </>

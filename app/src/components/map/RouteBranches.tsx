@@ -6,7 +6,7 @@ import { kmOf, kBackOf } from '@/lib/calc'
 import { kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
-import { InlineNum } from '@/components/flops'
+import { InlineNum, InlineText } from '@/components/flops'
 import { MAP_TONES, TONE_NAMES, toneOf, type MapTone } from './marks'
 
 /**
@@ -160,7 +160,8 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
   const activeIdx = activeT ? order.indexOf(activeT.i) : -1
 
   return (
-    <div className="shrink-0 border-b border-line px-3 py-2">
+    /* Полоса стоит ПОД картой (см. TripMap.tsx) — отсюда `border-t`. */
+    <div className="shrink-0 border-t border-line px-3 py-2">
       {/* ── Ряд веток ──
           Прокрутка вбок живёт ВНУТРИ полосы: у страницы горизонтального
           скролла нет (постулат 8), а веток может быть сколько угодно. */}
@@ -234,7 +235,50 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
           Всё, что заказчик просил «тут же сразу же»: удвоение маршрута,
           лишние километры, экипаж, цвет. */}
       {activeT && canEdit && (
-        <div className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
+        <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
+          {/* ── Название и расход ──
+              Заказчик 06.08.2026, поздний вечер: «автотранспорт, названия
+              автотранспорта, расход — сразу же можно ли указать здесь».
+              ⚠️ Это НЕ второй список техники (постулат 3.5): здесь правится
+              ровно одна выбранная ветка, а перечисление всей техники со всеми
+              её полями по-прежнему живёт только в «Дороге». Поля те же самые,
+              и правятся тем же органом, что там (`InlineText`, `InlineNum`), —
+              своего ничего не выдумано (постулат 3). */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <InlineText
+              value={activeT.n}
+              onSave={(v) =>
+                patch(activeT.i, (t) => {
+                  t.n = v
+                })
+              }
+              can
+              label="Название транспорта"
+              placeholder="Название"
+              className="text-note font-semibold text-ink"
+            />
+            {/* Расход есть не у всякой ветки: у инструмента и у «Пешком»
+                он не считается вовсе (`rateU === 'fix'`), и поля тогда нет —
+                не положено, значит органа нет (постулат 6). */}
+            {activeT.rateU !== 'fix' && (
+              <span className="flex min-h-11 items-center gap-1.5 text-note text-muted">
+                Расход
+                <InlineNum
+                  value={activeT.rate}
+                  onSave={(v) =>
+                    patch(activeT.i, (t) => {
+                      t.rate = v
+                    })
+                  }
+                  can
+                  kind="plain"
+                  label={`Расход «${activeT.n || 'ветка'}»`}
+                  unit={activeT.nt?.rate?.u || (activeT.rateU === 'lh' ? 'л/ч' : 'л/100 км')}
+                />
+              </span>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {/* «×2» — свой у КАЖДОЙ ветки (заказчик Г-4). Пока галочки не трогали,
                 работает общий множитель поездки, и деньги не двигаются. */}

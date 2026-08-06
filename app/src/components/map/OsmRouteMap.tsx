@@ -4,8 +4,8 @@ import 'leaflet/dist/leaflet.css'
 import type { RoutePoint, Transport } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
-  DEST_H, DEST_W, destPinHtml, leafletDash, markStyles, pointPinHtml, threads,
-  type MapTone,
+  DEST_H, DEST_W, LINE_CASING, LINE_CASING_W, LINE_W, POINT_SIZE,
+  destPinHtml, leafletDash, markStyles, pointPinHtml, threads, type MapTone,
 } from './marks'
 import { PAN_DOWN, type MapCard, type MapDest, type Spot } from './GoogleRouteMap'
 import { threadKey, type RoadShapes } from './shapes'
@@ -38,10 +38,13 @@ interface Props {
   canEdit: boolean
   onAdd: (lat: number, lon: number) => void
   onMove: (id: string, lat: number, lon: number) => void
-  /** тап по метке — показать эту точку в ленте рядом */
+  /** тап по метке — открыть её карточку */
   onSelect: (id: string) => void
-  /** курсор над меткой (десктоп): null — ушёл */
-  onHover?: (id: string | null) => void
+  /** тап по самой линии нитки — вставить точку в середину маршрута */
+  onLine?: (tr: string, lat: number, lon: number) => void
+  /* ⛔ Слушателя наведения здесь больше нет. Заказчик 06.08.2026, поздний вечер:
+     «при наведении на точки не нужно, чтобы они показывали, что там есть,
+     потому что при нажатии — да». Карточка открывается ТОЛЬКО нажатием. */
   /** конечная точка поездки (trip.places, main) */
   dest?: MapDest | null
   /** метку конечной перетащили */
@@ -60,8 +63,8 @@ function pinIcon(n: number, done: boolean, tone: MapTone, leg: Parameters<typeof
   return L.divIcon({
     className: '',
     html: pointPinHtml(n, done, tone, leg),
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [POINT_SIZE, POINT_SIZE],
+    iconAnchor: [POINT_SIZE / 2, POINT_SIZE / 2],
   })
 }
 
@@ -76,7 +79,7 @@ function destIcon(name: string) {
 }
 
 export function OsmRouteMap({
-  points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
+  points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onLine,
   dest, onMoveDest, fitAt, lookAt, card, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
@@ -91,8 +94,8 @@ export function OsmRouteMap({
 
   /* Обработчики меняются на каждой перерисовке, а карта создаётся один раз —
      держим свежие ссылки в ref, иначе Leaflet позовёт устаревшее замыкание. */
-  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onHover, onMoveDest })
-  cb.current = { canEdit, onAdd, onMove, onSelect, onHover, onMoveDest }
+  const cb = useRef({ canEdit, onAdd, onMove, onSelect, onLine, onMoveDest })
+  cb.current = { canEdit, onAdd, onMove, onSelect, onLine, onMoveDest }
 
   /* ── создание карты ── */
   useEffect(() => {
@@ -159,31 +162,56 @@ export function OsmRouteMap({
       .filter((t) => t.points.length > 1)
       .forEach((t) => {
         const road = shapes?.get(threadKey(t))
-        L.polyline(
-          road ?? t.points.map((p) => [p.lat as number, p.lon as number] as [number, number]),
-          {
-            color: t.tone.fill,
-            weight: 3,
-            opacity: 0.85,
-            dashArray: leafletDash(t.tone.dash),
-            lineCap: t.tone.dash === 'dot' ? 'round' : 'butt',
-          },
-        ).addTo(g)
+        const line =
+          road ?? t.points.map((p) => [p.lat as number, p.lon as number] as [number, number])
+        /* Обводка кладётся ПЕРВОЙ и потому лежит снизу: кремовая подложка
+           отделяет цветную линию от подложки карты, какой бы та ни была.
+           Она всегда сплошная — иначе штрих потерял бы фон именно там,
+           где он и есть (см. LINE_CASING в marks.ts). */
+        L.polyline(line, {
+          color: LINE_CASING,
+          weight: LINE_CASING_W,
+          opacity: 0.9,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(g)
+        L.polyline(line, {
+          color: t.tone.fill,
+          weight: LINE_W,
+          opacity: 1,
+          dashArray: leafletDash(t.tone.dash),
+          lineCap: t.tone.dash === 'dot' ? 'round' : 'butt',
+        }).addTo(g)
+        /* Зона нажатия на линию: сама линия 6 px, пальцем в неё не попасть.
+           Почти прозрачная, а не полностью: у невидимой обводки браузер
+           не считает попадание указателя. Ширина 18 px — пальцу хватает,
+           а тап рядом с линией по-прежнему достаётся карте.
+           ⚠️ `L.DomEvent.stop` обязателен: без него нажатие дойдёт и до карты,
+           и вместе со вставленной точкой в конец маршрута прилетит вторая. */
+        const hit = L.polyline(line, {
+          color: t.tone.fill,
+          weight: 18,
+          opacity: 0.01,
+          interactive: true,
+        }).addTo(g)
+        hit.on('click', (e) => {
+          if (!cb.current.canEdit || !cb.current.onLine) return
+          L.DomEvent.stop(e)
+          cb.current.onLine(t.tr, e.latlng.lat, e.latlng.lng)
+        })
       })
 
     points.forEach((p, idx) => {
       const st = styles.get(p.i)
+      /* Номер — свой у каждой ветки, с единицы (см. MarkStyle.no). */
+      const no = st?.no ?? idx + 1
       const marker = L.marker([p.lat as number, p.lon as number], {
         draggable: canEdit,
-        icon: pinIcon(idx + 1, p.done, st?.tone ?? list[0].tone, st?.leg),
-        title: `${idx + 1}. ${p.n || 'Точка без названия'}`,
+        icon: pinIcon(no, p.done, st?.tone ?? list[0].tone, st?.leg),
+        title: `${no}. ${p.n || 'Точка без названия'}`,
         keyboard: true,
       })
       marker.on('click', () => cb.current.onSelect(p.i))
-      /* Наведение — это подсказка, а не выбор. На телефоне наведения нет,
-         там ту же карточку открывает тап. */
-      marker.on('mouseover', () => cb.current.onHover?.(p.i))
-      marker.on('mouseout', () => cb.current.onHover?.(null))
       marker.on('dragend', () => {
         const ll = marker.getLatLng()
         cb.current.onMove(p.i, ll.lat, ll.lng)

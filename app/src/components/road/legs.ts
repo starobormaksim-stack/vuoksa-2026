@@ -102,7 +102,25 @@ function straightLegs(points: RoutePoint[]): LegKm[] {
   return out
 }
 
-export async function calcLegsByMap(): Promise<LegsResult> {
+/** Как звать расчёт. */
+export interface LegsOpts {
+  /**
+   * Сразу принять посчитанное как пробег ветки (`kmSrc = 'auto'`).
+   *
+   * Заказчик 06.08.2026, поздний вечер: «при добавлении маршрута для
+   * определённого вида транспорта — авто или водного, неважно — он сразу же
+   * берёт расчёты по точкам, ведёт авторасчёты по точкам в логистике». То есть
+   * расставил точки — и километры этой ветки уже в расчёте, без второго
+   * нажатия где-то в другом разделе.
+   *
+   * ⚠️ Ручную цифру это НЕ трогает: `kmSrc === 'manual'` значит, что человек
+   * вписал километры сам, и карта их не отменяет. Общее число поездки
+   * (`trip.dist.src`) тоже не переключается — его источник выбирают руками.
+   */
+  adopt?: boolean
+}
+
+export async function calcLegsByMap(opts: LegsOpts = {}): Promise<LegsResult> {
   const { S } = readTrip()
 
   /* Нитки те же самые, что рисует карта: одна на каждую единицу техники плюс
@@ -146,30 +164,58 @@ export async function calcLegsByMap(): Promise<LegsResult> {
     })
   }
 
-  update((s) => {
-    for (const g of got) {
-      for (const l of g.legs) {
-        const p = s.route.find((x) => x.i === l.i)
-        if (p) {
-          p.leg = l.km
-          p.legSrc = g.straight ? 'line' : 'osrm'
-          touch(p)
+  /* ⚠️ Общее число трогаем, только если общая нитка правда посчиталась.
+     Иначе (а в боевом документе ровно так: все шесть общих точек без
+     координат) прежние 141 км молча обнулились бы — вместе с деньгами
+     у всей техники, которая своей цифры ещё не получила. */
+  const takeCommon = !!common && common.legs.length > 0
+
+  /**
+   * Изменилось ли хоть что-нибудь.
+   *
+   * ⚠️ Без этой проверки авторасчёт (`adopt`) писал бы в документ при КАЖДОМ
+   * открытии листа: те же самые числа, но с новой меткой времени и новым
+   * автором — и четверо участников всю дорогу видели бы «правил Костя»,
+   * хотя Костя ничего не трогал. Пустая запись хуже отсутствия записи.
+   */
+  const same =
+    got.every((g) =>
+      g.legs.every((l) => {
+        const p = S.route.find((x) => x.i === l.i)
+        return p && p.leg === l.km && p.legSrc === (g.straight ? 'line' : 'osrm')
+      }),
+    ) &&
+    own.every((o) => {
+      const t = S.transport.find((x) => x.i === o.i)
+      if (!t || t.kmAuto !== o.km) return false
+      return !opts.adopt || t.kmSrc === 'manual' || t.kmSrc === 'auto'
+    }) &&
+    (!takeCommon || S.trip.dist.auto === commonKm)
+
+  if (!same) {
+    update((s) => {
+      for (const g of got) {
+        for (const l of g.legs) {
+          const p = s.route.find((x) => x.i === l.i)
+          if (p) {
+            p.leg = l.km
+            p.legSrc = g.straight ? 'line' : 'osrm'
+            touch(p)
+          }
         }
       }
-    }
-    for (const o of own) {
-      const t = s.transport.find((x) => x.i === o.i)
-      if (t) {
-        t.kmAuto = o.km
-        touch(t)
+      for (const o of own) {
+        const t = s.transport.find((x) => x.i === o.i)
+        if (t) {
+          t.kmAuto = o.km
+          /* Ручную цифру карта не отменяет — её вписал человек. */
+          if (opts.adopt && t.kmSrc !== 'manual') t.kmSrc = 'auto'
+          touch(t)
+        }
       }
-    }
-    /* ⚠️ Общее число трогаем, только если общая нитка правда посчиталась.
-       Иначе (а в боевом документе ровно так: все шесть общих точек без
-       координат) прежние 141 км молча обнулились бы — вместе с деньгами
-       у всей техники, которая своей цифры ещё не получила. */
-    if (common && common.legs.length > 0) s.trip.dist.auto = commonKm
-  })
+      if (takeCommon) s.trip.dist.auto = commonKm
+    })
+  }
 
   return { ok: true, legs: legsCount, km: commonKm, own }
 }
