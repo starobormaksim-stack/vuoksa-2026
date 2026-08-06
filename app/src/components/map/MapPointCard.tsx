@@ -1,9 +1,13 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Car, Footprints, Plus, Sailboat, Trash2, X, type LucideIcon } from 'lucide-react'
-import type { LegMode, RoutePoint, Transport } from '@/lib/types'
-import { InlineText } from '@/components/flops'
+import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import {
+  Car, Check, ChevronDown, Footprints, Plus, Sailboat, Trash2, X, type LucideIcon,
+} from 'lucide-react'
+import type { LegMode, Person, RoutePoint, Transport } from '@/lib/types'
+import type { Perms } from '@/lib/perm'
+import { InlineText, PersonHead } from '@/components/flops'
 import { requestAdd } from '@/lib/addnew'
-import { travels } from '@/components/road/roadx'
+import { coordLabel, travels } from '@/components/road/roadx'
+import { Dot, RoutePointCoords, RoutePointSetup } from '@/components/road/RoutePointSetup'
 import { cn } from '@/lib/utils'
 import { toneAt, COMMON_TONE, type MapTone } from './marks'
 
@@ -27,6 +31,19 @@ import { toneAt, COMMON_TONE, type MapTone } from './marks'
  *
  * Нет права правки — полей нет вовсе, остаётся тот же текст без намёка на действие
  * (постулат «не положено — кнопки нет»). Смотреть карточку может кто угодно.
+ *
+ * ─── Здесь живёт ВСЯ точка, а не половина (06.08.2026) ───
+ * Заказчик дословно: «Да, она не нужна вообще. Просто список точек на карте» —
+ * про ленту точек в «Дороге». Убрать её можно было только после того, как всё,
+ * что на ней висело, переехало сюда (постулат 4): адрес стал правиться, а не
+ * только показываться; «пройдено» и «кто едет этой точкой» встали своими
+ * органами; метка этапа, чем добираемся, расстояние от прошлой точки и
+ * координаты — в подробностях, одним готовым блоком `road/RoutePointSetup`,
+ * тем же самым, что стоял в ленте.
+ *
+ * Подробности свёрнуты по умолчанию — «пускай все списки будут свёрнуты»
+ * (06.08.2026): карточка стоит НА карте, и раскрытая целиком она закрыла бы
+ * собой то, ради чего её открыли.
  */
 
 interface Props {
@@ -36,6 +53,10 @@ interface Props {
   canEdit: boolean
   /** техника поездки: из неё выбирают, чья это точка */
   transports: Transport[]
+  /** кто в поездке: отмечаются те, кто едет этой точкой (`p.o`) */
+  people: Person[]
+  /** права: отметиться за себя может и участник без права правки точки */
+  perms: Perms
   /** адрес сейчас спрашивают у геокодера */
   busy: boolean
   /**
@@ -71,9 +92,12 @@ const LEG_ICONS: Record<LegMode, LucideIcon> = {
 }
 
 export function MapPointCard({
-  point, index, canEdit, transports, busy, fresh, flat,
+  point, index, canEdit, transports, people, perms, busy, fresh, flat,
   onPatch, onKeep, onDelete, onClose, onPin, onPointerEnter, onPointerLeave,
 }: Props) {
+  /** раскрыты ли подробности точки: метка этапа, дорога, расстояние, координаты */
+  const [more, setMore] = useState(false)
+
   /**
    * Esc — общий выход. У только что поставленной точки он ещё и убирает метку:
    * человек ткнул мимо, и оставлять после этого «Новую точку» посреди озера нельзя.
@@ -102,6 +126,9 @@ export function MapPointCard({
     .map((t, idx) => ({ t, idx }))
     .filter(({ t }) => travels(t) || chosen?.i === t.i)
 
+  /** Кто отмечен едущим этой точкой — подписью под рядом, именами. */
+  const riders = people.filter((who) => !!point.o?.[who.id]).map((who) => who.name)
+
   return (
     <div
       onKeyDownCapture={keys}
@@ -111,6 +138,15 @@ export function MapPointCard({
       className={cn(
         'bg-surface p-2',
         flat ? 'w-full' : 'w-64 rounded-xl border border-line shadow-lg',
+        /* ⛔ Потолок с прокруткой ВНУТРИ карточки — только на широком экране
+           и только при раскрытых подробностях. Замер 06.08.2026 на 1280: свёрнутая
+           карточка 256 × 509 стоит в блоке 604 × 890 целиком, а с подробностями
+           вырастает до 1096 и вылезает за верх блока — там `overflow-hidden`,
+           и верх ей срезает вместе с названием и рядом техники (тот же корень,
+           что У-112). Запаса над меткой 168 px, значит потолок 576 честно
+           умещается. На телефоне потолка нет вовсе: там карточка стоит полосой
+           в потоке и блок растёт под неё. */
+        !flat && more && 'max-h-[36rem] overflow-y-auto overscroll-contain',
       )}
     >
       <div className="flex items-start gap-2">
@@ -143,10 +179,29 @@ export function MapPointCard({
         <CardBtn icon={X} label="Закрыть карточку" onClick={onClose} />
       </div>
 
-      {/* Адрес не правится: он следует за координатами, а координаты — за меткой. */}
-      <p className="mt-1 pl-8 text-micro leading-snug text-muted">
-        {busy ? 'Адрес ищем…' : point.addr || 'Адрес не нашёлся — метку можно подвинуть'}
-      </p>
+      {/* Адрес подставляет геокодер по координатам, но последнее слово за человеком:
+          в ленте «Дороги» он правился словами (`PlaceRow`), и с её уходом это право
+          обязано было переехать сюда, а не пропасть (постулат 4). Пока геокодер
+          думает — так и написано, поля в этот момент нет: подставленный им ответ
+          затёр бы начатую правку. */}
+      <div className="mt-1 pl-8">
+        {busy ? (
+          <p className="text-micro leading-snug text-muted">Адрес ищем…</p>
+        ) : (
+          <InlineText
+            value={point.addr}
+            can={canEdit}
+            label="Адрес точки"
+            placeholder={coordLabel(point) || 'Адрес не нашёлся — метку можно подвинуть'}
+            className="text-micro leading-snug text-muted"
+            onSave={(v) =>
+              onPatch((p) => {
+                p.addr = v
+              })
+            }
+          />
+        )}
+      </div>
 
       {/* Время и описание — каждое своей строкой во всю ширину карточки: в поле
           ввода шириной в полтора слова подсказка «Enter — сохранить» переносится
@@ -227,9 +282,101 @@ export function MapPointCard({
         </div>
       )}
 
-      {canEdit && (
-        <div className="mt-1 flex justify-end">
+      {/* «Этап пройден» — та самая отметка, что стояла колонкой «Пройдено» в ленте.
+          Кружок тот же (`Dot`), и он же зачёркивает название точки. */}
+      <div className="mt-2 border-t border-line pt-1 pl-8">
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() =>
+              onPatch((p) => {
+                p.done = !p.done
+              })
+            }
+            aria-label={`${point.n || 'Точка'}: ${point.done ? 'этап пройден' : 'этап впереди'}. Отметить`}
+            aria-pressed={point.done}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg text-left transition-colors hover:bg-zebra"
+          >
+            <Dot done={point.done} />
+            <span className="min-w-0 flex-1 text-note text-ink">
+              {point.done ? 'Этап пройден' : 'Этап впереди'}
+            </span>
+          </button>
+        ) : (
+          <span className="flex min-h-11 items-center gap-2">
+            <Dot done={point.done} />
+            <span className="min-w-0 flex-1 text-note text-muted">
+              {point.done ? 'Этап пройден' : 'Этап впереди'}
+            </span>
+          </span>
+        )}
+      </div>
+
+      {/* «Кто именно едет этой точкой» — ответ заказчика 05.08.2026 на вопрос,
+          хватает ли привязки точки к технике. Поле `o` то же самое, что стояло
+          в ленте, и отметиться может и участник без права правки точки: это его
+          собственная отметка, за других он не отмечает.
+          ⚠️ Ряд, а не список строк. Строками (аватар · имя · отметка, как было
+          в ленте) три человека давали карточке лишние 100 px — при 562 px общей
+          высоты на 390 это полторы страницы под одну метку. Форма ряда взята
+          не с потолка: ровно так в этой же карточке стоит техника этажом выше. */}
+      {people.length > 0 && (
+        <div className="mt-1 border-t border-line pt-1 pl-8">
+          <div className="flex flex-wrap items-center gap-1">
+            {people.map((who) => (
+              <RiderBtn
+                key={who.id}
+                who={who}
+                on={!!point.o?.[who.id]}
+                mine={who.id === perms.me}
+                can={perms.canMark(who.id)}
+                pointName={point.n}
+                onSet={(v) =>
+                  onPatch((p) => {
+                    const o = { ...(p.o || {}) }
+                    if (v) o[who.id] = 1
+                    else delete o[who.id]
+                    p.o = o
+                  })
+                }
+              />
+            ))}
+          </div>
+          <p className="mt-1 text-micro text-muted">
+            {riders.length > 0 ? `Едут: ${riders.join(', ')}` : 'Кто едет — никто не отмечен'}
+          </p>
+        </div>
+      )}
+
+      {/* Подробности точки: метка этапа, чем добираемся, расстояние от прошлой
+          точки, расстояния по дорогам и координаты. Блок общий с тем, что стоял
+          в ленте (`road/RoutePointSetup`), — второй его копии не заведено.
+          Свёрнут по умолчанию: карточка стоит НА карте, и раскрытая целиком она
+          закрывала бы собой карту, ради которой её открыли. */}
+      <div className="mt-1 flex items-center gap-1 border-t border-line pt-1 pl-8">
+        <button
+          type="button"
+          onClick={() => setMore((v) => !v)}
+          aria-expanded={more}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-note font-semibold text-accent-text transition-colors hover:bg-zebra"
+        >
+          <ChevronDown
+            size={18}
+            strokeWidth={1.75}
+            aria-hidden
+            className={cn('shrink-0 transition-transform', more && 'rotate-180')}
+          />
+          Подробности точки
+        </button>
+        {canEdit && (
           <CardBtn icon={Trash2} label="Убрать точку из маршрута" onClick={onDelete} danger />
+        )}
+      </div>
+
+      {more && (
+        <div className="border-t border-line pt-1 pl-8">
+          <RoutePointSetup item={point} canEdit={canEdit} onPatch={onPatch} />
+          <RoutePointCoords item={point} canEdit={canEdit} onPatch={onPatch} />
         </div>
       )}
     </div>
@@ -297,6 +444,64 @@ function TrBtn({
       style={{ background: tone.fill, color: tone.text }}
     >
       {Icon ? <Icon size={16} strokeWidth={1.75} aria-hidden /> : null}
+    </button>
+  )
+}
+
+/**
+ * Едет ли человек этой точкой — кружком в ряду, а не строкой списка.
+ *
+ * ⛔ Новый орган здесь не изобретён: это та же кнопка, что рядом выбирает технику
+ * (`TrBtn`), только внутри неё лицо человека — `PersonHead` из `flops/Inline`,
+ * тот же, каким люди подписаны в шапках всех таблиц. Состояние показано кольцом
+ * и галочкой, а не одним лишь цветом (WCAG 1.4.1), и продублировано именами
+ * в подписи под рядом.
+ *
+ * Права нет — рисуется только состояние, кнопки не бывает вовсе (постулат 6).
+ */
+function RiderBtn({
+  who, on, mine, can, pointName, onSet,
+}: {
+  who: Person
+  on: boolean
+  mine: boolean
+  can: boolean
+  pointName: string
+  onSet: (v: boolean) => void
+}) {
+  const label = `${who.name} едет точкой «${pointName || 'без названия'}»`
+  const лицо = (
+    <span className="relative grid size-8 place-items-center">
+      <PersonHead name="" photo={who.photo} ini={who.ini || who.name.slice(0, 2)} mine={mine} size={28} />
+      {on && (
+        <span className="absolute -right-0.5 -bottom-0.5 grid size-4 place-items-center rounded-full bg-accent text-on-accent">
+          <Check size={12} strokeWidth={2.5} aria-hidden />
+        </span>
+      )}
+    </span>
+  )
+  if (!can) {
+    return (
+      <span role="img" aria-label={`${label}: ${on ? 'да' : 'нет'}`} className={cn(!on && 'opacity-50')}>
+        {лицо}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSet(!on)}
+      aria-pressed={on}
+      aria-label={`${label}. Отметить`}
+      title={who.name}
+      className={cn(
+        'relative grid size-8 shrink-0 place-items-center rounded-full transition-transform',
+        'active:scale-95',
+        on ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface' : 'opacity-60',
+        'before:absolute before:-inset-1.5 before:content-[""]',
+      )}
+    >
+      {лицо}
     </button>
   )
 }

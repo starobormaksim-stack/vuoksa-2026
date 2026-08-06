@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { MapPinned } from 'lucide-react'
+import { Check, MapPinned } from 'lucide-react'
 import { toast } from 'sonner'
 import type { LegMode, RouteLabel, RoutePoint } from '@/lib/types'
 import { Btn, InlineNum, InlinePick, InlineText, StripField } from '@/components/flops'
+import { cn } from '@/lib/utils'
 import { plural } from '@/format'
 import { calcLegsByMap } from './legs'
 import { coordLabel, dg, kmLabel, LABEL_OPTIONS } from './roadx'
@@ -27,10 +28,11 @@ import { coordLabel, dg, kmLabel, LABEL_OPTIONS } from './roadx'
  * вниз, а не всплывает поверх), число — `flops/InlineNum`, кнопка — `flops/Btn`.
  * Образец расстановки — `road/RoadSetup.tsx`, сделанный тем же заходом.
  *
- * ⚠️ «Этап пройден» и удаление точки сюда НЕ переехали, и это не потеря: кружок
- * этапа стоит прямо в строке (колонка «Пройдено» в матрице, полка «Пройдено»
- * в ленте), а «убрать точку» — действие самой строки (`RowActions`). Двух
- * органов на одно значение не бывает (У-53).
+ * ⚠️ «Этап пройден» и удаление точки в САМ блок настройки не входят, и это
+ * не потеря: кружок этапа и «убрать точку» стоят прямо в карточке метки, рядом,
+ * а не внутри её подробностей. Двух органов на одно значение не бывает (У-53).
+ * Сами органы — `Dot` и `Rider` — живут здесь же, внизу файла: они нужны и
+ * карточке метки, и списку точек, а общий дом у них один.
  *
  * Координаты руками не набираются: точка ставится и двигается на карте,
  * а настройка показывает то, что получилось.
@@ -212,5 +214,72 @@ export function RoutePointCoords({ item, canEdit, onPatch }: Props) {
         </Btn>
       ) : null}
     </StripField>
+  )
+}
+
+/**
+ * Кружок этапа: 32 px внутри цели касания 44 px (правило 8).
+ *
+ * ⚠️ Стоял в `road/RouteTiming.tsx` — там, где жила матрица маршрута. Переехал
+ * сюда 06.08.2026 вместе с переселением полей точки на карту: список точек
+ * в «Дороге» заказчик отменил («не нужна вообще, просто список точек на карте»),
+ * а орган остался нужен карточке метки.
+ */
+export function Dot({ done }: { done: boolean }) {
+  return (
+    <span
+      className={cn(
+        'grid size-8 place-items-center rounded-full border-2 bg-surface',
+        done ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
+      )}
+      aria-hidden
+    >
+      {done && <Check size={18} strokeWidth={1.75} />}
+    </span>
+  )
+}
+
+/**
+ * Едет ли человек этой точкой. Пусто — точка общая, поэтому пустая ячейка
+ * не кричит: тире. Одно нажатие ставит отметку, второе снимает.
+ * Права нет — рисуется только состояние, без кнопки (постулат 6).
+ */
+export function Rider({
+  on, can, label, onSet,
+}: {
+  on: boolean
+  can: boolean
+  label: string
+  onSet: (v: boolean) => void
+}) {
+  const mark = (
+    <span
+      className={cn(
+        'grid size-6 place-items-center rounded-full border-[1.5px]',
+        on ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
+      )}
+    >
+      {on && <Check size={16} strokeWidth={1.75} aria-hidden />}
+    </span>
+  )
+  if (!can) {
+    return on ? (
+      <span role="img" aria-label={label} className="grid size-11 place-items-center">
+        {mark}
+      </span>
+    ) : (
+      <span className="text-note text-muted">&#8212;</span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSet(!on)}
+      aria-pressed={on}
+      aria-label={`${label}. Отметить`}
+      className="grid size-11 place-items-center rounded-md transition-colors hover:bg-zebra/70 active:scale-[0.98]"
+    >
+      {on ? mark : <span className="text-note text-muted">&#8212;</span>}
+    </button>
   )
 }

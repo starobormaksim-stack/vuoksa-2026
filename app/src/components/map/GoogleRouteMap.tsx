@@ -84,10 +84,6 @@ interface Props {
   dest?: MapDest | null
   /** метку конечной перетащили */
   onMoveDest?: (lat: number, lon: number) => void
-  /** к какой точке подвести карту (просьба из ленты) */
-  focusId?: string | null
-  /** метка времени просьбы: одна и та же точка может понадобиться дважды */
-  focusAt?: number
   /** метка «подгони вид под все точки заново» (после мастера «Разметить маршрут») */
   fitAt?: number
   /** навестись на произвольное место (находка строки поиска над картой) */
@@ -142,7 +138,7 @@ function gmaps(): typeof google.maps {
 
 export function GoogleRouteMap({
   points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
-  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, card, onFail, className,
+  dest, onMoveDest, fitAt, lookAt, card, onFail, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<google.maps.Map | null>(null)
@@ -361,25 +357,9 @@ export function GoogleRouteMap({
     if ((m.getZoom() ?? 0) < 13) m.setZoom(13)
   }, [lookAt, ready])
 
-  /* ── просьба из ленты: подвести карту к точке и качнуть метку ── */
-  useEffect(() => {
-    const m = map.current
-    if (!m || !ready || !focusId) return
-    const mark = markers.current.get(focusId)
-    if (!mark?.mk.position) return
-    m.panTo(mark.mk.position)
-    if ((m.getZoom() ?? 0) < 12) m.setZoom(12)
-    /* setAnimation у AdvancedMarkerElement нет — качаем сам узел метки. */
-    const a = mark.el.animate(
-      [
-        { transform: 'translateY(50%) translateY(0)' },
-        { transform: 'translateY(50%) translateY(-10px)' },
-        { transform: 'translateY(50%) translateY(0)' },
-      ],
-      { duration: 520, iterations: 3, easing: 'ease-in-out' },
-    )
-    return () => a.cancel()
-  }, [focusId, focusAt, ready, sig])
+  /* ⛔ Подводки «по просьбе ленты» здесь больше нет: ленты точек не существует
+     (06.08.2026). К нужной метке карту подводит `card.pan` — та же самая просьба,
+     только приходит она от открытой карточки, а не от строки списка. */
 
   /* ── карточка метки едет вместе с картой ──
      Пиксели пересчитываются на каждый сдвиг вида, но не чаще кадра: без этого

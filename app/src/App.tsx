@@ -7,6 +7,7 @@ import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
 import { personalizeManifest } from './lib/homescreen'
 import { jumpToItem, setSectionNav } from './lib/jump'
+import { askMapPoint } from './lib/mapfocus'
 import { closeTripsList, firstStepPerson } from './lib/trips'
 import { ClosedList } from './components/auth/ClosedList'
 import { OpeningList } from './components/auth/OpeningList'
@@ -210,7 +211,19 @@ function App() {
       </main>
 
       <BottomNav sections={SECTIONS} active={active} onSelect={goTo} />
-      <SearchCommand S={S} open={search} onOpenChange={setSearch} onJump={jumpToItem} />
+      {/* Точка маршрута — единственная находка, у которой строки в списке нет
+          вовсе: её показывает карта, открывая карточку метки (06.08.2026, лента
+          точек упразднена). Прыжок `jumpToItem` искал бы `data-hit`, которого
+          не существует, и молча ничего не делал — постулат 5. */}
+      <SearchCommand
+        S={S}
+        open={search}
+        onOpenChange={setSearch}
+        onJump={(section, itemId) => {
+          if (section === 'trip' && S.route.some((p) => p.i === itemId)) askMapPoint(itemId)
+          else jumpToItem(section, itemId)
+        }}
+      />
       <NetNotice />
       <PermNotice />
       <Toaster />

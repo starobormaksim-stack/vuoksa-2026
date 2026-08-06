@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Crosshair, LoaderCircle, MapPin, SearchX } from 'lucide-react'
+import { Check, Crosshair, LoaderCircle, MapPin, SearchX, Trash2 } from 'lucide-react'
 import type { RoutePoint } from '@/lib/types'
 import { forwardPlace, placeQueries, type PlaceFound } from '@/lib/geocode'
 import { coordLabel } from '@/components/road/roadx'
-import { Btn, ResponsiveSheet } from '@/components/flops'
+import { Btn, InlineText, ResponsiveSheet, RowAction, RowActions } from '@/components/flops'
 
 /**
  * Разовый мастер «Разметить маршрут» (заказчик 04.08.2026: «те точки маршрута,
@@ -31,6 +31,12 @@ interface Props {
   onSet: (id: string, lat: number, lon: number, addr: string) => void
   /** «поставлю пальцем»: шторка закрывается, следующий тап по карте отдаст координаты */
   onPlaceByHand: (id: string) => void
+  /** есть ли право правки: без него ни переименования, ни удаления не рисуется */
+  canEdit: boolean
+  /** переименовать точку прямо здесь: на карте её нет, карточки метки тоже */
+  onRename: (id: string, n: string) => void
+  /** убрать точку из маршрута совсем */
+  onDrop: (id: string) => void
 }
 
 /** Что известно про точку прямо сейчас. */
@@ -46,7 +52,9 @@ interface Ask {
   addr: string
 }
 
-export function RouteMarkSheet({ open, onOpenChange, route, near, onSet, onPlaceByHand }: Props) {
+export function RouteMarkSheet({
+  open, onOpenChange, route, near, onSet, onPlaceByHand, canEdit, onRename, onDrop,
+}: Props) {
   const [queue, setQueue] = useState<Ask[]>([])
   const [hits, setHits] = useState<Record<string, Hit>>({})
 
@@ -135,6 +143,8 @@ export function RouteMarkSheet({ open, onOpenChange, route, near, onSet, onPlace
         Где смогли — нашли по названию. Проверьте адрес и поставьте точку на карту.
         Стоянку и костёр по названию не найти: их укажите пальцем. А если написано
         «примерно» — место угадано грубо, потом сдвиньте метку на карте пальцем.
+        Время, описание, техника и «кто едет» правятся в карточке точки — она
+        открывается тапом по метке, когда точка встала на карту.
       </p>
 
       {ready.length > 1 && (
@@ -166,14 +176,44 @@ export function RouteMarkSheet({ open, onOpenChange, route, near, onSet, onPlace
                   {idx}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-body leading-snug font-semibold text-ink">{p.n}</div>
+                  {/* Название правится здесь же. Пока точка не на карте, карточки
+                      метки у неё нет вовсе, а другого места правки после ухода
+                      ленты «Дороги» не осталось: без этого поля точка стала бы
+                      неуправляемой (постулат 4, постулат 1). */}
+                  <InlineText
+                    value={p.n}
+                    onSave={(v) => onRename(q.id, v)}
+                    can={canEdit}
+                    required
+                    label="Название точки"
+                    placeholder="Например, Приозерск: закупка"
+                    className="text-body leading-snug font-semibold text-ink"
+                  />
                   <div className="mt-0.5 flex items-start gap-1.5 text-note break-words text-muted">
                     <Status placed={placed} point={p} hit={h} />
                   </div>
+                  {/* Время и описание точки показываем, но не правим: пока метки
+                      на карте нет, их место — карточка метки, и заводить второй
+                      орган правки на то же поле нельзя (У-53). Молчать о них тоже
+                      нельзя — иначе человек решит, что данные пропали (постулат 5). */}
+                  {!placed && (p.time || p.c) ? (
+                    <p className="mt-0.5 text-note leading-snug text-muted">
+                      {[p.time, p.c].filter(Boolean).join(' · ')}
+                    </p>
+                  ) : null}
                 </div>
-                {placed && (
+                {placed ? (
                   <Check size={18} strokeWidth={1.75} aria-hidden className="mt-1 shrink-0 text-accent-text" />
-                )}
+                ) : canEdit ? (
+                  <RowActions>
+                    <RowAction
+                      icon={Trash2}
+                      tone="danger"
+                      label={`Убрать точку «${p.n || 'без названия'}»`}
+                      onClick={() => onDrop(q.id)}
+                    />
+                  </RowActions>
+                ) : null}
               </div>
 
               {/* Обе кнопки полной высоты (44): это главные действия мастера,

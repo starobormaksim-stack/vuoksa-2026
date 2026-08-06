@@ -1,53 +1,46 @@
 /**
- * Связь ленты точек с картой — в обе стороны.
+ * Просьбы к карте от тех, кто стоит рядом с ней.
  *
- * Лента и карта стоят рядом в одном блоке «Поездки», но собираются из разных
- * компонентов, и знать друг о друге они не должны: карту зовут и из «Дороги» тоже.
- * Поэтому просьбы ходят через этот маленький посредник.
+ * ⛔ Прежде здесь жила двусторонняя связь ленты точек и карты: лента просила
+ * карту навестись, карта просила ленту подсветить строку (`focusInList`).
+ * Ленты больше нет — заказчик 06.08.2026: «Да, она не нужна вообще. Просто
+ * список точек на карте», — и обратный ход ушёл вместе с ней: точка целиком
+ * правится в карточке своей метки (`map/MapPointCard.tsx`), подсвечивать
+ * в другом месте нечего.
  *
- *   лента → карте  (askMap)      «наведись на эту точку» / «жди тапа для этой точки»;
- *   карта → ленте  (focusInList) «подсвети эту точку, по её метке только что тапнули».
+ * Осталось три просьбы, и все идут К карте:
+ *   «покажи точку маршрута» (askMapPoint)  — от поиска по листу;
+ *   «покажи это место»      (askMapLook)   — от обложки поездки;
+ *   «дай поставить конечную» (askPlaceMain) — оттуда же.
  */
 
 import { scrollToSection } from '../sections.ts'
 
-/** Что просят у карты. */
-export type MapMode =
-  /** показать точку: карта наводится на её координаты */
-  | 'show'
-  /** поставить точку: следующий тап по карте задаёт координаты именно ей */
-  | 'place'
+/* ─────────── просьба «покажи точку маршрута» ─────────── */
 
-export interface MapRequest {
-  pointId: string
-  mode: MapMode
-  /** метка времени: по ней карта отличает новую просьбу от той же самой */
-  at: number
-}
+type PointListener = (r: { pointId: string; at: number }) => void
+const pointWatchers = new Set<PointListener>()
 
-type Listener = (r: MapRequest) => void
-const listeners = new Set<Listener>()
-
-/** Подписаться на просьбы. Возвращает отписку. */
-export function onMapRequest(l: Listener): () => void {
-  listeners.add(l)
+/** Подписаться на «открой карточку этой точки». Возвращает отписку. */
+export function onMapPoint(l: PointListener): () => void {
+  pointWatchers.add(l)
   return () => {
-    listeners.delete(l)
+    pointWatchers.delete(l)
   }
 }
 
 /**
- * Попросить карту показать точку (или дать поставить её).
+ * Показать точку маршрута на карте и открыть её карточку.
  *
- * `scroll` — подводить ли к карте саму страницу. По умолчанию да: человек
- * нажал «на карте», значит хочет её увидеть, а на телефоне карта стоит над лентой
- * и может быть за краем экрана. Но когда лента просто отзывается на тап по строке,
- * рывок страницы из-под пальца только мешает — тогда scroll = false.
+ * Единственный оставшийся проситель — поиск по листу: точка находится по
+ * названию и по описанию, а показать её теперь можно только на карте.
+ * Прыжок к строке (`jumpToItem`) для точек больше не работает вовсе — строки
+ * нет, и молчаливый отказ здесь был бы прямым нарушением постулата 5.
  */
-export function askMap(pointId: string, mode: MapMode, scroll = true): void {
-  if (scroll) scrollToSection('trip')
-  const r: MapRequest = { pointId, mode, at: Date.now() }
-  listeners.forEach((l) => l(r))
+export function askMapPoint(pointId: string): void {
+  scrollToSection('trip')
+  const at = Date.now()
+  pointWatchers.forEach((l) => l({ pointId, at }))
 }
 
 /* ─────────── просьба «покажи это место» ─────────── */
@@ -112,34 +105,4 @@ export function askPlaceMain(): void {
   scrollToSection('trip')
   const at = Date.now()
   placeWatchers.forEach((l) => l(at))
-}
-
-/* ─────────── обратный ход: карта → лента ─────────── */
-
-/** Какую точку карта просит подсветить в ленте. */
-export interface ListFocus {
-  pointId: string
-  /** метка времени: по одной и той же метке можно тапнуть дважды подряд */
-  at: number
-}
-
-type ListListener = (f: ListFocus) => void
-const listWatchers = new Set<ListListener>()
-
-/** Подписаться на «подсвети точку в ленте». Возвращает отписку. */
-export function onListFocus(l: ListListener): () => void {
-  listWatchers.add(l)
-  return () => {
-    listWatchers.delete(l)
-  }
-}
-
-/**
- * Тапнули по метке на карте — лента должна показать эту же точку.
- * Страницу не прокручиваем: лента стоит рядом с картой, и рывок экрана
- * из-под пальца здесь только мешал бы.
- */
-export function focusInList(pointId: string): void {
-  const f: ListFocus = { pointId, at: Date.now() }
-  listWatchers.forEach((l) => l(f))
 }

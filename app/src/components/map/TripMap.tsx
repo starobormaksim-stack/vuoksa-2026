@@ -10,15 +10,9 @@ import type { Perms } from '@/lib/perm'
 import { update, touch, remove } from '@/store'
 import { hasGoogleKey, onGoogleAuthFail, retryGoogle } from '@/lib/gmaps'
 import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
-import {
-  focusInList,
-  onAskPlaceMain,
-  onMapLook,
-  onMapRequest,
-  type MapRequest,
-} from '@/lib/mapfocus'
+import { onAskPlaceMain, onMapLook, onMapPoint } from '@/lib/mapfocus'
 import { mapCenter, mapPoints } from '@/components/road/roadx'
-import { goSection } from '@/lib/jump'
+import { plural } from '@/format'
 import { Btn, useIsDesktop } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { GoogleRouteMap, type MapCard, type MapDest } from './GoogleRouteMap'
@@ -38,8 +32,12 @@ import { useRoadShapes } from './shapes'
  * вкладку не нажали, — заказчик 04.08.2026 так и сказал: «карты нет». Потом
  * стояла в «Дороге» над лентой точек. С 05.08.2026 она наверху страницы:
  * «карта наверху сразу же, с точками показана… справа такой же блок будет
- * с изображением карты, вот этой, логистика». В «Дороге» осталась лента точек,
- * связь с ней двусторонняя и идёт через `lib/mapfocus.ts`.
+ * с изображением карты, вот этой, логистика».
+ *
+ * ⛔ С 06.08.2026 карта — ЕДИНСТВЕННОЕ место маршрута. Ленты точек в «Дороге»
+ * больше нет: «Да, она не нужна вообще. Просто список точек на карте». Всё, что
+ * на ней жило, переехало в карточку метки (`MapPointCard`), а точки без
+ * координат — в мастер «Разметить маршрут» под картой: метки у них нет вовсе.
  *
  * На карте два вида меток, и это разные вещи:
  *   точки маршрута — остановки по пути, кружки с номерами; у точки может быть
@@ -56,7 +54,7 @@ import { useRoadShapes } from './shapes'
 interface Props {
   S: State
   perms: Perms
-  /** место карточки в раскладке единого блока (см. RouteBoard.tsx) */
+  /** место блока в раскладке раздела «Поездка» (см. trip/TripSection.tsx) */
   className?: string
 }
 
@@ -182,7 +180,6 @@ export function TripMap({ S, perms, className }: Props) {
   const list = threads(points, S.transport)
   const road = useRoadShapes(list, live && !copy)
 
-  const [focus, setFocus] = useState<MapRequest | null>(null)
   /** какой точке ждём координаты: следующий тап по карте отдаст их именно ей */
   const [placing, setPlacing] = useState<string | null>(null)
   /** ждём тап для конечной точки поездки */
@@ -245,24 +242,28 @@ export function TripMap({ S, perms, className }: Props) {
      молча уходим на OpenStreetMap, а не показываем серый прямоугольник. */
   useEffect(() => onGoogleAuthFail((reason) => setGoogleDead(reason)), [])
 
-  /* ── просьбы из ленты точек ── */
+  /* ── просьба «покажи точку маршрута» (поиск по листу) ──
+     ⛔ Подписки на просьбы ЛЕНТЫ здесь больше нет: ленты не существует
+     (заказчик 06.08.2026 — «просто список точек на карте»). Точку, которая ждёт
+     координат, называет мастер «Разметить маршрут» — он зовёт `setPlacing`
+     напрямую. А поиск найдёт точку по названию, и показать её теперь можно
+     только здесь: открываем карточку, вид к метке подведёт сама карта (`card.pan`).
+     Точка без координат метки не имеет вовсе — тогда открываем мастер и говорим
+     об этом словами, а не молчим (постулат 5). */
   useEffect(
     () =>
-      onMapRequest((r) => {
-        setFocus(r)
-        setPlacing(r.mode === 'place' ? r.pointId : null)
-        if (r.mode === 'place') {
-          setPlacingMain(false)
-          setPlacingNew(false)
+      onMapPoint(({ pointId }) => {
+        const p = S.route.find((x) => x.i === pointId)
+        if (!p) return
+        if (typeof p.lat !== 'number' || typeof p.lon !== 'number') {
+          setWizard(true)
+          toast(`«${p.n || 'Точка'}» ещё не на карте — поставьте её здесь`)
+          return
         }
-        /* Показать точку — значит и открыть её карточку: связь ленты и карты
-           двусторонняя, и «показать» должно давать столько же, сколько тап по метке. */
-        if (r.mode === 'show') {
-          setPinned(r.pointId)
-          setFresh(null)
-        }
+        setPinned(pointId)
+        setFresh(null)
       }),
-    [],
+    [S.route],
   )
 
   /* ── просьба «покажи это место» с обложки ──
@@ -479,11 +480,8 @@ export function TripMap({ S, perms, className }: Props) {
     void guessAddr(id, lat, lon)
   }
 
-  /** Тап по метке: подсветить точку в ленте рядом и открыть её карточку. */
-  const onSelect = (id: string) => {
-    focusInList(id)
-    openCard(id)
-  }
+  /** Тап по метке: открыть её карточку. Там теперь вся точка целиком. */
+  const onSelect = (id: string) => openCard(id)
 
   /** Курсор пришёл на метку или ушёл с неё. */
   const onHover = (id: string | null) => {
@@ -535,22 +533,17 @@ export function TripMap({ S, perms, className }: Props) {
           <div>
             <div className="text-body font-semibold text-ink">В скачанной копии карты нет</div>
             {/* ⛔ Здесь стоял СПИСОК точек с координатами — второе перечисление
-                того же маршрута, который лентой показан в «Дороге» и в сеть
-                не ходит вовсе. Постулат 3.5: список живёт ровно в одном месте,
-                сводка допустима числом. Поэтому здесь число и дорога к списку,
-                а не сам список. */}
+                того же маршрута. Постулат 3.5: список живёт ровно в одном месте,
+                сводка допустима числом. С 06.08.2026 это место одно-единственное —
+                карта, а в скачанной копии карты нет; значит здесь честное число
+                и слова о том, где точки смотреть, а не второй список. */}
             <p className="mx-auto mt-1 max-w-72 text-note text-balance text-muted">
               Это скачанная копия: она ничего не тянет из сети.{' '}
               {points.length > 0
-                ? `Точки маршрута никуда не делись: их ${points.length} и они с координатами — в разделе «Дорога».`
+                ? `Точки маршрута никуда не делись: их ${points.length}, они с координатами и видны на карте в самом листе на сайте.`
                 : 'Точки маршрута ставятся на карте, а карта живёт в самом листе на сайте.'}
             </p>
           </div>
-          {points.length > 0 && (
-            <Btn tone="secondary" onClick={() => goSection('road')}>
-              Показать маршрут
-            </Btn>
-          )}
         </div>
       </Card>
     )
@@ -576,6 +569,8 @@ export function TripMap({ S, perms, className }: Props) {
       index={points.findIndex((p) => p.i === shown.i) + 1}
       canEdit={canEdit}
       transports={S.transport}
+      people={S.people}
+      perms={perms}
       busy={addrBusy === shown.i}
       fresh={fresh === shown.i}
       flat={!desktop}
@@ -627,8 +622,6 @@ export function TripMap({ S, perms, className }: Props) {
     onHover,
     dest,
     onMoveDest: setDest,
-    focusId: focus?.pointId ?? null,
-    focusAt: focus?.at,
     fitAt,
     lookAt,
     card,
@@ -648,12 +641,12 @@ export function TripMap({ S, perms, className }: Props) {
 
   return (
     <>
-      {/* ⚠️ `h-auto` обязателен, пока внизу стоит полоса карточки. На телефоне
-          высота блока задана числом снаружи (`h-[460px]` в TripSection), и без
-          снятия этой высоты полоса не растянула бы блок, а отняла бы место
-          у самой карты — та схлопнулась бы под свой `min-h-[280px]` и ниже.
-          `cn` здесь не украшение: только tailwind-merge умеет погасить
-          `h-[460px]` из чужого класса. */}
+      {/* ⚠️ `h-auto` — страховка, и снимать её нельзя. Числовой высоты снаружи
+          сейчас нет (её убрали по У-114), но стоило ей быть — и полоса карточки
+          не растянула бы блок, а отняла бы место у самой карты: та схлопнулась бы
+          под свой `min-h-[280px]` и ниже, а карточке срезало бы низ (У-112).
+          `cn` здесь не украшение: погасить чужую высоту умеет только
+          tailwind-merge, порядок классов в строке этого не делает. */}
       <Card className={cn(className, !desktop && cardNode && 'h-auto')}>
         <div className="flex h-full flex-col">
           <MapSearch near={center} onPick={onPick} hint={searchHint} />
@@ -720,6 +713,20 @@ export function TripMap({ S, perms, className }: Props) {
           )}
 
           <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-t border-line px-3 py-2">
+            {/* Маршрут словами и сколько в нём точек. Обе строки стояли шапкой
+                ленты в «Дороге» (`RouteBoard`), а ленту заказчик отменил
+                06.08.2026 — «просто список точек на карте». Описание маршрута
+                живёт в документе (`trip.route`) и другого места показа у него
+                нет вовсе; число точек — единственное, по чему видно, что точек
+                больше, чем меток: те, что без координат, на карте не рисуются
+                (постулат 4, У-53 наоборот — здесь не дубль, а единственное место). */}
+            {S.trip.route ? (
+              <p className="w-full text-note leading-snug text-muted">{S.trip.route}</p>
+            ) : null}
+            <p className="tnum w-full text-micro text-muted">
+              {S.route.length} {plural(S.route.length, 'точка', 'точки', 'точек')} в маршруте
+            </p>
+
             <Legend list={list} S={S} />
 
             {/* Почему линия прямая — словами, а не догадкой (постулат 5, У-32).
@@ -890,6 +897,17 @@ export function TripMap({ S, perms, className }: Props) {
           setWizard(false)
           setPlacing(id)
           toast('Тапните по карте, где это')
+        }}
+        canEdit={canEdit}
+        onRename={(id, n) =>
+          patch(id, (p) => {
+            p.n = n
+          })
+        }
+        onDrop={(id) => {
+          const p = S.route.find((x) => x.i === id)
+          remove('route', id)
+          toast(`«${p?.n || 'Точка'}» убрана из маршрута`)
         }}
       />
     </>

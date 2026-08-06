@@ -25,6 +25,11 @@ import type { MenuDay } from '@/lib/types'
 
 /** Крупные разделы в том порядке, в каком они идут по странице. */
 const GROUPS: { section: string; title: string }[] = [
+  /* ⚠️ «Поездка» здесь появилась 06.08.2026 вместе с точками маршрута: раньше
+     они искались в «Дороге», а с уходом ленты живут на карте. Без своей группы
+     находка есть в индексе, но на экран не попадает вовсе — замер поймал это
+     сразу после переезда. */
+  { section: 'trip', title: 'Поездка' },
   { section: 'gear', title: 'Сборы' },
   { section: 'buy', title: 'Закупка' },
   { section: 'road', title: 'Дорога' },
@@ -57,9 +62,13 @@ export function buildHits(S: State): Hit[] {
       key: 'buy:' + p.i, section: 'buy', sectionTitle: 'Закупка · ' + (bsec.get(p.sec) ?? ''),
       title: p.n, note: p.c, itemId: p.i,
     })
+  /* ⚠️ Точка маршрута ведёт в «Поездку», на карту, а не в «Дорогу»: ленты точек
+     там больше нет (06.08.2026), прыгать не к чему. Показывает точку карта —
+     открывает её карточку, а точку без координат отправляет в мастер
+     «Разметить маршрут» (см. `askMapPoint` в lib/mapfocus.ts). */
   for (const r of S.route)
     out.push({
-      key: 'route:' + r.i, section: 'road', sectionTitle: 'Дорога · маршрут',
+      key: 'route:' + r.i, section: 'trip', sectionTitle: 'Поездка · точка на карте',
       title: r.n, note: r.c, itemId: r.i,
     })
   for (const t of S.transport)

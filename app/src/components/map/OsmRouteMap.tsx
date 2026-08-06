@@ -46,10 +46,6 @@ interface Props {
   dest?: MapDest | null
   /** метку конечной перетащили */
   onMoveDest?: (lat: number, lon: number) => void
-  /** к какой точке подвести карту (просьба из ленты) */
-  focusId?: string | null
-  /** метка времени просьбы: одна и та же точка может понадобиться дважды */
-  focusAt?: number
   /** метка «подгони вид под все точки заново» (после мастера «Разметить маршрут») */
   fitAt?: number
   /** навестись на произвольное место (находка строки поиска над картой) */
@@ -81,7 +77,7 @@ function destIcon(name: string) {
 
 export function OsmRouteMap({
   points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
-  dest, onMoveDest, focusId, focusAt, fitAt, lookAt, card, className,
+  dest, onMoveDest, fitAt, lookAt, card, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   const map = useRef<ReturnType<typeof L.map> | null>(null)
@@ -253,27 +249,8 @@ export function OsmRouteMap({
     m.setView([lookAt.lat, lookAt.lon], Math.max(m.getZoom(), 13), { animate: true })
   }, [lookAt])
 
-  /* ── просьба из ленты: подвести карту к точке и качнуть метку ── */
-  useEffect(() => {
-    const m = map.current
-    if (!m || !focusId) return
-    const mk = marks.current.get(focusId)
-    if (!mk) return
-    m.setView(mk.getLatLng(), Math.max(m.getZoom(), 12), { animate: true })
-    /* Качаем внутренний узел метки: на самом значке лежит её положение
-       на карте, и трогать его нельзя — метка уедет с места. */
-    const inner = mk.getElement()?.firstElementChild
-    if (!inner) return
-    const a = inner.animate(
-      [
-        { transform: 'translateY(0)' },
-        { transform: 'translateY(-10px)' },
-        { transform: 'translateY(0)' },
-      ],
-      { duration: 520, iterations: 3, easing: 'ease-in-out' },
-    )
-    return () => a.cancel()
-  }, [focusId, focusAt, sig])
+  /* ⛔ Подводки «по просьбе ленты» здесь больше нет: ленты точек не существует
+     (06.08.2026). К нужной метке карту подводит `card.pan`. */
 
   /* ── карточка метки едет вместе с картой ── */
   const cardLat = card?.lat
