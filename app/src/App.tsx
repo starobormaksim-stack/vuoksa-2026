@@ -3,6 +3,7 @@ import { useReducedMotion } from 'motion/react'
 import { SECTIONS, anchorOf, scrollToSection, type SectionDef } from './sections'
 import { useTrip } from './store'
 import { useTheme } from './theme'
+import { useBottomNav } from './navpref'
 import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
 import { personalizeManifest } from './lib/homescreen'
@@ -45,6 +46,7 @@ import { Toaster } from './components/ui/sonner'
 function App() {
   const { S, perms, denied, opened, signIn, entering } = useTrip()
   const { dark, toggle } = useTheme()
+  const nav = useBottomNav()
   const [search, setSearch] = useState(false)
   const reduce = useReducedMotion()
   const { active, goTo } = useSectionNav(SECTIONS)
@@ -166,7 +168,11 @@ function App() {
         onHome={goHome}
       />
 
-      <main className="mx-auto w-full max-w-[1280px] px-4 py-6 pb-28 lg:px-6 lg:py-8 lg:pb-12">
+      {/* Отступ снизу считается от высоты нижней панели (`--bottom-nav-h`, ставит
+          `navpref.ts`): свёрнутая панель не должна оставлять под собой пустоту.
+          Запасное значение в `var()` — на случай, если переменную ещё не поставили:
+          это ровно прежние 7rem. */}
+      <main className="mx-auto w-full max-w-[1280px] px-4 py-6 pb-[calc(var(--bottom-nav-h,7rem)+1.5rem)] lg:px-6 lg:py-8 lg:pb-12">
         {/* ⚠️ Здесь стояли две строки над разделами — «Вы — Макс · владелец» с рядом
             присутствия и кнопка «Мои поездки». Обе убраны 05.08.2026.
             · Личность и присутствие переехали ЗНАКОМ в саму шапку (`PresenceStack`
@@ -210,7 +216,13 @@ function App() {
         </div>
       </main>
 
-      <BottomNav sections={SECTIONS} active={active} onSelect={goTo} />
+      <BottomNav
+        sections={SECTIONS}
+        active={active}
+        onSelect={goTo}
+        open={nav.open}
+        onToggle={nav.toggle}
+      />
       {/* Точка маршрута — единственная находка, у которой строки в списке нет
           вовсе: её показывает карта, открывая карточку метки (06.08.2026, лента
           точек упразднена). Прыжок `jumpToItem` искал бы `data-hit`, которого

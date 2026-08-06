@@ -31,7 +31,9 @@ export function PermNotice() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-40 flex justify-center px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:justify-end"
+      /* Высота нижней панели — переменная `--bottom-nav-h` (`navpref.ts`): панель
+         сворачивается, и плашка обязана опуститься вместе с ней. */
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+var(--bottom-nav-h,4.5rem)+0.5rem)] z-40 flex justify-center px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:justify-end"
     >
       <p className="pointer-events-auto max-w-[32rem] rounded-xl border border-line bg-surface px-4 py-3 text-note text-muted shadow-lg">
         {текст}

@@ -36,7 +36,10 @@ export function NetNotice() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-40 flex justify-center px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:justify-end"
+      /* Высота нижней панели — переменная `--bottom-nav-h` (`navpref.ts`): панель
+         сворачивается, и плашка обязана опуститься вместе с ней, иначе повиснет
+         над пустотой (постулат 12 — соседи в том же контейнере). */
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+var(--bottom-nav-h,4.5rem)+0.5rem)] z-40 flex justify-center px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:justify-end"
     >
       <p
         /* ⛔ `pointer-events-auto` здесь БЫЛО и накрывало кнопки под собой:

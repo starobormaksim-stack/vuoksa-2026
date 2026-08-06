@@ -3,7 +3,7 @@ import { Car, Check, Footprints, Plus, Repeat2, Sailboat, X, type LucideIcon } f
 import type { LegMode, State, Transport } from '@/lib/types'
 import { update, touch } from '@/store'
 import { kmOf, kBackOf } from '@/lib/calc'
-import { kmLabel } from '@/components/road/roadx'
+import { dg, kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 import { InlineNum, InlineText } from '@/components/flops'
@@ -157,15 +157,17 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
   }
 
   const activeT = list.find((t) => t.i === active) ?? null
-  const activeIdx = activeT ? order.indexOf(activeT.i) : -1
 
   return (
     /* Полоса стоит ПОД картой (см. TripMap.tsx) — отсюда `border-t`. */
     <div className="shrink-0 border-t border-line px-3 py-2">
-      {/* ── Ряд веток ──
-          Прокрутка вбок живёт ВНУТРИ полосы: у страницы горизонтального
-          скролла нет (постулат 8), а веток может быть сколько угодно. */}
-      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-0.5">
+      {/* ── Ветки СТРОКАМИ, по одной в строке ──
+          Заказчик 06.08.2026: «ни скролла, ни горизонтального… Сделай просто:
+          первая строка — один транспорт, вторая — второй, в третьей строке —
+          третий транспорт». Прокрутка вбок прятала половину веток за краем
+          экрана: на 390 в полосу влезали две из четырёх, а остальные надо было
+          искать пальцем. Строкам край экрана не мешает. */}
+      <div className="flex flex-col gap-1.5">
         {common.length > 0 && (
           <BranchChip
             tone={MAP_TONES[0]}
@@ -199,7 +201,7 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
             aria-expanded={adding}
             aria-label="Добавить вид транспорта — у него будет своя ветка маршрута"
             className={cn(
-              'flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-line-strong',
+              'flex min-h-11 w-full items-center gap-1.5 rounded-lg border border-dashed border-line-strong',
               'px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra',
               adding && 'bg-zebra',
             )}
@@ -265,6 +267,12 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
                 Расход
                 <InlineNum
                   value={activeT.rate}
+                  /* ⛔ Без `digits` поле округляет до целого (`digits = 0` по
+                     умолчанию), и вписанные 2,5 л/ч превращались в 3 — заказчик
+                     06.08.2026: «я прописываю там 2,5 л/ч, а у тебя почему-то
+                     округляется до 3». В «Дороге» тот же расход всегда правился
+                     через `dg(t.rate)`; здесь этой половины не хватало. */
+                  digits={dg(activeT.rate)}
                   onSave={(v) =>
                     patch(activeT.i, (t) => {
                       t.rate = v
@@ -404,10 +412,12 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
             })}
           </div>
 
-          <p className="text-micro leading-snug text-muted">
-            Новые точки на карте попадают в «{activeT.n || 'выбранную ветку'}»
-            {activeIdx >= 0 ? '' : ''}. Расход, топливо и цена правятся в «Дороге».
-          </p>
+          {/* ⛔ Здесь стояла строка «Новые точки на карте попадают в „…“. Расход,
+              топливо и цена правятся в „Дороге“». Убрана 06.08.2026 по прямому
+              слову заказчика: «эта информация не нужна. Вот эта вся описательная
+              часть глупая, ненужная». Выбранная ветка и так подсвечена рамкой
+              и стоит первой строкой над этим блоком — подсказка повторяла то,
+              что видно (постулат 7: меньше деталей, а не больше). */}
         </div>
       )}
     </div>
@@ -431,7 +441,9 @@ function BranchChip({
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        'flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 text-left transition-colors',
+        /* Ветка занимает строку целиком: `w-full`, а не `shrink-0` — полоса
+           больше не едет вбок (заказчик 06.08.2026). */
+        'flex min-h-11 w-full items-center gap-2 rounded-lg border px-3 text-left transition-colors',
         on ? 'border-accent bg-accent-fill' : 'border-line hover:bg-zebra',
       )}
     >
@@ -443,7 +455,7 @@ function BranchChip({
       />
       {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />}
       <span className="min-w-0">
-        <span className="block max-w-40 truncate text-note leading-tight font-semibold text-ink">
+        <span className="block truncate text-note leading-tight font-semibold text-ink">
           {name}
         </span>
         <span className="tnum block text-micro leading-tight text-muted">{note}</span>

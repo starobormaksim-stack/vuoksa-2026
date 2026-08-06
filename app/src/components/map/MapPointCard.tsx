@@ -10,7 +10,7 @@ import { humanAddr } from '@/lib/geocode'
 import { coordLabel, travels } from '@/components/road/roadx'
 import { Dot, RoutePointCoords, RoutePointSetup } from '@/components/road/RoutePointSetup'
 import { cn } from '@/lib/utils'
-import { toneAt, COMMON_TONE, type MapTone } from './marks'
+import { toneOf, COMMON_TONE, type MapTone } from './marks'
 
 /**
  * Карточка метки — правка точки маршрута ПРЯМО НА КАРТЕ.
@@ -119,8 +119,8 @@ export function MapPointCard({
    * Что предлагать у точки: только ту технику, что едет.
    *
    * ⚠️ Номер `idx` берётся ИСХОДНЫЙ, из `S.transport`: тон нитки считается по
-   * месту в этом списке (`toneAt`), и после фильтра кружок в карточке взял бы
-   * чужой цвет — тот, каким на карте нарисована другая техника.
+   * месту в этом списке (`toneAt` внутри `toneOf`), и после фильтра кружок
+   * в карточке взял бы чужой цвет — тот, каким на карте нарисована другая техника.
    *
    * Уже выбранная техника остаётся в ряду всегда, даже если ездить она перестала:
    * иначе снять привязку было бы нечем (постулат 4).
@@ -263,7 +263,13 @@ export function MapPointCard({
             {offered.map(({ t, idx }) => (
               <TrBtn
                 key={t.i}
-                tone={toneAt(idx)}
+                /* ⛔ Именно `toneOf`, а не `toneAt`: у ветки может быть свой
+                   цвет, выбранный человеком (`t.tone`). Карта его учитывает
+                   (`threads` → `toneOf`), а кружок здесь считал цвет только
+                   по месту в списке — и заказчик 06.08.2026 увидел синюю ветку
+                   Aveo на карте и зелёный кружок той же Aveo в карточке точки
+                   («почему у тебя автотранспорт и автомобили разного цвета»). */
+                tone={toneOf(t, idx)}
                 icon={LEG_ICONS[t.leg]}
                 label={t.n}
                 on={chosen?.i === t.i}
