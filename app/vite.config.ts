@@ -14,9 +14,13 @@ function stripOnlineLinks(): Plugin {
     name: 'flops-strip-online-links',
     enforce: 'post',
     transformIndexHtml(html) {
-      return html
-        .replace(/\s*<link rel="manifest"[^>]*>/g, '')
-        .replace(/\s*<link rel="apple-touch-icon"[^>]*>/g, '')
+      return (
+        html
+          .replace(/\s*<link\s[^>]*rel="manifest"[^>]*>/g, '')
+          /* `[^"]*` — чтобы попал и `apple-touch-icon-precomposed`, и перенос строки
+             внутри тега: иначе офлайн-файл тянул бы значок с сайта (У-101). */
+          .replace(/\s*<link\s[^>]*rel="apple-touch-icon[^"]*"[^>]*>/g, '')
+      )
     },
   }
 }

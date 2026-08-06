@@ -102,6 +102,11 @@ self.addEventListener('activate', function (e) {
       .then(function (keys) {
         return Promise.all(
           keys.map(function (k) {
+            /* ⛔ Кеш `pine-me` не трогаем. В нём лежит личная ссылка, и это
+               единственное хранилище, общее у Safari и у значка на домашнем
+               экране iPhone (localStorage у них разный — У-107). Снести его
+               при выкладке значит вернуть человеку экран входа. */
+            if (k.indexOf('pine-me') === 0) return
             if (k !== CACHE) return caches.delete(k)
           }),
         )
@@ -141,6 +146,24 @@ self.addEventListener('fetch', function (e) {
              В кеш такое класть нельзя: там оно осталось бы навсегда. */
           if (storable(res) && !isHtml(res)) keep(req, res)
           return res
+        })
+      }),
+    )
+    return
+  }
+
+  /* ── Сети заведомо нет — идём в кеш сразу ──
+     Иначе человек, открывший значок в лесу, шесть секунд смотрит в пустоту,
+     прежде чем увидит свой лист. Заказчик 06.08.2026: «если интернет пропадает,
+     то офлайн-версия остаётся просто офлайн, и всё — в этом вся разница». */
+  if (self.navigator && self.navigator.onLine === false) {
+    e.respondWith(
+      caches.match(req).then(function (hit) {
+        if (hit) return hit
+        return caches.match(SHELL).then(function (shell) {
+          /* Оболочки нет вовсе — значит работника поставили только что и кеш
+             ещё пуст. Тогда честная попытка сети: пусть браузер сам скажет. */
+          return shell || fetch(req)
         })
       }),
     )

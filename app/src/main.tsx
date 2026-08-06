@@ -2,12 +2,62 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { hasAuthCodeInUrl } from './lib/auth.ts'
+import { вспомнитьСебя } from './lib/homescreen.ts'
+import { AUTH_KEY } from './lib/perm.ts'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+/**
+ * Вспомнить себя, прежде чем показывать «Этот лист закрыт».
+ *
+ * Идти не с чем ровно в трёх случаях сразу: в адресе нет ключа, запомненного
+ * входа в этом хранилище нет, кода из письма тоже нет. Так выглядит первый
+ * запуск значка, который система всё-таки завела отдельным приложением: у него
+ * своё пустое `localStorage`. Кеш служебного работника при этом ОБЩИЙ с Safari
+ * (с iOS 14), и личная ссылка лежит там — `lib/homescreen.ts`.
+ *
+ * ⛔ Ждём только в этом случае. Когда идти есть с чем, ни одного `await`
+ * не исполняется, и лист рисуется так же быстро, как рисовался.
+ *
+ * ⛔ Метка в `sessionStorage` — от круга: если ссылка почему-то не даст входа,
+ * второй раз уводить по ней нельзя.
+ */
+function нечегоПредъявить(): boolean {
+  try {
+    /* ⛔ Офлайн-копия самодостаточна и в сеть не ходит вовсе: увести её на адрес
+       сайта значит отобрать у человека ровно то, ради чего он файл и скачивал. */
+    if ((window as unknown as { __PINE_DOC__?: unknown }).__PINE_DOC__) return false
+    if (!location.protocol.startsWith('http')) return false
+    if (/[?&]k=/.test(location.search)) return false
+    if (localStorage.getItem(AUTH_KEY)) return false
+    if (hasAuthCodeInUrl()) return false
+    if (sessionStorage.getItem('flops.recalled')) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function пуск(): Promise<void> {
+  if (нечегоПредъявить()) {
+    const ссылка = await вспомнитьСебя()
+    if (ссылка) {
+      try {
+        sessionStorage.setItem('flops.recalled', '1')
+      } catch {
+        /* хранилище закрыто — уводим один раз и без метки */
+      }
+      location.replace(ссылка)
+      return
+    }
+  }
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}
+
+void пуск()
 
 /**
  * Служебный работник: приложение открывается и без сети, как обычное приложение

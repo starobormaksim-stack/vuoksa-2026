@@ -23,7 +23,7 @@ export interface Auth {
 }
 
 /** Ключ в localStorage для запомненной личности. */
-const AUTH_KEY = 'flops.auth'
+export const AUTH_KEY = 'flops.auth'
 
 /** Русское название уровня. */
 export function permName(perm: Perm): string {
