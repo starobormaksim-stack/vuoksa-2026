@@ -41,6 +41,21 @@ function myLink(me: Person): string {
 }
 
 /**
+ * Это iPhone или iPad.
+ *
+ * Считаем по строке браузера и по «мак с касанием» — так iPad с iPadOS 13+
+ * представляется настольным Safari. Ошибиться в эту сторону не страшно:
+ * худшее, что случится, — значок останется закладкой браузера, то есть будет
+ * работать ровно так, как работал сайт.
+ */
+function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPhone|iPad|iPod/i.test(ua)) return true
+  return /Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1
+}
+
+/**
  * Держать в адресной строке личную ссылку.
  *
  * ⛔ Без этого ярлык на iPhone бесполезен. Safari добавляет на домашний экран
@@ -86,6 +101,17 @@ export async function personalizeManifest(me: Person | null): Promise<void> {
 
   const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')
   if (!link) return
+
+  /* ⛔ На iPhone манифест снимаем совсем. С iOS 16.4 Safari по манифесту
+     с `display: standalone` заводит ОТДЕЛЬНОЕ приложение — со своим хранилищем,
+     куда вход из браузера не переезжает (У-106). Без манифеста значок остаётся
+     закладкой Safari: тот же вход, те же данные, лист открывается сразу.
+     Android от этого не страдает: там значок ставит Chrome, и хранилище у него
+     общее с браузером — ему манифест ниже и достаётся, уже личный. */
+  if (isIOS()) {
+    link.remove()
+    return
+  }
 
   const start = myLink(me)
   if (!start || start === текущий) return

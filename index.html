@@ -15,7 +15,15 @@
          оставалась чужого цвета и просвечивала. Значение меняет src/theme.ts, а первое
          выставляет скрипт ниже, до первой отрисовки. -->
     <meta name="theme-color" content="#F9F3D4" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- ⛔ `apple-mobile-web-app-capable` НЕ ставим. С ним значок на домашнем экране
+         iPhone запускает ОТДЕЛЬНОЕ приложение со своим хранилищем: вход, сделанный
+         в Safari, туда не переезжает, и человек упирается в «Этот лист закрыт»,
+         а при следующем запуске видит замерший снимок этого экрана — iOS показывает
+         его как заставку, и он, конечно, не нажимается. Заказчик 06.08.2026:
+         «я уже должен быть зарегистрирован, мне не нужно повторять эту процедуру».
+         Без этой меты значок — закладка Safari: тот же вход, те же данные,
+         открывается сразу в листе (У-106). Имя и значок закладки берутся из
+         `apple-mobile-web-app-title` и `apple-touch-icon` ниже. -->
     <meta name="apple-mobile-web-app-title" content="Pine-to-Pine" />
     <!-- ./ подставляет Vite: './' для GitHub Pages и офлайн-копии, '/' для
          Cloudflare Pages. Жёсткое './' здесь ломало красивые адреса: со страницы
@@ -36,7 +44,7 @@
         if (m) m.setAttribute('content', d ? '#2B391A' : '#F9F3D4')
       } catch (e) {}
     </script>
-    <script type="module" crossorigin src="./assets/index-HKEJMwIb.js"></script>
+    <script type="module" crossorigin src="./assets/index-fWZtO_Kr.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-B0Z9INg1.js">
     <link rel="modulepreload" crossorigin href="./assets/react-ChfBSDHL.js">
     <link rel="modulepreload" crossorigin href="./assets/motion-Ba7PjYFS.js">
