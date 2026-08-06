@@ -41,6 +41,38 @@ function myLink(me: Person): string {
 }
 
 /**
+ * Держать в адресной строке личную ссылку.
+ *
+ * ⛔ Без этого ярлык на iPhone бесполезен. Safari добавляет на домашний экран
+ * ТОТ АДРЕС, который сейчас в строке (личный манифест он может и не принять —
+ * это `blob:`), а у владельца, вошедшего по письму, в адресе ни имени, ни ключа:
+ * код из письма стирается сразу после обмена. Ярлык запоминался «голым», в новом
+ * хранилище приложения не было ни ключа, ни сеанса почты — и человек снова
+ * упирался во вход. Заказчик 06.08.2026: «я только что зарегистрировался
+ * в Safari, сделал иконку домой, захожу — и у меня опять просят вписать. Я уже
+ * должен быть зарегистрирован» (У-105).
+ *
+ * Страницу не перезагружаем: `replaceState` меняет только строку адреса.
+ * Историю не засоряем — заменяем текущую запись, а не добавляем новую.
+ *
+ * ⚠️ Список поездок (`?trips=1`) не трогаем: его метку снимает `closeTripsList()`,
+ * и подмена адреса из-под неё вернула бы человека в список после обновления.
+ */
+function keepPersonalUrl(me: Person): void {
+  if (typeof location === 'undefined' || typeof history === 'undefined') return
+  if (!me.key) return
+  const q = new URLSearchParams(location.search)
+  if (q.has('trips')) return
+  if (q.get('k') === me.key && q.has('u')) return
+  /* Прочие метки адреса остаются как были — в том числе `trip` и `sandbox`:
+     потерять `sandbox=1` значит увести проверку в боевую строку (У-01). */
+  q.set('u', me.slug || me.id)
+  q.set('k', me.key)
+  const s = q.toString()
+  history.replaceState(null, '', location.pathname + (s ? '?' + s : '') + location.hash)
+}
+
+/**
  * Подменить манифест на личный.
  *
  * Зовётся, когда человек опознан. Повторный вызов с той же ссылкой ничего
@@ -48,9 +80,12 @@ function myLink(me: Person): string {
  */
 export async function personalizeManifest(me: Person | null): Promise<void> {
   if (typeof document === 'undefined' || typeof URL === 'undefined') return
+  if (!me) return
+  /* Первым делом — адрес: на него смотрит Safari, когда кладёт значок на экран. */
+  keepPersonalUrl(me)
+
   const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')
   if (!link) return
-  if (!me) return
 
   const start = myLink(me)
   if (!start || start === текущий) return

@@ -22,13 +22,21 @@ import { chromium } from 'file:///C:/Users/staro/AppData/Roaming/npm/node_module
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const emblem = fs.readFileSync(path.join(APP, 'src/assets/emblem-light.svg'), 'utf8')
 
-/** Крем брендбука — тот же, что `background_color` манифеста. */
-const CREAM = '#F9F3D4'
+/**
+ * Поле вокруг знака — хвоя брендбука.
+ *
+ * Заказчик 06.08.2026: «чтобы всё, что за пределами окантовки круглой, было
+ * в её же цвете: зелёный. Внутри — как есть». Телефон обрезает иконку своей
+ * формой (скруглённый квадрат на iPhone, круг на Android), и кремовые углы
+ * читались как рамка вокруг знака. Теперь угол в цвет самой окантовки —
+ * знак кажется вписанным, а не наклеенным.
+ */
+const ХВОЯ = '#2B391A'
 
 const page = (size, inset) => `<!doctype html><meta charset="utf-8">
 <style>
   html,body{margin:0;padding:0}
-  .plate{width:${size}px;height:${size}px;background:${CREAM};display:grid;place-items:center}
+  .plate{width:${size}px;height:${size}px;background:${ХВОЯ};display:grid;place-items:center}
   .знак{width:${Math.round(size * inset)}px;height:${Math.round(size * inset)}px;display:block}
   .знак svg{width:100%;height:100%;display:block}
 </style>
