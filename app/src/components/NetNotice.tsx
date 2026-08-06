@@ -39,7 +39,11 @@ export function NetNotice() {
       className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-40 flex justify-center px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:justify-end"
     >
       <p
-        className={`pointer-events-auto max-w-[32rem] rounded-xl border bg-surface px-4 py-3 text-note shadow-lg ${
+        /* ⛔ `pointer-events-auto` здесь БЫЛО и накрывало кнопки под собой:
+           плашка висит `fixed` над нижней панелью, нажатия в неё упирались,
+           а нажать в ней нечего — это `role="status"`, а не орган. Полоска
+           теперь насквозь прозрачна для пальца, как и её обёртка. */
+        className={`max-w-[32rem] rounded-xl border bg-surface px-4 py-3 text-note shadow-lg ${
           беда ? 'border-danger/40 text-danger' : 'border-line text-muted'
         }`}
       >

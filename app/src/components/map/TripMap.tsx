@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Car, ChevronRight, Footprints, LoaderCircle, LocateFixed, MapPinned, MapPinPlus, Sailboat,
-  Tent, TriangleAlert, WifiOff,
-  type LucideIcon,
+  LoaderCircle, LocateFixed, MapPinPlus, Tent, TriangleAlert, WifiOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { LegMode, RoutePoint, State, TripPlace } from '@/lib/types'
+import type { RoutePoint, State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { update, touch, remove } from '@/store'
 import { hasGoogleKey, onGoogleAuthFail, retryGoogle } from '@/lib/gmaps'
-import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
+import { reversePlace, shortPlaceName, humanAddr, type PlaceFound } from '@/lib/geocode'
 import { onAskPlaceMain, onMapLook, onMapPoint } from '@/lib/mapfocus'
-import { mapCenter, mapPoints, kmLabel } from '@/components/road/roadx'
-import { kmOf } from '@/lib/calc'
+import { mapCenter, mapPoints } from '@/components/road/roadx'
 import { MDASH, plural } from '@/format'
 import { Btn, useIsDesktop } from '@/components/flops'
 import { cn } from '@/lib/utils'
@@ -21,7 +18,8 @@ import { OsmRouteMap } from './OsmRouteMap'
 import { RouteMarkSheet } from './RouteMarkSheet'
 import { MapSearch } from './MapSearch'
 import { MapPointCard } from './MapPointCard'
-import { leafletDash, threads, toneAt, type Thread } from './marks'
+import { threads } from './marks'
+import { RouteBranches } from './RouteBranches'
 import { useRoadShapes } from './shapes'
 
 /**
@@ -57,13 +55,6 @@ interface Props {
   perms: Perms
   /** место блока в раскладке раздела «Поездка» (см. trip/TripSection.tsx) */
   className?: string
-}
-
-/** Значок участка — тот же, что карта рисует в углу метки. */
-const LEG_ICONS: Record<LegMode, LucideIcon> = {
-  road: Car,
-  water: Sailboat,
-  walk: Footprints,
 }
 
 /** Сколько ждём, прежде чем закрыть карточку, за которой ушёл курсор, мс. */
@@ -217,6 +208,16 @@ export function TripMap({ S, perms, className }: Props) {
   const [googleTry, setGoogleTry] = useState(0)
   /** открыт мастер «Разметить маршрут» */
   const [wizard, setWizard] = useState(false)
+  /**
+   * Активная ветка: id единицы техники, в которую падают НОВЫЕ точки.
+   * Пусто — общая нитка, как было до полосы веток.
+   *
+   * Заказчик 06.08.2026 (Г-4): «Было бы круто, чтобы над картой или прям
+   * на карте ты выбираешь сначала вид транспорта, потом начинаешь расставлять
+   * точки по всей карте, от первой до последней». До этого техника назначалась
+   * точке ПОСЛЕ, в её карточке, и «сначала выбрать» было нечем.
+   */
+  const [activeTr, setActiveTr] = useState('')
   /** метка «подгони вид под точки заново»: после разметки маршрут вылезает за экран */
   const [fitAt, setFitAt] = useState(0)
   /** куда навести карту по находке из строки поиска */
@@ -307,7 +308,11 @@ export function TripMap({ S, perms, className }: Props) {
       setAddrBusy((cur) => (cur === id ? null : cur))
       if (g?.addr) {
         patch(id, (p) => {
-          p.addr = g.addr
+          /* В лист кладём адрес уже человеческий: Plus Code («23JV+M5»),
+             «Россия» и почтовый индекс — служебные хвосты геокодера,
+             и заказчик на них пожаловался прямо. Место при этом не теряется:
+             его хранят координаты точки, а не строка. */
+          p.addr = humanAddr(g.addr)
         })
         return
       }
@@ -318,13 +323,21 @@ export function TripMap({ S, perms, className }: Props) {
     [patch],
   )
 
-  /** Завести новую точку маршрута. Возвращает её id. */
+  /**
+   * Завести новую точку маршрута. Возвращает её id.
+   *
+   * ⚠️ Точка падает в АКТИВНУЮ ветку (`activeTr`) и берёт её способ
+   * передвижения: заказчик просил сначала выбрать транспорт, а потом ставить
+   * точки. Ветка не выбрана — точка общая и `mode` прежний, 'road'.
+   */
   const addPoint = (lat: number, lon: number, n: string, addr: string) => {
     const id = 'rp' + Date.now().toString(36)
+    const branch = S.transport.find((t) => t.i === activeTr)
     update((s) => {
       s.route.push({
         i: id, n, time: '', c: '', done: false, lat, lon, addr,
-        lab: '', labT: '', mode: 'road', tr: '', leg: 0, legSrc: '',
+        lab: '', labT: '', mode: branch?.leg || 'road', tr: branch?.i ?? '',
+        leg: 0, legSrc: '',
         ord: (s.route.length + 1) * 10, ua: Date.now(),
       })
     })
@@ -363,7 +376,7 @@ export function TripMap({ S, perms, className }: Props) {
     if (!g?.addr) return
     update((s) => {
       const place = s.trip.places?.find((p) => p.main) ?? s.trip.places?.[0]
-      if (place) place.addr = g.addr
+      if (place) place.addr = humanAddr(g.addr)
     })
   }
 
@@ -462,13 +475,13 @@ export function TripMap({ S, perms, className }: Props) {
       patch(id, (p) => {
         p.lat = hit.lat
         p.lon = hit.lon
-        if (!p.addr) p.addr = hit.addr
+        if (!p.addr) p.addr = humanAddr(hit.addr)
       })
       openCard(id)
       return
     }
     setPlacingNew(false)
-    const id = addPoint(hit.lat, hit.lon, shortPlaceName(hit.addr), hit.addr)
+    const id = addPoint(hit.lat, hit.lon, shortPlaceName(humanAddr(hit.addr)), humanAddr(hit.addr))
     openCard(id)
   }
 
@@ -509,22 +522,6 @@ export function TripMap({ S, perms, className }: Props) {
   const waiting = placing ? S.route.find((p) => p.i === placing) : null
   /** Точки без места на карте — пока они есть, маршрута на карте не видно. */
   const unplaced = S.route.filter((p) => typeof p.lat !== 'number' || typeof p.lon !== 'number')
-
-  /* Пробег каждой единицы техники — числом под картой. Только та техника,
-     у которой на карте есть свои точки: строка про пилу или про машину,
-     которую ещё не вели, ничего не сообщает. */
-  const ownKm = S.transport
-    .map((t, idx) => ({ t, idx }))
-    .filter(({ t }) => t.rateU !== 'fix' && S.route.some((p) => p.tr === t.i))
-    .map(({ t, idx }) => ({
-      i: t.i,
-      /* Короткое имя техники, а не подпись строки расчёта: в боевом документе
-         подпись — «Бензин АИ-95 — Honda Accord (Костя)», и три таких названия
-         в одну строку не помещаются никогда. */
-      n: t.n || t.calcT || 'Без названия',
-      km: kmOf(t, S),
-      fill: toneAt(idx).fill,
-    }))
 
   const place = mainPlace(S)
   const dest: MapDest | null =
@@ -647,6 +644,11 @@ export function TripMap({ S, perms, className }: Props) {
     className: 'min-h-[280px] flex-1',
   }
 
+  /** В какую ветку упадёт новая точка — это надо назвать вслух до тапа. */
+  const branchName = S.transport.find((t) => t.i === activeTr)?.n || ''
+  /** Куда именно встанет точка, одними словами на подсказку и на плашку. */
+  const intoWords = branchName ? `в «${branchName}»` : 'в общие точки'
+
   /** Что случится с находкой поиска — человек должен знать это ДО выбора. */
   const searchHint = !canEdit
     ? 'Выберите — покажем на карте'
@@ -654,7 +656,7 @@ export function TripMap({ S, perms, className }: Props) {
       ? 'Выберите — это станет конечной точкой'
       : waiting
         ? `Выберите — сюда встанет «${waiting.n}»`
-        : 'Выберите — поставим новую точку маршрута'
+        : `Выберите — поставим точку ${intoWords}`
 
   return (
     <>
@@ -667,6 +669,16 @@ export function TripMap({ S, perms, className }: Props) {
       <Card className={cn(className, !desktop && cardNode && 'h-auto')}>
         <div className="flex h-full flex-col">
           <MapSearch near={center} onPick={onPick} hint={searchHint} />
+
+          {/* ── Ветки маршрута ──
+              Выбор вида транспорта ДО расстановки точек, его «×2», лишние
+              километры, экипаж и цвет. Полоса стоит над картой по прямой
+              просьбе заказчика: «над картой или прям на карте… ты выбираешь
+              сначала вид транспорта, потом начинаешь расставлять точки».
+              ⛔ Пробег каждой ветки написан ЗДЕСЬ и только здесь: прежняя
+              строка под картой и легенда показывали ровно это же третий раз
+              (постулат 3.5). */}
+          <RouteBranches S={S} canEdit={canEdit} active={activeTr} onActive={setActiveTr} />
 
           {/* Откат на чужую карту — это отказ, а не мелочь оформления, и говорить
               о нём надо в полный голос (постулат 5). До 05.08.2026 причина стояла
@@ -740,11 +752,16 @@ export function TripMap({ S, perms, className }: Props) {
             {S.trip.route ? (
               <p className="w-full text-note leading-snug text-muted">{S.trip.route}</p>
             ) : null}
-            <p className="tnum w-full text-micro text-muted">
-              {S.route.length} {plural(S.route.length, 'точка', 'точки', 'точек')} в маршруте
+            <p className="w-full text-micro text-muted">
+              <span className="tnum">{S.route.length}</span>{' '}
+              {plural(S.route.length, 'точка', 'точки', 'точек')} в маршруте
+              {unplaced.length > 0 ? (
+                <>
+                  {', из них без места на карте '}
+                  <span className="tnum">{unplaced.length}</span>
+                </>
+              ) : null}
             </p>
-
-            <Legend list={list} S={S} />
 
             {/* Почему линия прямая — словами, а не догадкой (постулат 5, У-32).
                 Молчаливый откат заказчик читает как «сервис сломан», и он прав:
@@ -773,7 +790,7 @@ export function TripMap({ S, perms, className }: Props) {
             ) : placingNew ? (
               <>
                 <span className="min-w-0 flex-1 text-note text-ink">
-                  Тапните по карте, где новая точка маршрута
+                  Тапните по карте, где новая точка {MDASH} она встанет {intoWords}
                 </span>
                 <Btn tone="ghost" className="shrink-0" onClick={() => setPlacingNew(false)}>
                   Отменить
@@ -781,42 +798,18 @@ export function TripMap({ S, perms, className }: Props) {
               </>
             ) : (
               <>
-                {canEdit && unplaced.length > 0 ? (
-                  /* Пока точки без координат, карта пустая или неполная — и это первое,
-                     что надо сказать. Мастер проходит их списком: что нашлось
-                     по названию, то подтверждают, остальное ставят пальцем.
-
-                     ⚠️ `basis-64` обязателен, и вот почему (замер 05.08.2026, родня У-81).
-                     Полоса переносится (`flex-wrap`), но при `flex-1` без базиса браузер
-                     предпочитает СЖАТЬ соседа, а не перенести его: на 390 кнопка
-                     съёживалась до 83 × 147, и подпись «Точек без места на карте: 6»
-                     вставала в столбик по одной букве — 19 px ширины при 108 высоты.
-                     Базис говорит «мне нужно 16rem», и тогда на узкой ширине кнопка
-                     честно уезжает на свою строку, а на 1280 стоит в ряд с соседями. */
-                  <button
-                    type="button"
-                    onClick={() => setWizard(true)}
-                    className="flex min-h-11 min-w-0 flex-1 basis-64 items-center gap-3 rounded-lg text-left transition-colors hover:bg-zebra/70"
-                  >
-                    <MapPinned size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-body leading-tight font-semibold text-ink">
-                        Разметить маршрут
-                      </span>
-                      <span className="block text-note text-muted">
-                        {unplaced.length === S.route.length
-                          ? `Ни одна точка ещё не на карте: ${unplaced.length}`
-                          : `Точек без места на карте: ${unplaced.length}`}
-                      </span>
-                    </span>
-                    <ChevronRight size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
-                  </button>
-                ) : (
-                  !canEdit && (
-                    <p className="min-w-0 flex-1 text-note text-muted">
-                      Маршрут ведут владелец и редактор
-                    </p>
-                  )
+                {/* ⛔ Здесь стояла плитка «Разметить маршрут» — вход в мастер
+                    списком. Заказчик 06.08.2026, вечер: «эта функция в списке
+                    не должна появляться, сейчас нам не нужна. У нас условно есть
+                    карта, и в ней я сразу же могу добавить вид». Плитки нет,
+                    а сам мастер жив и открывается тогда, когда без него нельзя:
+                    поиск нашёл точку, у которой координат нет вовсе (см. выше,
+                    `onMapPoint`). Точки без места на карте при этом не молчат —
+                    о них сказано строкой ниже (постулат 5). */}
+                {!canEdit && (
+                  <p className="min-w-0 flex-1 text-note text-muted">
+                    Маршрут ведут владелец и редактор
+                  </p>
                 )}
                 {canEdit && (
                   /* ⚠️ `flex-wrap` и НЕ `shrink-0` — родня У-81. Кнопок стало три,
@@ -838,7 +831,7 @@ export function TripMap({ S, perms, className }: Props) {
                         setPlacing(null)
                         setPlacingMain(false)
                         setPlacingNew(true)
-                        toast('Тапните по карте, где новая точка')
+                        toast(`Тапните по карте — точка встанет ${intoWords}`)
                       }}
                     >
                       <MapPinPlus size={16} strokeWidth={1.75} aria-hidden />
@@ -886,34 +879,12 @@ export function TripMap({ S, perms, className }: Props) {
               </>
             )}
 
-            {/* Пробег каждой единицы техники — прямо под картой, по прямой
-                просьбе заказчика 06.08.2026: «У тебя под картой есть информация,
-                было бы неплохо, чтобы именно эта информация отображалась. То есть,
-                например, Хонда Аккорд: предварительный расчёт, столько-то
-                километров; Авео: столько-то километров. У каждого свой маршрут».
-
-                Тон кружка — тот же, которым нарисована нитка этой техники
-                на карте (`toneAt` по месту в `S.transport`): строка и линия
-                обязаны читаться как одно и то же. Цвет не единственный признак —
-                рядом стоит название (WCAG 1.4.1).
-
-                ⛔ Это НЕ второй список техники (постулат 3.5): правится она
-                по-прежнему только в «Дороге», здесь одни числа. */}
-            {ownKm.length > 0 ? (
-              <p className="w-full text-note leading-snug text-muted">
-                {ownKm.map((k, i) => (
-                  <span key={k.i}>
-                    {i > 0 ? ' · ' : ''}
-                    <span
-                      aria-hidden
-                      className="mr-1 inline-block size-2 rounded-full align-baseline"
-                      style={{ backgroundColor: k.fill }}
-                    />
-                    {k.n} {MDASH} <span className="tnum text-ink">{kmLabel(k.km)}</span>
-                  </span>
-                ))}
-              </p>
-            ) : null}
+            {/* ⛔ Здесь стояли ДВА показа одного и того же: легенда ниток
+                (цвет · значок · название) и строка «пробег каждой техники».
+                То же самое теперь стоит в полосе веток над картой, где по нему
+                ещё и нажимают, — а три показа одного маршрута и есть тот самый
+                «бардак», на который заказчик пожаловался 06.08.2026 вечером
+                (постулат 3.5: один список — одно место). */}
 
             {/* Заказчик: «пиши под картой всегда, какая карта нарисована и какая
                 сборка». Строка не пропадает никогда, а не только при откате —
@@ -957,46 +928,6 @@ export function TripMap({ S, perms, className }: Props) {
         }}
       />
     </>
-  )
-}
-
-/**
- * Легенда: какой тон чей. Нужна ровно тогда, когда ниток больше одной, — иначе
- * объяснять нечего и лишняя строка только шумит.
- *
- * Различие не только цветом (WCAG 1.4.1): у каждой нитки свой рисунок линии
- * и свой значок участка, и в легенде показаны все три признака сразу.
- */
-function Legend({ list, S }: { list: Thread[]; S: State }) {
-  const own = list.filter((t) => t.tr && t.points.length > 0)
-  if (own.length === 0) return null
-  const common = list[0].points.length > 0 ? [list[0]] : []
-
-  return (
-    <ul className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
-      {[...common, ...own].map((t) => {
-        const tr = t.tr ? S.transport.find((x) => x.i === t.tr) : null
-        const Icon = t.leg ? LEG_ICONS[t.leg] : null
-        return (
-          <li key={t.tr || 'common'} className="flex items-center gap-1.5 text-micro text-muted">
-            <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden className="shrink-0">
-              <line
-                x1="0"
-                y1="3"
-                x2="22"
-                y2="3"
-                stroke={t.tone.fill}
-                strokeWidth="3"
-                strokeDasharray={leafletDash(t.tone.dash)}
-                strokeLinecap={t.tone.dash === 'dot' ? 'round' : 'butt'}
-              />
-            </svg>
-            {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />}
-            <span className="truncate">{tr ? tr.n : 'Общие точки'}</span>
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 

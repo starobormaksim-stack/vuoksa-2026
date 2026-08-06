@@ -67,10 +67,13 @@ const PLAIN: Record<string, string[]> = {
   /* ⚠️ `kmAuto`/`km`/`kmSrc`/`kmLocal` — свой пробег единицы техники (calc.kmOf).
      Это ДЕНЬГИ: без них правка пробега у Кости не доехала бы до Макса, а карта
      на другом телефоне молча вернула бы старую цифру. */
+  /* ⚠️ `kBack` — свой множитель «туда и обратно» у ветки на карте. Тоже деньги:
+     галочку ставят на карте, а расход считается у всех. `tone` — свой цвет
+     нитки, `o` — экипаж (см. объекты ниже: `o` сравнивается целиком). */
   transport: [
     'n', 'kind', 'kindT', 'fuel', 'rate', 'rateU', 'hours', 'litres',
     'carry', 'owner', 'payer', 'leg', 'kmAuto', 'km', 'kmSrc', 'kmLocal',
-    'calcT', 'c', 'ord', 'by', 'as',
+    'kBack', 'tone', 'calcT', 'c', 'ord', 'by', 'as',
   ],
   rent: [
     'n', 'cat', 'price', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',
@@ -93,7 +96,8 @@ const PLAIN: Record<string, string[]> = {
  * разницу и переписывал бы поле на каждом слиянии. Поэтому только сюда.
  */
 const PLAIN_JSON: Record<string, string[]> = {
-  transport: ['nt', 'sp'],
+  /* `o` — экипаж этой единицы техники (кто едет). Словарь, поэтому сюда же. */
+  transport: ['nt', 'sp', 'o'],
   rent: ['blocks', 'nt', 'sp'],
   fuelPrices: ['nt'],
 }

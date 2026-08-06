@@ -6,6 +6,7 @@ import type { LegMode, Person, RoutePoint, Transport } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { InlineText, PersonHead } from '@/components/flops'
 import { requestAdd } from '@/lib/addnew'
+import { humanAddr } from '@/lib/geocode'
 import { coordLabel, travels } from '@/components/road/roadx'
 import { Dot, RoutePointCoords, RoutePointSetup } from '@/components/road/RoutePointSetup'
 import { cn } from '@/lib/utils'
@@ -189,7 +190,13 @@ export function MapPointCard({
           <p className="text-micro leading-snug text-muted">Адрес ищем…</p>
         ) : (
           <InlineText
-            value={point.addr}
+            /* Показываем адрес человеку, а не геокодеру: без Plus Code
+               («23JV+M5 Приозерск…»), без «Россия» и почтового индекса.
+               Заказчик 06.08.2026 вечером прямо про них: «непонятные значения…
+               я не совсем понимаю, зачем эта информация». Правка сохраняет
+               ровно то, что видно, — иначе человек правил бы одно, а в листе
+               лежало бы другое. */
+            value={humanAddr(point.addr)}
             can={canEdit}
             label="Адрес точки"
             placeholder={coordLabel(point) || 'Адрес не нашёлся — метку можно подвинуть'}

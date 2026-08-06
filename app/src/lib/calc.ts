@@ -67,7 +67,19 @@ export function routeKm(S: State): number {
 export function kmOf(t: Transport, S: State): number {
   if (t.kmSrc !== 'auto' && t.kmSrc !== 'manual') return routeKm(S)
   const base = t.kmSrc === 'auto' ? (t.kmAuto ?? 0) : (t.km ?? 0)
-  return base * S.trip.dist.kBack + (t.kmLocal ?? 0)
+  return base * kBackOf(t, S) + (t.kmLocal ?? 0)
+}
+
+/**
+ * Множитель «туда и обратно» у одной ветки.
+ *
+ * Заказчик 06.08.2026 (Г-4): «Можно тут же сразу же отметить в случае если
+ * маршрут тем же сам возвращается, либо не отмечать» — галочка стоит у КАЖДОЙ
+ * ветки на карте. Своего числа у ветки нет — работает общий `trip.dist.kBack`,
+ * ровно как до правки, и потому ни одна прежняя поездка в деньгах не сдвинулась.
+ */
+export function kBackOf(t: Transport, S: State): number {
+  return typeof t.kBack === 'number' && t.kBack > 0 ? t.kBack : S.trip.dist.kBack
 }
 
 /** Литры на единицу техники по её единице расхода. */

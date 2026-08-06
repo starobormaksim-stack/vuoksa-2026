@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { LoaderCircle, MapPin, Search, SearchX, TriangleAlert, WifiOff, X } from 'lucide-react'
 import {
-  searchPlaces, shortPlaceName, type PlaceFound, type SearchOutcome,
+  searchPlaces, shortPlaceName, humanAddr, type PlaceFound, type SearchOutcome,
 } from '@/lib/geocode'
 
 /**
@@ -180,11 +180,11 @@ export function MapSearch({ near, onPick, hint }: Props) {
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block text-body leading-tight font-semibold text-ink">
-                      {shortPlaceName(hit.addr)}
+                      {shortPlaceName(humanAddr(hit.addr))}
                     </span>
                     <span className="block text-note leading-snug text-muted">
                       {hit.precise ? '' : 'Примерно: '}
-                      {hit.addr}
+                      {humanAddr(hit.addr)}
                     </span>
                   </span>
                 </button>

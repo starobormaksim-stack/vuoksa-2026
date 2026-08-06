@@ -54,11 +54,23 @@ export const MAP_TONES: MapTone[] = [
   { fill: '#2B391A', text: '#F9F3D4', dash: 'dash' },
   /* янтарь пополам с хвоей */
   { fill: '#73521F', text: '#F9F3D4', dash: 'dot' },
-  /* янтарь пополам с кремом — светлый тон, поэтому номер графитовый */
-  { fill: '#DAAF7C', text: '#262513', dash: 'short' },
-  /* хвоя пополам с кремом */
-  { fill: '#929677', text: '#262513', dash: 'dashdot' },
+  /* янтарь с кремом на четверть — светлый тон, поэтому номер графитовый.
+     ⚠️ Был бледнее (#DAAF7C). Заказчик 06.08.2026 (Г-5): «сделай цвета более
+     выразительными… чтобы они не сливались». Крема убавлено вдвое, цвет
+     остался брендовой смесью (постулат 10). Контраст с графитом 5,07 : 1. */
+  { fill: '#CB8443', text: '#262513', dash: 'short' },
+  /* хвоя с кремом — светлая олива. Была ровно пополам (#929677) и на подложке
+     карты читалась как грязь; крема добавлено до двух третей. Контраст
+     с графитом 7,1 : 1. */
+  { fill: '#B1B293', text: '#262513', dash: 'dashdot' },
 ]
+
+/**
+ * Названия тонов — для выбора цвета ветки человеком. Цвет в интерфейсе
+ * никогда не остаётся безымянным пятном: подпись читает и тот, кто цвета
+ * не различает (WCAG 1.4.1), и она же звучит в `aria-label`.
+ */
+export const TONE_NAMES = ['Янтарь', 'Хвоя', 'Тёмный янтарь', 'Светлый янтарь', 'Олива']
 
 /** Общий тон — точки без своей техники. */
 export const COMMON_TONE = MAP_TONES[0]
@@ -96,6 +108,22 @@ export function toneAt(index: number): MapTone {
   const base = MAP_TONES[1 + (index % colors)]
   const dash = BRANCH_DASHES[(index + Math.floor(index / colors)) % BRANCH_DASHES.length]
   return { fill: base.fill, text: base.text, dash }
+}
+
+/**
+ * Тон одной единицы техники: свой, если человек его выбрал, иначе по месту
+ * в списке. Заказчик 06.08.2026 (Г-5): «они по умолчанию присваиваются.
+ * Можно поменять на другие какие-то».
+ *
+ * Штрих при своём цвете остаётся ПРЕЖНИМ — тем, что дало место в списке.
+ * Так две ветки, которым человек выбрал один и тот же цвет, всё равно
+ * различимы рисунком линии (WCAG 1.4.1, та же причина, по которой штрихи есть).
+ */
+export function toneOf(t: { tone?: number }, index: number): MapTone {
+  const base = toneAt(index)
+  const pick = t.tone
+  if (typeof pick !== 'number' || !MAP_TONES[pick]) return base
+  return { fill: MAP_TONES[pick].fill, text: MAP_TONES[pick].text, dash: base.dash }
 }
 
 /** Тон точки: `tr` — id техники, `order` — порядок id из `S.transport`. */
@@ -170,7 +198,7 @@ export function threads(points: RoutePoint[], transports: Transport[]): Thread[]
   transports.forEach((t, idx) => {
     const own = points.filter((p) => p.tr === t.i)
     if (own.length === 0) return
-    out.push({ tr: t.i, tone: toneAt(idx), leg: t.leg, points: own })
+    out.push({ tr: t.i, tone: toneOf(t, idx), leg: t.leg, points: own })
   })
   return out
 }

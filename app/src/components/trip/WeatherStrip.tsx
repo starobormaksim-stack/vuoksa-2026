@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, CloudSun, Droplets, Wind } from 'lucide-react'
 import type { State } from '@/lib/types'
+import { NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 
 /**
@@ -91,7 +92,7 @@ export function WeatherRow({
             >
               <span className="tnum text-micro text-muted">{d.d}</span>
               <span className="tnum text-note font-semibold text-ink">
-                {d.day}° / {d.night}°
+                {d.day}°{NBSP}/{NBSP}{d.night}°
               </span>
             </button>
           )

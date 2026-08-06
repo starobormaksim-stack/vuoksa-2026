@@ -5,6 +5,7 @@ import type { State, Trip, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { countdown, daysUntil, fmtRange, plural } from '@/format'
 import { askMapLook, askPlaceMain } from '@/lib/mapfocus'
+import { humanAddr } from '@/lib/geocode'
 import { update } from '@/store'
 import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
 import { MoneyTiles } from './MoneyTiles'
@@ -81,7 +82,10 @@ export function TripCover({ S, perms, onEditDates }: Props) {
   /* Главное место — оно же точка приезда: от него и адрес, и единственная
      иконка карты в строке мест. */
   const mapPlace = places.find((p) => p.main) ?? places[0]
-  const destAddr = mapPlace?.addr?.trim() ?? ''
+  /* Показ, а не хранение: `addr` в документе часто приходит с Plus Code геокодера
+     («XVWW+WF Горы») — машинный код, который заказчик прочитал как «X5, WW, WF»
+     (разбор 06.08.2026). humanAddr режет его и служебные части только для экрана. */
+  const destAddr = humanAddr(mapPlace?.addr ?? '')
   const dates = datesLabel(trip)
   const days = daysUntil(trip.start)
   const start = new Date(trip.start)
@@ -191,7 +195,7 @@ export function TripCover({ S, perms, onEditDates }: Props) {
         <div className="min-w-0">
           {/* `break-words`: название придумывает человек, и «ВУОКСА · ЮБИЛЕЙНАЯ»
               одним куском не должно распирать блок. */}
-          <h1 className="text-title leading-tight font-[750] text-ink text-balance break-words lg:text-hero">
+          <h1 className="text-title leading-tight font-bold text-ink text-balance break-words lg:text-hero">
             <InlineText
               value={trip.title}
               onSave={(v) => update((s) => { s.trip.title = v })}
@@ -255,7 +259,11 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                   type="button"
                   onClick={() => askMapLook(mapPlace.lat as number, mapPlace.lon as number)}
                   aria-label={`Показать «${mapPlace.n}» на карте`}
-                  className="-ml-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
+                  /* Значок прижат к тому же левому краю, что и у строки дат
+                     (`-mx-2 px-2` там даёт то же нулевое смещение): раньше
+                     `place-items-center` в квадрате 44 px центрировал значок и
+                     сдвигал его на 6 px правее соседей — строки «съезжали». */
+                  className="-ml-2 flex size-11 shrink-0 items-center rounded-md pl-2 text-muted transition-colors hover:bg-zebra hover:text-ink"
                 >
                   <MapPin size={16} strokeWidth={1.75} aria-hidden />
                 </button>
@@ -264,7 +272,7 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                   type="button"
                   onClick={askPlaceMain}
                   aria-label="Указать место поездки на карте"
-                  className="-ml-2 grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink"
+                  className="-ml-2 flex size-11 shrink-0 items-center rounded-md pl-2 text-muted transition-colors hover:bg-zebra hover:text-ink"
                 >
                   <MapPin size={16} strokeWidth={1.75} aria-hidden />
                 </button>
