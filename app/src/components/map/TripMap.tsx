@@ -11,8 +11,9 @@ import { update, touch, remove } from '@/store'
 import { hasGoogleKey, onGoogleAuthFail, retryGoogle } from '@/lib/gmaps'
 import { reversePlace, shortPlaceName, type PlaceFound } from '@/lib/geocode'
 import { onAskPlaceMain, onMapLook, onMapPoint } from '@/lib/mapfocus'
-import { mapCenter, mapPoints } from '@/components/road/roadx'
-import { plural } from '@/format'
+import { mapCenter, mapPoints, kmLabel } from '@/components/road/roadx'
+import { kmOf } from '@/lib/calc'
+import { MDASH, plural } from '@/format'
 import { Btn, useIsDesktop } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { GoogleRouteMap, type MapCard, type MapDest } from './GoogleRouteMap'
@@ -20,7 +21,7 @@ import { OsmRouteMap } from './OsmRouteMap'
 import { RouteMarkSheet } from './RouteMarkSheet'
 import { MapSearch } from './MapSearch'
 import { MapPointCard } from './MapPointCard'
-import { leafletDash, threads, type Thread } from './marks'
+import { leafletDash, threads, toneAt, type Thread } from './marks'
 import { useRoadShapes } from './shapes'
 
 /**
@@ -509,6 +510,22 @@ export function TripMap({ S, perms, className }: Props) {
   /** Точки без места на карте — пока они есть, маршрута на карте не видно. */
   const unplaced = S.route.filter((p) => typeof p.lat !== 'number' || typeof p.lon !== 'number')
 
+  /* Пробег каждой единицы техники — числом под картой. Только та техника,
+     у которой на карте есть свои точки: строка про пилу или про машину,
+     которую ещё не вели, ничего не сообщает. */
+  const ownKm = S.transport
+    .map((t, idx) => ({ t, idx }))
+    .filter(({ t }) => t.rateU !== 'fix' && S.route.some((p) => p.tr === t.i))
+    .map(({ t, idx }) => ({
+      i: t.i,
+      /* Короткое имя техники, а не подпись строки расчёта: в боевом документе
+         подпись — «Бензин АИ-95 — Honda Accord (Костя)», и три таких названия
+         в одну строку не помещаются никогда. */
+      n: t.n || t.calcT || 'Без названия',
+      km: kmOf(t, S),
+      fill: toneAt(idx).fill,
+    }))
+
   const place = mainPlace(S)
   const dest: MapDest | null =
     place && typeof place.lat === 'number' && typeof place.lon === 'number'
@@ -868,6 +885,35 @@ export function TripMap({ S, perms, className }: Props) {
                 )}
               </>
             )}
+
+            {/* Пробег каждой единицы техники — прямо под картой, по прямой
+                просьбе заказчика 06.08.2026: «У тебя под картой есть информация,
+                было бы неплохо, чтобы именно эта информация отображалась. То есть,
+                например, Хонда Аккорд: предварительный расчёт, столько-то
+                километров; Авео: столько-то километров. У каждого свой маршрут».
+
+                Тон кружка — тот же, которым нарисована нитка этой техники
+                на карте (`toneAt` по месту в `S.transport`): строка и линия
+                обязаны читаться как одно и то же. Цвет не единственный признак —
+                рядом стоит название (WCAG 1.4.1).
+
+                ⛔ Это НЕ второй список техники (постулат 3.5): правится она
+                по-прежнему только в «Дороге», здесь одни числа. */}
+            {ownKm.length > 0 ? (
+              <p className="w-full text-note leading-snug text-muted">
+                {ownKm.map((k, i) => (
+                  <span key={k.i}>
+                    {i > 0 ? ' · ' : ''}
+                    <span
+                      aria-hidden
+                      className="mr-1 inline-block size-2 rounded-full align-baseline"
+                      style={{ backgroundColor: k.fill }}
+                    />
+                    {k.n} {MDASH} <span className="tnum text-ink">{kmLabel(k.km)}</span>
+                  </span>
+                ))}
+              </p>
+            ) : null}
 
             {/* Заказчик: «пиши под картой всегда, какая карта нарисована и какая
                 сборка». Строка не пропадает никогда, а не только при откате —

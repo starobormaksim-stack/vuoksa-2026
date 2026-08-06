@@ -64,9 +64,13 @@ const PLAIN: Record<string, string[]> = {
   /* ⚠️ `payer` — кто выложил деньги за топливо (взаиморасчёты, settle.ts).
      `owner` рядом с ним ОСТАЁТСЯ и не переписывается: подмена формы стёрла бы
      принадлежность техники у всех сразу (урок У-04). */
+  /* ⚠️ `kmAuto`/`km`/`kmSrc`/`kmLocal` — свой пробег единицы техники (calc.kmOf).
+     Это ДЕНЬГИ: без них правка пробега у Кости не доехала бы до Макса, а карта
+     на другом телефоне молча вернула бы старую цифру. */
   transport: [
     'n', 'kind', 'kindT', 'fuel', 'rate', 'rateU', 'hours', 'litres',
-    'carry', 'owner', 'payer', 'leg', 'calcT', 'c', 'ord', 'by', 'as',
+    'carry', 'owner', 'payer', 'leg', 'kmAuto', 'km', 'kmSrc', 'kmLocal',
+    'calcT', 'c', 'ord', 'by', 'as',
   ],
   rent: [
     'n', 'cat', 'price', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',

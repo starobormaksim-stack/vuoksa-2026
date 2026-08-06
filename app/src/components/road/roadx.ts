@@ -8,7 +8,7 @@
  */
 
 import type { CanRow, Kind, LegMode, Rent, RouteLabel, RoutePoint, State, Transport } from '@/lib/types'
-import { litres } from '@/lib/calc'
+import { kmOf, litres } from '@/lib/calc'
 import { fmtNum, NBSP, plural, startOfDay } from '@/format'
 
 const MDASH = '—'
@@ -83,12 +83,20 @@ export function fuelName(S: State, id: string): string {
   return S.fuelPrices.find((f) => f.i === id)?.n ?? 'топливо'
 }
 
-/** Подзаголовок карточки: «Автомобиль · Костя · АИ-95». */
+/**
+ * Подзаголовок карточки: «Автомобиль · Костя · АИ-95 · 330 км».
+ *
+ * Пробег стоит здесь по прямому слову заказчика 06.08.2026: «Каждая строка
+ * показывает свой пробег и свою сумму итоговую по деньгам. Все!». Сумма
+ * у полоски уже справа, пробег — в подзаголовке, и оба видны, не раскрывая
+ * строку. У техники с готовым объёмом топлива (пила) километров нет вовсе.
+ */
 export function transportSub(t: Transport, S: State): string {
   const parts = [kindName(t, S)]
   const owner = personName(S, t.owner)
   if (owner) parts.push(owner)
   parts.push(fuelName(S, t.fuel))
+  if (t.rateU !== 'fix') parts.push(kmLabel(kmOf(t, S)))
   return parts.join(' · ')
 }
 

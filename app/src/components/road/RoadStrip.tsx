@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
-import { calcAll, fuelCost, litres, money, rentSum, routeKm } from '@/lib/calc'
+import { calcAll, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
   AddRow, InlineNum, InlineText, numText, RowAction, RowActions, StripField, StripRow,
 } from '@/components/flops'
@@ -15,7 +15,7 @@ import {
 import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
 import { Calc, Result, Title } from './cells'
 import { DocNotes } from './DocNotes'
-import { RentSetup, RentUnitField, SetupGroup, TransportSetup } from './RoadSetup'
+import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
 import { SpendShareEdit } from './SpendShare'
 
 /**
@@ -184,7 +184,12 @@ export function RoadStrip({
         />
       </StripField>
 
-      <StripField label="Пробег на поездку">
+      {/* ⚠️ Это ОБЩИЙ пробег, и он запасной: у каждой единицы техники теперь
+          свой (calc.kmOf, группа «Свой пробег» в раскрытии её строки). Общее
+          число идёт только той технике, которая своей цифры ещё не получила —
+          и молчать об этом нельзя, иначе человек правил бы его и не понимал,
+          почему в машине ничего не поменялось. */}
+      <StripField label="Технике без своей цифры">
         <Result>{kmLabel(km)}</Result>
       </StripField>
     </StripRow>
@@ -342,8 +347,12 @@ export function RoadStrip({
                 />
               </StripField>
             ) : t.rateU === 'fix' ? null : (
+              /* Пробег у каждой единицы техники СВОЙ (calc.kmOf) — заказчик
+                 06.08.2026: «Каждая строка показывает свой пробег и свою сумму
+                 итоговую по деньгам». Правится он ниже, в группе «Свой пробег»;
+                 здесь — то число, которое сейчас идёт в литры. */
               <StripField label="Километры">
-                <Calc>{kmLabel(km)}</Calc>
+                <Calc>{kmLabel(kmOf(t, S))}</Calc>
               </StripField>
             )}
 
@@ -406,6 +415,10 @@ export function RoadStrip({
               />
             </StripField>
           </SetupGroup>
+
+          {/* Пила и прочая техника с готовым объёмом топлива километров
+              не наматывает — полки о пробеге ей не нужны. */}
+          {t.rateU === 'fix' ? null : <TransportKm item={t} S={S} canEdit={canEdit} />}
 
           <TransportSetup item={t} S={S} canEdit={canEdit} />
 

@@ -4,9 +4,8 @@ import { toast } from 'sonner'
 import type { LegMode, RouteLabel, RoutePoint } from '@/lib/types'
 import { Btn, InlineNum, InlinePick, InlineText, StripField } from '@/components/flops'
 import { cn } from '@/lib/utils'
-import { plural } from '@/format'
-import { calcLegsByMap } from './legs'
-import { coordLabel, dg, kmLabel, LABEL_OPTIONS } from './roadx'
+import { calcLegsByMap, legsWords } from './legs'
+import { coordLabel, dg, LABEL_OPTIONS } from './roadx'
 
 /**
  * Настройка точки маршрута — то, что выбирается из готового списка, и то, что
@@ -65,9 +64,7 @@ export function RoutePointSetup({ item, canEdit, onPatch }: Props) {
     const r = await calcLegsByMap()
     setBusy(false)
     if (r.ok) {
-      toast(
-        `Посчитали по карте: ${r.legs} ${plural(r.legs, 'участок', 'участка', 'участков')} · ${kmLabel(r.km)} по дороге`,
-      )
+      toast(legsWords(r), { description: `Участков посчитано: ${r.legs}` })
       return
     }
     toast(
@@ -148,8 +145,10 @@ export function RoutePointSetup({ item, canEdit, onPatch }: Props) {
         />
         <p className="mt-0.5 text-note leading-snug text-muted">
           {item.legSrc === 'osrm'
-            ? 'Посчитано по карте. В расчёт бензина это расстояние не идёт'
-            : 'В расчёт бензина это расстояние не идёт — оно только показывается в ленте'}
+            ? 'Посчитано по дорогам. Входит в пробег своей техники'
+            : item.legSrc === 'line'
+              ? 'По воде и пешком дорог нет — расстояние по прямой'
+              : 'Расстояние от прошлой точки этой же техники'}
         </p>
       </StripField>
 

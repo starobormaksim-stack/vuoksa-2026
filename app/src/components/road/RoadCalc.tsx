@@ -2,7 +2,7 @@ import { Fragment, useState, type ReactNode } from 'react'
 import { Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
-import { calcAll, fuelCost, litres, money, rentSum, routeKm } from '@/lib/calc'
+import { calcAll, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
   AddRow, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions, useIsDesktop,
 } from '@/components/flops'
@@ -14,7 +14,7 @@ import {
 import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
 import { Calc, Result, Static, Title } from './cells'
 import { DocNotes } from './DocNotes'
-import { RentSetup, RentUnitField, SetupGroup, TransportSetup } from './RoadSetup'
+import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
 import { RoadStrip } from './RoadStrip'
 import { SpendShareEdit } from './SpendShare'
 
@@ -333,7 +333,7 @@ function Matrix({
     total: true,
     title: (
       <Static
-        title="Пробег на поездку"
+        title="Технике без своей цифры"
         text={`${kmLabel(baseKm)} ${kBackWord(dist.kBack)}, ${kmLabel(dist.local)} на месте`}
       />
     ),
@@ -493,7 +493,8 @@ function Matrix({
           ) : t.rateU === 'fix' ? (
             <Calc key="a">{DASH}</Calc>
           ) : (
-            <Calc key="a">{kmLabel(km)}</Calc>
+            /* Свой пробег этой единицы техники, calc.kmOf */
+            <Calc key="a">{kmLabel(kmOf(t, S))}</Calc>
           ),
           t.rateU === 'fix' ? (
             <Calc key="r">{DASH}</Calc>
@@ -575,6 +576,7 @@ function Matrix({
         panel:
           setupAt === t.i ? (
             <>
+              {t.rateU === 'fix' ? null : <TransportKm item={t} S={S} canEdit={canEdit} />}
               <TransportSetup item={t} S={S} canEdit={canEdit} />
               <DocNotes
                 nt={t.nt}

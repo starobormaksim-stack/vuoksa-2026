@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import type { LegMode, RateUnitId, Rent, State, Transport } from '@/lib/types'
-import { litres } from '@/lib/calc'
-import { InlinePick, InlineText, StripField } from '@/components/flops'
+import { kmOf, litres, routeKm } from '@/lib/calc'
+import { Btn, InlineNum, InlinePick, InlineText, StripField } from '@/components/flops'
 import { Switch } from '@/components/ui/switch'
 import { fmtNum, MDASH, NBSP } from '@/format'
 import { fuelName, litresLabel, NO_FUEL, RATE_HINTS, RATE_TITLES } from './roadx'
@@ -280,6 +280,164 @@ function TransportOwnNote({ item, canEdit }: { item: Transport; canEdit: boolean
         className="text-note leading-snug text-muted"
       />
     </StripField>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Свой пробег единицы техники
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Пробег ЭТОЙ единицы техники: своё число, местные разъезды и переключатель
+ * «считать по карте».
+ *
+ * ─── Откуда ───
+ * Заказчик 06.08.2026: «Каждая строка показывает свой пробег и свою сумму
+ * итоговую по деньгам. Все!» и «Цифру написать проще человеку у каждого
+ * автомобиля, у каждого автотранспорта или же просто транспорта, допустим
+ * лодки. У всех будут свои переменные».
+ *
+ * ─── Три правила, которые нельзя нарушить ───
+ * 1. Ручная цифра переживает перерасчёт по карте. «Точки никак не повлияют —
+ *    как они были, так они будут»: `kmAuto` и `km` лежат в документе рядом
+ *    и не затирают друг друга, а выбирает между ними `kmSrc`.
+ * 2. Обратная дорога — множитель, а не вторая нитка точек. `kBack` общий,
+ *    и правится он в строке «Пробег» над техникой (заказчик прямо отказался
+ *    ставить точки на обратный путь).
+ * 3. Молча ничего не переключается. Пока `kmSrc` пуст, техника считается
+ *    общим пробегом поездки — и об этом здесь написано словами, а не оставлено
+ *    на догадку по числу (постулат 5).
+ *
+ * ⛔ Ничего нового не написано: полка — `flops/StripField`, число —
+ * `flops/InlineNum`, кнопка — `flops/Btn`. Блок один на оба вида (лента на 390
+ * и панель под строкой матрицы на 1280) — разойтись им нельзя, документ один.
+ */
+export function TransportKm({
+  item, S, canEdit,
+}: {
+  item: Transport
+  S: State
+  canEdit: boolean
+}) {
+  const dist = S.trip.dist
+  const own = item.kmSrc === 'auto' || item.kmSrc === 'manual'
+  const auto = item.kmAuto ?? 0
+  const hand = item.km ?? 0
+  const local = item.kmLocal ?? 0
+  const base = own ? (item.kmSrc === 'auto' ? auto : hand) : 0
+  const total = kmOf(item, S)
+  const onPatch = (f: (t: Transport) => void) => patchTransport(item.i, f)
+
+  /** Перевести технику на своё число: карта её больше не трогает. */
+  const useHand = (v: number) => {
+    const wasAuto = item.kmSrc === 'auto'
+    onPatch((t) => {
+      t.km = v
+      t.kmSrc = 'manual'
+    })
+    if (wasAuto) {
+      toast(`«${item.calcT || item.n || 'Техника'}»: в расчёт пошло своё число, а не километры с карты`)
+    }
+  }
+
+  return (
+    <SetupGroup title="Свой пробег">
+      <StripField label="Расстояние в одну сторону" wide>
+        <InlineNum
+          value={own ? base : routeKm(S)}
+          digits={0}
+          kind="plain"
+          unit="км"
+          label={`Расстояние в одну сторону: ${item.n || 'техника'}`}
+          can={canEdit}
+          onSave={useHand}
+          className="text-body font-semibold text-ink"
+        />
+        <p className="mt-0.5 text-note leading-snug text-muted">
+          {own
+            ? item.kmSrc === 'auto'
+              ? 'Считается по своим точкам на карте'
+              : 'Своё число: карта его не трогает'
+            : `Пока идёт общий пробег поездки${NBSP}${MDASH} ${fmtNum(routeKm(S), 0)}${NBSP}км. Впишите число, и у этой техники будет свой`}
+        </p>
+      </StripField>
+
+      <StripField label="Местные разъезды" wide>
+        <InlineNum
+          value={local}
+          digits={0}
+          kind="plain"
+          unit="км"
+          label={`Местные разъезды: ${item.n || 'техника'}`}
+          can={canEdit}
+          onSave={(v) =>
+            onPatch((t) => {
+              t.kmLocal = v
+              /* Разъезды сами по себе пробега не заводят: без своего источника
+                 техника считалась бы общим числом, и вписанное молча пропало бы. */
+              if (t.kmSrc !== 'auto' && t.kmSrc !== 'manual') {
+                t.km = t.km ?? 0
+                t.kmSrc = 'manual'
+              }
+            })
+          }
+          className="text-body font-semibold text-ink"
+        />
+        <p className="mt-0.5 text-note leading-snug text-muted">
+          Прибавляются к пробегу целиком, на концы пути не множатся
+        </p>
+      </StripField>
+
+      {canEdit && auto > 0 ? (
+        <StripField label="Километры с карты" wide>
+          {item.kmSrc === 'auto' ? (
+            <Btn
+              tone="ghost"
+              className="-ml-3"
+              onClick={() => {
+                onPatch((t) => {
+                  t.kmSrc = 'manual'
+                })
+                toast(`Вернули своё число ${MDASH} ${fmtNum(hand, 0)}${NBSP}км`)
+              }}
+            >
+              Вернуть своё число
+            </Btn>
+          ) : (
+            <Btn
+              tone="ghost"
+              className="-ml-3"
+              onClick={() => {
+                onPatch((t) => {
+                  t.kmSrc = 'auto'
+                })
+                toast(`В расчёт пошли километры с карты ${MDASH} ${fmtNum(auto, 0)}${NBSP}км`)
+              }}
+            >
+              Считать по карте
+            </Btn>
+          )}
+          <p className="mt-0.5 text-note leading-snug text-muted">
+            {item.kmSrc === 'auto'
+              ? `В расчёте карта${NBSP}${MDASH} ${fmtNum(auto, 0)}${NBSP}км. Своё ${MDASH} ${fmtNum(hand, 0)}${NBSP}км`
+              : `По своим точкам на карте вышло ${fmtNum(auto, 0)}${NBSP}км`}
+          </p>
+        </StripField>
+      ) : null}
+
+      <StripField label="Пробег этой техники" wide>
+        <span className="tnum block text-body font-semibold text-ink">
+          {fmtNum(total, 0)}
+          {NBSP}км
+        </span>
+        <p className="mt-0.5 text-note leading-snug text-muted">
+          {own
+            ? `${fmtNum(base, 0)}${NBSP}км ${MDASH} ${dist.kBack === 1 ? 'только туда' : `${dist.kBack} конца пути`}${local > 0 ? `, плюс ${fmtNum(local, 0)}${NBSP}км на месте` : ''}`
+            : 'Общий пробег поездки: своей цифры у этой техники ещё нет'}
+          {item.rateU === 'lh' ? '. В топливо идут моточасы, не километры' : ''}
+        </p>
+      </StripField>
+    </SetupGroup>
   )
 }
 

@@ -9,10 +9,10 @@ import {
   AddRow, Btn, DataCell, DataRow, DataTable, EmptyState, Group, InlineText,
   RowAction, RowActions, SectionHead,
 } from '@/components/flops'
-import { MDASH, plural } from '@/format'
+import { MDASH } from '@/format'
 import { cn } from '@/lib/utils'
 import { RoadCalc } from './RoadCalc'
-import { calcLegsByMap } from './legs'
+import { calcLegsByMap, legsWords } from './legs'
 import { kmLabel } from './roadx'
 
 /**
@@ -137,10 +137,19 @@ export function RoadSection() {
       )
       return
     }
-    toast(
-      `По дорогам вышло ${kmLabel(r.km)} ${MDASH} ${r.legs} ${plural(r.legs, 'участок', 'участка', 'участков')}`,
-      { action: { label: 'Считать по карте', onClick: () => setAuto(r.km) } },
-    )
+    /* Каждой технике посчитан СВОЙ пробег, и он уже лежит в её строке
+       (`transport[].kmAuto`). В расчёт он идёт только по её собственному
+       переключателю «Считать по карте» — в раскрытии строки. Общая цифра
+       предлагается кнопкой ровно как раньше, и только если она посчиталась. */
+    toast(legsWords(r), {
+      description:
+        r.own.length > 0
+          ? 'Свой пробег техники — в раскрытии её строки, там же он включается в расчёт'
+          : `Участков посчитано: ${r.legs}`,
+      ...(r.km > 0
+        ? { action: { label: 'Считать по карте', onClick: () => setAuto(r.km) } }
+        : {}),
+    })
   }
 
   /* ─────────── добавление ─────────── */
