@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 /**
@@ -62,15 +63,60 @@ interface Props {
   done?: boolean
   /** якорь для перехода из поиска */
   dataHit?: string
+  /**
+   * Раскрывается ли строка. `false` — тот же заголовок, но без раскрытия:
+   * ни кнопки, ни значка ⌄.
+   *
+   * Заведено под подписи самого расчёта («Ничего не арендуем», «Личное») и под
+   * итоги у того, кому править нечего: у такой строки подробности не бывает,
+   * а значок раскрытия обещал бы её (постулат 6 — не положено, кнопки нет).
+   */
+  disclose?: boolean
   /** подробность позиции: раскрывается на месте */
   children: ReactNode
 }
 
 export function StripRow({
-  lead, title, sub, right, rightHint, open, onToggle, zebra, alarm, done, dataHit, children,
+  lead, title, sub, right, rightHint, open, onToggle, zebra, alarm, done, dataHit,
+  disclose = true, children,
 }: Props) {
   const seen = useRef(open)
   if (open) seen.current = true
+
+  const head = (
+    <>
+      <span className={cn('min-w-0 flex-1', done && 'opacity-70')}>
+        <span className="block text-head leading-snug font-[650] text-ink text-pretty">
+          {title}
+        </span>
+        {sub ? (
+          /* ⚠️ `line-clamp-2`, а не обрезка по высоте строки: заказчик прислал
+             снимок, где примечание точки было срезано по нижней кромке. Здесь
+             длинный текст честно кончается многоточием, а целиком читается
+             в раскрытой подробности.
+
+             ⛔ `block` рядом с `line-clamp-2` ставить нельзя: обрезка держится
+             на `display:-webkit-box`, а `block` его перебивает, и подпись
+             растёт без предела. Замер 06.08.2026: у 5 позиций из 157 подпись
+             занимала 4 строки вместо двух, у точки маршрута — 71,5 px вместо
+             35,8. Порядок классов в строке роли не играет, побеждает
+             объявленное позже в слое utilities. */
+          <span className="mt-0.5 line-clamp-2 text-note leading-snug text-muted">
+            {sub}
+          </span>
+        ) : null}
+      </span>
+
+      {right != null ? (
+        <span className="shrink-0 text-right">
+          <span className="tnum block text-head font-bold text-ink">{right}</span>
+          {rightHint ? (
+            <span className="block text-micro leading-tight text-muted">{rightHint}</span>
+          ) : null}
+        </span>
+      ) : null}
+    </>
+  )
 
   return (
     <div
@@ -86,56 +132,36 @@ export function StripRow({
       <div className="flex items-center gap-2 pr-2 pl-3">
         {lead ? <div className="shrink-0">{lead}</div> : null}
 
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          /* 64 px — минимум строки списка на телефоне. Вся полоска целиком одна
-             зона нажатия: делить её на «текст» и «значок» нельзя, промах по
-             половине строки читается как «не работает» (NN/g про цель клика). */
-          className="flex min-h-16 min-w-0 flex-1 items-center gap-3 py-2 text-left"
-        >
-          <span className={cn('min-w-0 flex-1', done && 'opacity-70')}>
-            <span className="block text-head leading-snug font-[650] text-ink text-pretty">
-              {title}
-            </span>
-            {sub ? (
-              /* ⚠️ `line-clamp-2`, а не обрезка по высоте строки: заказчик прислал
-                 снимок, где примечание точки было срезано по нижней кромке. Здесь
-                 длинный текст честно кончается многоточием, а целиком читается
-                 в раскрытой подробности.
-
-                 ⛔ `block` рядом с `line-clamp-2` ставить нельзя: обрезка держится
-                 на `display:-webkit-box`, а `block` его перебивает, и подпись
-                 растёт без предела. Замер 06.08.2026: у 5 позиций из 157 подпись
-                 занимала 4 строки вместо двух, у точки маршрута — 71,5 px вместо
-                 35,8. Порядок классов в строке роли не играет, побеждает
-                 объявленное позже в слое utilities. */
-              <span className="mt-0.5 line-clamp-2 text-note leading-snug text-muted">
-                {sub}
-              </span>
-            ) : null}
-          </span>
-
-          {right != null ? (
-            <span className="shrink-0 text-right">
-              <span className="tnum block text-head font-bold text-ink">{right}</span>
-              {rightHint ? (
-                <span className="block text-micro leading-tight text-muted">{rightHint}</span>
-              ) : null}
-            </span>
-          ) : null}
-
-          <ChevronDown
-            size={20}
-            strokeWidth={1.75}
-            aria-hidden
-            className={cn('shrink-0 text-muted transition-transform', open && 'rotate-180')}
-          />
-        </button>
+        {disclose ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            /* 64 px — минимум строки списка на телефоне. Вся полоска целиком одна
+               зона нажатия: делить её на «текст» и «значок» нельзя, промах по
+               половине строки читается как «не работает» (NN/g про цель клика). */
+            className="flex min-h-16 min-w-0 flex-1 items-center gap-3 py-2 text-left"
+          >
+            {head}
+            <ChevronDown
+              size={20}
+              strokeWidth={1.75}
+              aria-hidden
+              className={cn('shrink-0 text-muted transition-transform', open && 'rotate-180')}
+            />
+          </button>
+        ) : (
+          <div className="flex min-h-16 min-w-0 flex-1 items-center gap-3 py-2 text-left">
+            {head}
+            {/* Место значка ⌄ остаётся пустым: иначе числа справа у строки без
+                раскрытия и у соседних строк ленты встали бы по разным линиям
+                (У-11 — правку меряем на соседях в том же контейнере). */}
+            <span className="size-5 shrink-0" aria-hidden />
+          </div>
+        )}
       </div>
 
-      {seen.current && (
+      {disclose && seen.current && (
         <div className={cn('border-t border-line/70 bg-bg/40 px-4 py-3', open ? 'block' : 'hidden')}>
           {children}
         </div>
@@ -149,12 +175,22 @@ export function StripRow({
  * во всех разделах — ровно то «единообразие», которого заказчик просил дважды.
  */
 export function StripField({
-  label, children, wide,
+  label, children, wide, htmlFor,
 }: {
   label: ReactNode
   children: ReactNode
   /** значение занимает свою строку целиком: примечание, круг делящих, единицы */
   wide?: boolean
+  /**
+   * id органа, которым полка управляет целиком (переключатель `ui/switch`).
+   *
+   * ⚠️ Сам переключатель ростом 18 px, и вместе с невидимым расширением зоны
+   * он не дотягивает до 44 px по высоте. Растягивать его нельзя — потеряется
+   * вид органа, — поэтому целью нажатия становится ВСЯ полка: приём из примеров
+   * shadcn к `Switch` (`<Label htmlFor>` рядом с органом), только подпись здесь
+   * занимает строку целиком.
+   */
+  htmlFor?: string
 }) {
   if (wide) {
     return (
@@ -164,10 +200,19 @@ export function StripField({
       </div>
     )
   }
-  return (
-    <div className="flex min-h-11 items-center justify-between gap-3 border-b border-line/50 py-1.5 last:border-b-0">
+  const row = 'flex min-h-11 items-center justify-between gap-3 border-b border-line/50 py-1.5 last:border-b-0'
+  const inner = (
+    <>
       <span className="min-w-0 text-note text-muted">{label}</span>
       <span className="shrink-0 text-right">{children}</span>
-    </div>
+    </>
   )
+  if (htmlFor) {
+    return (
+      <Label htmlFor={htmlFor} className={cn(row, 'cursor-pointer text-note font-normal')}>
+        {inner}
+      </Label>
+    )
+  }
+  return <div className={row}>{inner}</div>
 }

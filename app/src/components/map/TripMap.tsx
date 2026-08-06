@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Car, ChevronRight, Footprints, MapPinned, MapPinPlus, Sailboat, Tent, TriangleAlert, WifiOff,
+  Car, ChevronRight, Footprints, LoaderCircle, LocateFixed, MapPinned, MapPinPlus, Sailboat,
+  Tent, TriangleAlert, WifiOff,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -68,11 +69,37 @@ const LEG_ICONS: Record<LegMode, LucideIcon> = {
 /** Сколько ждём, прежде чем закрыть карточку, за которой ушёл курсор, мс. */
 const HOVER_OFF_MS = 260
 
+/**
+ * Сколько ждём геопозицию. Спутник в лесу отвечает не сразу, но десять секунд —
+ * потолок: дальше человек уже решил, что кнопка сломана, и надо сказать словами.
+ */
+const GEO_MS = 10_000
+
+/**
+ * Сети нет прямо сейчас — по метке браузера. Обратного она не гарантирует
+ * (`onLine === true` бывает и при мёртвом канале), поэтому судим только по `false`.
+ */
+function netDown(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+/**
+ * Отказ геолокации — человеческими словами. Кодов ровно три, и они значат разное:
+ * право не дано, устройство не смогло, не успело за отведённое время. «Не получилось»
+ * одним словом на все три случая не годится: чинятся они по-разному.
+ */
+function geoWhy(err: GeolocationPositionError): string {
+  if (err.code === err.PERMISSION_DENIED) {
+    return 'доступ к месту не разрешён — включите его для этого сайта в настройках браузера'
+  }
+  if (err.code === err.POSITION_UNAVAILABLE) return 'устройство не смогло определить место'
+  if (err.code === err.TIMEOUT) return 'место не определилось за десять секунд'
+  return 'причина неизвестна'
+}
+
 /** Живая метка «есть сеть» — от неё зависит, рисуем карту или объяснение. */
 function useOnline(): boolean {
-  const [on, setOn] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine !== false,
-  )
+  const [on, setOn] = useState(() => !netDown())
   useEffect(() => {
     const up = () => setOn(true)
     const down = () => setOn(false)
@@ -132,8 +159,10 @@ function mainPlace(S: State): TripPlace | null {
 }
 
 export function TripMap({ S, perms, className }: Props) {
+  /** Есть ли сеть прямо сейчас. Пропала — уходим на сохранённую карту, вернулась — обратно. */
   const live = useOnline()
-  const online = live && !isOfflineCopy()
+  /** Это скачанная копия: внешних загрузок нет вовсе, значит нет и карты. */
+  const copy = isOfflineCopy()
   const canEdit = perms.isEditor()
   const points = mapPoints(S)
   const center = mapCenter(S)
@@ -179,6 +208,8 @@ export function TripMap({ S, perms, className }: Props) {
   const [fitAt, setFitAt] = useState(0)
   /** куда навести карту по находке из строки поиска */
   const [lookAt, setLookAt] = useState<{ lat: number; lon: number; at: number } | null>(null)
+  /** спрашиваем у устройства, где мы: ответ идёт до десяти секунд, и это надо показать */
+  const [locBusy, setLocBusy] = useState(false)
 
   /** Отложенное закрытие карточки: курсор мог уйти с метки НА карточку. */
   const hoverOff = useRef(0)
@@ -244,16 +275,28 @@ export function TripMap({ S, perms, className }: Props) {
   /**
    * Подставить адрес по координатам. Название точки не трогаем: его пишет человек
    * («я пишу название действия, которое происходит»), а геокодер вернул бы улицу.
+   *
+   * ⚠️ Сама точка уже стоит на карте к этому моменту — и без сети тоже: её ставит
+   * `addPoint` (или `patch` с координатами) ДО обращения к геокодеру, и неудача
+   * геокодера точку не отменяет. Без сети не встаёт только подпись, и вот об этом
+   * раньше не говорилось ни слова: человек видел пустой адрес и читал это как
+   * поломку (постулат 5). Плашка над картой обещает «Точку поставить можно» —
+   * обещание держится, но с оговоркой вслух.
    */
   const guessAddr = useCallback(
     async (id: string, lat: number, lon: number) => {
       setAddrBusy(id)
       const g = await reversePlace(lat, lon)
       setAddrBusy((cur) => (cur === id ? null : cur))
-      if (!g?.addr) return
-      patch(id, (p) => {
-        p.addr = g.addr
-      })
+      if (g?.addr) {
+        patch(id, (p) => {
+          p.addr = g.addr
+        })
+        return
+      }
+      /* При живой сети молчим, как молчали: там пустой ответ значит «геокодер
+         не знает этого места», а карточка точки и так открыта с пустым полем. */
+      if (netDown()) toast('Без сети адрес не определился — точка стоит, адрес допишете в карточке')
     },
     [patch],
   )
@@ -348,6 +391,44 @@ export function TripMap({ S, perms, className }: Props) {
     void guessAddr(id, lat, lon)
   }
 
+  /**
+   * «Я здесь» — точка там, где человек стоит. Заказчик 06.08.2026: «я в офлайн-режиме
+   * хочу отметить точку, на которой я нахожусь».
+   *
+   * Геолокация живёт и без сети: координаты даёт сам телефон со спутника, интернет
+   * им не нужен. Дальше — ровно тот же путь, что у тапа по карте (`onAdd`), включая
+   * офлайновый: точка встанет с пустым адресом, а человек об этом прочитает.
+   *
+   * Кнопка живёт только в спокойном ряду органов управления: в режимах ожидания
+   * («тапните, где стоит точка X», «где конечная») её на экране нет вовсе, поэтому
+   * `onAdd` здесь всегда идёт по своей последней ветке — заводит новую точку.
+   */
+  const placeMeHere = () => {
+    if (locBusy) return
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      toast('Геопозиция недоступна: браузер её не отдаёт')
+      return
+    }
+    setLocBusy(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocBusy(false)
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+        /* Карта могла смотреть совсем в другое место — иначе новая точка встанет
+           за краем экрана, и человек решит, что ничего не произошло. */
+        setLookAt({ lat, lon, at: Date.now() })
+        onAdd(lat, lon)
+        toast('Точка стоит там, где вы сейчас')
+      },
+      (err) => {
+        setLocBusy(false)
+        toast(`Геопозиция недоступна: ${geoWhy(err)}`)
+      },
+      { enableHighAccuracy: true, timeout: GEO_MS, maximumAge: 0 },
+    )
+  }
+
   /** Находка строки поиска. Карта наводится всегда, точка ставится по обстановке. */
   const onPick = (hit: PlaceFound) => {
     setLookAt({ lat: hit.lat, lon: hit.lon, at: Date.now() })
@@ -421,8 +502,15 @@ export function TripMap({ S, perms, className }: Props) {
       ? { lat: place.lat, lon: place.lon, n: place.n }
       : null
 
-  /* ── нет сети: карта не рисуется, но точки никуда не делись ── */
-  if (!online) {
+  /* ── скачанная копия: карта не рисуется вовсе ──
+     Файл открыт двойным щелчком и не имеет права ни на одну внешнюю загрузку —
+     ни на Google, ни на клетки OpenStreetMap. Тут карты нет и быть не может,
+     поэтому вместо неё честный текст и дорога к списку точек.
+     ⚠️ Просто «нет сети» сюда больше не попадает: там теперь показывается
+     сохранённая карта (см. ниже), потому что заказчик 06.08.2026 просил
+     «сохранялось хотя бы в том виде, в котором есть, чтобы можно было
+     отметки делать». */
+  if (copy) {
     return (
       <Card className={className}>
         <div className="flex flex-col items-center justify-center gap-3 bg-zebra px-6 py-8 text-center">
@@ -430,19 +518,17 @@ export function TripMap({ S, perms, className }: Props) {
             <WifiOff size={28} strokeWidth={1.75} aria-hidden />
           </span>
           <div>
-            <div className="text-body font-semibold text-ink">Карта показывается в онлайне</div>
+            <div className="text-body font-semibold text-ink">В скачанной копии карты нет</div>
             {/* ⛔ Здесь стоял СПИСОК точек с координатами — второе перечисление
                 того же маршрута, который лентой показан в «Дороге» и в сеть
                 не ходит вовсе. Постулат 3.5: список живёт ровно в одном месте,
                 сводка допустима числом. Поэтому здесь число и дорога к списку,
                 а не сам список. */}
             <p className="mx-auto mt-1 max-w-72 text-note text-balance text-muted">
-              {isOfflineCopy()
-                ? 'Это скачанная копия: она ничего не тянет из сети.'
-                : 'Сейчас сети нет.'}{' '}
+              Это скачанная копия: она ничего не тянет из сети.{' '}
               {points.length > 0
                 ? `Точки маршрута никуда не делись: их ${points.length} и они с координатами — в разделе «Дорога».`
-                : 'Точки маршрута ставятся на карте — она вернётся вместе со связью.'}
+                : 'Точки маршрута ставятся на карте, а карта живёт в самом листе на сайте.'}
             </p>
           </div>
           {points.length > 0 && (
@@ -455,9 +541,13 @@ export function TripMap({ S, perms, className }: Props) {
     )
   }
 
-  const useGoogle = hasGoogleKey() && !googleDead
-  /** Причина отката словами — её показываем под картой вместе с номером сборки. */
-  const osmWhy = googleDead ? failWhy(googleDead) : null
+  /* Сети нет — к Google не идём вовсе: его библиотека грузится из сети, и попытка
+     кончилась бы двадцатью пятью секундами ожидания и тем же OpenStreetMap.
+     Клетки OpenStreetMap при этом берутся из кеша служебного работника
+     (`app/public/sw.js`, кеш osm-tiles-v1) — карта остаётся на экране. */
+  const useGoogle = live && hasGoogleKey() && !googleDead
+  /** Почему не Google — словами. Показываем под картой вместе с номером сборки. */
+  const osmWhy = !live ? 'сети нет, показываем сохранённое' : googleDead ? failWhy(googleDead) : null
 
   /* ── карточка метки ── */
   const shownId = pinned ?? hover
@@ -544,25 +634,40 @@ export function TripMap({ S, perms, className }: Props) {
               о нём надо в полный голос (постулат 5). До 05.08.2026 причина стояла
               подписью в самом мелком кегле под картой, и заказчик читал происходящее
               как «опять сделал OpenStreetMap вместо Google» — урок У-76. */}
-          {osmWhy && (
+          {/* Сети нет — карта осталась, и об этом надо сказать теми же словами
+              и той же плашкой, что и про откат с Google. Кнопки «Попробовать
+              снова» здесь нет намеренно: сеть вернётся сама, и приложение
+              переключится обратно без нажатий. */}
+          {!live ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-zebra px-3 py-2">
-              <TriangleAlert size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
+              <WifiOff size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
               <p className="min-w-0 flex-1 text-note text-ink">
-                <span className="font-semibold">Карта Google не открылась.</span>{' '}
-                {failFix(googleDead as string)} Пока показываем OpenStreetMap.
+                <span className="font-semibold">Сети нет — карта сохранённая.</span> Видны те места,
+                которые уже открывали при связи. Точку поставить можно: правки остаются в браузере
+                и уедут в лист, когда связь вернётся.
               </p>
-              <Btn
-                tone="secondary"
-                className="shrink-0"
-                onClick={() => {
-                  retryGoogle()
-                  setGoogleDead(null)
-                  setGoogleTry((n) => n + 1)
-                }}
-              >
-                Попробовать снова
-              </Btn>
             </div>
+          ) : (
+            osmWhy && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-zebra px-3 py-2">
+                <TriangleAlert size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-accent-text" />
+                <p className="min-w-0 flex-1 text-note text-ink">
+                  <span className="font-semibold">Карта Google не открылась.</span>{' '}
+                  {failFix(googleDead as string)} Пока показываем OpenStreetMap.
+                </p>
+                <Btn
+                  tone="secondary"
+                  className="shrink-0"
+                  onClick={() => {
+                    retryGoogle()
+                    setGoogleDead(null)
+                    setGoogleTry((n) => n + 1)
+                  }}
+                >
+                  Попробовать снова
+                </Btn>
+              </div>
+            )
           )}
 
           {useGoogle ? (
@@ -646,7 +751,15 @@ export function TripMap({ S, perms, className }: Props) {
                   )
                 )}
                 {canEdit && (
-                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                  /* ⚠️ `flex-wrap` и НЕ `shrink-0` — родня У-81. Кнопок стало три,
+                     и на 390 px они в один ряд заведомо не встают. С прежним
+                     `shrink-0` группа не сжималась бы и не переносилась, а вылезала
+                     за край страницы (постулат 8: у страницы горизонтального скролла
+                     нет). Сами кнопки при этом не мнутся: у shadcn Button в основе
+                     `shrink-0` и `whitespace-nowrap`, поэтому лишняя уезжает на свою
+                     строку целиком. Ширины НЕ измерены живьём — измерять нечем
+                     (в этой сессии браузера нет); проверить на 390 и 1280. */
+                  <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                     {/* Главное действие карты — завести точку. Оно было доступно
                         только жестом, а жест на телефоне неоткуда узнать (пункт 11
                         разбора). Кнопка заливкой, потому что это «продолжить»,
@@ -662,6 +775,30 @@ export function TripMap({ S, perms, className }: Props) {
                     >
                       <MapPinPlus size={16} strokeWidth={1.75} aria-hidden />
                       Точка
+                    </Btn>
+                    {/* «Я здесь» — та же точка маршрута, только координаты берутся
+                        у устройства, а не с пальца. Единственный способ отметиться
+                        на воде и в лесу, где карта показывает сохранённые клетки
+                        и опознать место глазами нечем. Кнопка стоит рядом с «Точкой»,
+                        потому что делает то же самое, и контуром — потому что путь
+                        всё-таки запасной. */}
+                    <Btn
+                      tone="secondary"
+                      aria-label="Поставить точку маршрута там, где я сейчас"
+                      aria-busy={locBusy}
+                      onClick={placeMeHere}
+                    >
+                      {locBusy ? (
+                        <LoaderCircle
+                          size={16}
+                          strokeWidth={1.75}
+                          aria-hidden
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <LocateFixed size={16} strokeWidth={1.75} aria-hidden />
+                      )}
+                      Я здесь
                     </Btn>
                     <Btn
                       tone="secondary"

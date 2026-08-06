@@ -24,6 +24,6 @@ export const BUY_LEGEND: LegendItem[] = [
   },
   {
     mark: <Users size={18} strokeWidth={1.75} className="text-muted" aria-hidden />,
-    label: 'цифра — сколько берёт он',
+    label: 'галочка — он покупает, цифра — сколько',
   },
 ]

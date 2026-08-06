@@ -8,11 +8,11 @@ import type { PersonTone } from '@/lib/people'
 import { scrollToSection } from '@/sections'
 import {
   Btn,
+  InlineText,
   PersonMark,
   PhotoCropSheet,
   ResponsiveSheet,
-  SheetRow,
-  TextSheet,
+  StripField,
   usePhotoPick,
 } from '@/components/flops'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -25,15 +25,25 @@ import { initialOf, newKey } from './ids'
 /**
  * Карточка участника (docs/v2-ux-redesign.md, 7.2 и 7.3).
  *
+ * ─── Решение: карточка человека остаётся шторкой, и это осознанно ───
+ * Постулат 2 («попапов нет») говорит о ПОЗИЦИИ СПИСКА: вещь, покупка, точка
+ * маршрута, строка расчёта — они правятся на месте, в ленте. Человек позицией
+ * списка не является: у него внутри две вещи, для которых шторка разрешена
+ * прямо стандартом, — кадрирование фотографии (`PhotoCropSheet`, рамку негде
+ * показать иначе) и смена прав с перегенерацией личной ссылки, то есть
+ * действие, которое нельзя случайно задеть пальцем в ленте. Решение принято
+ * тринадцатой порцией 06.08.2026 и записано здесь, чтобы к нему не возвращались.
+ *
+ * ⛔ Чего в карточке больше нет: трёх вложенных `TextSheet` на имя, машину
+ * и описание. Шторка внутри шторки — это уже сверх разрешённого, и правятся
+ * они теперь на месте, `InlineText` прямо в карточке (постулат 1).
+ *
  * Два решения раздела живут здесь. Первое: карточка владельца недоступна редактору
  * явно — строки правки не рисуются вовсе, а вверху стоит плашка. Иначе редактор жмёт
  * и получает тост-отказ, то есть тупик вместо интерфейса (12.2, сценарий 1).
  * Второе: список прав показывает и то, чего человек НЕ может, — без этого владелец
  * и редактор выглядят одинаково полезными.
  */
-
-/** Что открыто вторым уровнем. */
-type Level2 = null | 'name' | 'car' | 'desc'
 
 /** С прописной: permName() отдаёт строчными («владелец») — так он стоит в подписях. */
 function capital(s: string): string {
@@ -60,9 +70,6 @@ interface Props {
 }
 
 export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDelete, onClose }: Props) {
-  const [lvl, setLvl] = useState<Level2>(null)
-  const back = () => setLvl(null)
-
   /* Выбранный снимок ждёт кадрирования: пока он есть — открыт экран кадра, а не карточка. */
   const [src, setSrc] = useState<string | null>(null)
   const { pick, input } = usePhotoPick((dataUrl) => setSrc(dataUrl))
@@ -149,7 +156,7 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
   return (
     <>
       <ResponsiveSheet
-        open={lvl === null && !src}
+        open={!src}
         onOpenChange={(v) => !v && onClose()}
         title={person.name}
         subtitle={
@@ -223,20 +230,57 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
         )}
 
         {canEdit ? (
+          /* Правка на месте, а не переходом на второй уровень: полка та же
+             `StripField`, что во всех списочных разделах, орган — `InlineText`. */
           <div className="mt-3">
-            <SheetRow label="Имя" value={person.name} onClick={() => setLvl('name')} />
-            <SheetRow
-              label="Машина или роль"
-              value={person.car || person.role || 'не вписана'}
-              empty={!person.car && !person.role}
-              onClick={() => setLvl('car')}
-            />
-            <SheetRow
-              label="Описание"
-              value={person.desc || 'нет'}
-              empty={!person.desc}
-              onClick={() => setLvl('desc')}
-            />
+            <StripField label="Имя" wide>
+              <InlineText
+                value={person.name}
+                onSave={(v) =>
+                  onPatch((p) => {
+                    p.name = v
+                    p.ini = initialOf(v)
+                  })
+                }
+                can
+                required
+                label="Имя"
+                placeholder="Как его зовут в жизни"
+                className="text-body font-semibold text-ink"
+              />
+            </StripField>
+            <StripField label="Машина или роль" wide>
+              <InlineText
+                value={person.car}
+                onSave={(v) =>
+                  onPatch((p) => {
+                    p.car = v
+                  })
+                }
+                can
+                label="Машина или роль"
+                /* Машины нет, а роль вписана ещё при заведении поездки — тогда
+                   на её месте стоит роль. Поле в документе своё, терять его
+                   нельзя (постулат 4). */
+                placeholder={person.role || 'Honda Accord · пассажир'}
+                className="text-body text-ink"
+              />
+            </StripField>
+            <StripField label="Описание" wide>
+              <InlineText
+                value={person.desc}
+                onSave={(v) =>
+                  onPatch((p) => {
+                    p.desc = v
+                  })
+                }
+                can
+                multiline
+                label="Описание"
+                placeholder="За что отвечает и что важно про него знать"
+                className="text-note leading-snug text-muted"
+              />
+            </StripField>
           </div>
         ) : (
           <>
@@ -342,44 +386,6 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
           )}
         </div>
       </ResponsiveSheet>
-
-      {/* ─── второй уровень ─── */}
-      <TextSheet
-        open={lvl === 'name'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Имя"
-        subtitle="Как его зовут в жизни"
-        value={person.name}
-        onDone={(v) =>
-          v &&
-          onPatch((p) => {
-            p.name = v
-            p.ini = initialOf(v)
-          })
-        }
-      />
-      <TextSheet
-        open={lvl === 'car'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Машина или роль"
-        subtitle={person.name}
-        value={person.car}
-        placeholder="Honda Accord · пассажир"
-        onDone={(v) => onPatch((p) => { p.car = v })}
-      />
-      <TextSheet
-        open={lvl === 'desc'}
-        onOpenChange={(v) => !v && back()}
-        onBack={back}
-        title="Описание"
-        subtitle={person.name}
-        value={person.desc}
-        multiline
-        placeholder="За что отвечает и что важно про него знать"
-        onDone={(v) => onPatch((p) => { p.desc = v })}
-      />
 
       {/* Кадрирование: что видно в рамке — то и ложится в person.photo */}
       {src && (

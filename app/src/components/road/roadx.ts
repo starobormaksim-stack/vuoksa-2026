@@ -192,7 +192,7 @@ export function labelName(p: RoutePoint): string {
   return LABELS[p.lab] ?? ''
 }
 
-/** Варианты метки для PickSheet. */
+/** Варианты метки для выбора из списка (`flops/InlinePick`). */
 export const LABEL_OPTIONS: { id: RouteLabel; title: string }[] = [
   { id: '', title: 'без метки' },
   { id: 'start', title: 'старт' },

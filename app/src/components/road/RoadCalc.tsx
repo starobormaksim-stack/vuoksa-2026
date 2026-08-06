@@ -1,17 +1,21 @@
-import type { ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Notes, Rent, State, Transport } from '@/lib/types'
+import type { Rent, State, Transport } from '@/lib/types'
 import { calcAll, fuelCost, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
-  AddRow, DataCell, DataRow, DataTable, InlineNum, InlineText, RowAction, RowActions,
+  AddRow, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions, useIsDesktop,
 } from '@/components/flops'
 import { touch, update } from '@/store'
 import { plural } from '@/format'
-import { cn } from '@/lib/utils'
 import {
   DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, litresTotal, refuelLitres,
 } from './roadx'
+import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
+import { Calc, Result, Static, Title } from './cells'
+import { DocNotes } from './DocNotes'
+import { RentSetup, RentUnitField, SetupGroup, TransportSetup } from './RoadSetup'
+import { RoadStrip } from './RoadStrip'
 import { SpendShareEdit } from './SpendShare'
 
 /**
@@ -25,11 +29,24 @@ import { SpendShareEdit } from './SpendShare'
  *
  * Поэтому строка одна на статью, и в ней сразу всё: название, описание, сколько
  * ехать, расход, литры, цена — а справа посчитанный итог. Правится всё на месте
- * (Inline.tsx), шторок в таблице нет.
+ * (Inline.tsx), шторок в расчёте нет вовсе.
  *
- * Столбцы у каждой группы свои — ровно как на листе заказчика, где «ИСХОДНЫЕ
- * ДАННЫЕ», «РАСЧЁТ ТОПЛИВА» и «СКОЛЬКО НУЖНО КАНИСТР» подписаны каждый по-своему.
- * Поэтому шапка не общая: имена столбцов стоят в строке-заголовке группы.
+ * ─── Две плотности одной логики ───
+ * На широком экране остаётся матрица: столбцы у каждой группы свои — ровно как
+ * на листе заказчика, где «ИСХОДНЫЕ ДАННЫЕ», «РАСЧЁТ ТОПЛИВА» и «СКОЛЬКО НУЖНО
+ * КАНИСТР» подписаны каждый по-своему. Поэтому шапка не общая: имена столбцов
+ * стоят в строке-заголовке группы.
+ *
+ * На телефоне — вертикальная лента (`RoadStrip.tsx`): сумма минимумов колонок
+ * матрицы 49 rem, то есть 784 px при экране 390, и половина чисел физически
+ * лежала за правым краем. Заказчик 06.08.2026: «про бензин я вижу, что у тебя
+ * все настройки при скроллинге вправо возникают».
+ *
+ * ─── Настройка позиции ───
+ * Шторки `TransportSheet` и `RentSheet` упразднены 06.08.2026 на обеих ширинах.
+ * Их содержимое живёт в `RoadSetup.tsx` и показывается одинаково: в раскрытой
+ * полоске ленты и в панели ПОД строкой таблицы (кнопка ⚙). Никаких оверлеев:
+ * «мне не нужны поп-апы, особенно в мобильной версии и на десктопе».
  *
  * Считает не эта таблица, а lib/calc.ts: здесь только показ и правка исходных
  * чисел. Своей арифметики нет нигде, кроме деления итога на людей, — иначе
@@ -40,8 +57,8 @@ import { SpendShareEdit } from './SpendShare'
 /**
  * Ширины колонок. Тянутся ВСЕ, каждая от своего минимума: числа в таблице стоят
  * друг под другом, а лишняя ширина расходится по всем колонкам, а не достаётся
- * одной первой. Суммарный минимум шире 390 px — таблица прокручивается вбок
- * ВНУТРИ блока, страница не двигается (постулат 7).
+ * одной первой. Суммарный минимум шире 390 px — но на 390 матрицы больше нет,
+ * там лента.
  *
  * ⛔ Прежде тянулась только первая (`minmax(11rem,1.6fr) 9rem …`), и на 1280
  * она забирала 607 px из 1215: название стояло у левого края, а все числа
@@ -72,6 +89,12 @@ interface Line {
   fresh?: boolean
   /** якорь для перехода из поиска по листу */
   hit?: string
+  /**
+   * Панель настройки ПОД строкой: вид техники, топливо, хозяин, категория аренды
+   * и подписи чисел из документа. Раскрывается кнопкой ⚙ в самой строке и толкает
+   * таблицу вниз — не всплывает поверх (постулат 2).
+   */
+  panel?: ReactNode
 }
 
 interface Props {
@@ -83,9 +106,6 @@ interface Props {
   onAddRent: () => void
   onDelTransport: (t: Transport) => void
   onDelRent: (r: Rent) => void
-  /** карточка выбора: вид, топливо, чья техника, как считаем расход */
-  onSetupTransport: (id: string) => void
-  onSetupRent: (id: string) => void
   /** id только что добавленной строки — она открывается сразу в правке названия */
   fresh: string | null
   onFreshEnd: () => void
@@ -95,50 +115,100 @@ interface Props {
 
 export function RoadCalc({
   S, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent,
-  onSetupTransport, onSetupRent, fresh, onFreshEnd, mapStrip,
+  fresh, onFreshEnd, mapStrip,
 }: Props) {
+  const desktop = useIsDesktop()
+  /** у какой позиции раскрыта панель настройки (только в матрице) */
+  const [setupAt, setSetupAt] = useState('')
+
   const c = calcAll(S)
   const km = routeKm(S)
+
+  return (
+    /* `overflow-clip`, а не `hidden`: `hidden` делает блок прокручиваемым,
+       и липкая шапка таблицы внутри перестаёт прилипать (см. `DataTable`). */
+    <section className="overflow-clip rounded-xl border border-line bg-surface shadow-sm">
+      <div className="border-b border-line px-4 py-3">
+        <h3 className="text-head font-[650] text-ink">Расчёт дороги</h3>
+        <p className="tnum mt-0.5 text-note text-muted">
+          {`Пробег ${kmLabel(km)} · ${litresLabel(litresTotal(S))} топлива · ${money(c.transport, S.doc)}`}
+        </p>
+      </div>
+
+      {mapStrip}
+
+      {/* ⛔ Рисуется ровно ОДИН вид, а не два спрятанных: строк расчёта немного,
+          но у каждой раскрытой полоски внутри полтора десятка органов правки. */}
+      {desktop ? (
+        <>
+          <Matrix
+            S={S}
+            c={c}
+            km={km}
+            canEdit={canEdit}
+            canDel={canDel}
+            onDelTransport={onDelTransport}
+            onDelRent={onDelRent}
+            fresh={fresh}
+            onFreshEnd={onFreshEnd}
+            setupAt={setupAt}
+            onSetup={(id) => setSetupAt(setupAt === id ? '' : id)}
+          />
+          {canEdit && (
+            <div className="border-t border-line">
+              <AddRow label="Добавить технику" onClick={onAddTransport} />
+              <AddRow label="Добавить аренду" onClick={onAddRent} />
+            </div>
+          )}
+        </>
+      ) : (
+        <RoadStrip
+          S={S}
+          canEdit={canEdit}
+          canDel={canDel}
+          onAddTransport={onAddTransport}
+          onAddRent={onAddRent}
+          onDelTransport={onDelTransport}
+          onDelRent={onDelRent}
+          fresh={fresh}
+          onFreshEnd={onFreshEnd}
+        />
+      )}
+    </section>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Матрица — вид расчёта на широком экране
+   ────────────────────────────────────────────────────────────────────────── */
+
+function Matrix({
+  S, c, km, canEdit, canDel, onDelTransport, onDelRent, fresh, onFreshEnd, setupAt, onSetup,
+}: {
+  S: State
+  c: ReturnType<typeof calcAll>
+  km: number
+  canEdit: boolean
+  canDel: (item: { by?: string }) => boolean
+  onDelTransport: (t: Transport) => void
+  onDelRent: (r: Rent) => void
+  fresh: string | null
+  onFreshEnd: () => void
+  setupAt: string
+  onSetup: (id: string) => void
+}) {
   const dist = S.trip.dist
   const dnt = dist.nt ?? {}
   const baseKm = dist.src === 'auto' ? dist.auto : dist.manual
   const people = S.people.length
   const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
 
-  /* ─────────── правки ─────────── */
-
-  const patchTr = (id: string, f: (t: Transport) => void) =>
+  /** Подпись числа пробега из документа: правим только своё поле. */
+  const noteDist = (key: string, part: 't' | 'c', v: string) =>
     update((s) => {
-      const t = s.transport.find((x) => x.i === id)
-      if (t) {
-        f(t)
-        touch(t)
-      }
-    })
-
-  const patchRn = (id: string, f: (r: Rent) => void) =>
-    update((s) => {
-      const r = s.rent.find((x) => x.i === id)
-      if (r) {
-        f(r)
-        touch(r)
-      }
-    })
-
-  /** Подпись числа из документа: правим только своё поле, соседние не трогаем. */
-  const note = (bag: Notes | undefined, key: string): Notes => {
-    const nt = bag ?? {}
-    if (!nt[key]) nt[key] = { t: '' }
-    return nt
-  }
-
-  const setFuel = (id: string, f: (x: { price: number; c: string; nt: Notes }) => void) =>
-    update((s) => {
-      const fu = s.fuelPrices.find((x) => x.i === id)
-      if (fu) {
-        f(fu)
-        touch(fu)
-      }
+      const d = s.trip.dist
+      d.nt = noteBag(d.nt, key)
+      d.nt[key][part] = v
     })
 
   /* ─────────── строки ─────────── */
@@ -159,21 +229,9 @@ export function RoadCalc({
     title: (
       <Title
         title={dnt.manual?.t || 'Расстояние в одну сторону'}
-        onTitle={(v) =>
-          update((s) => {
-            const d = s.trip.dist
-            d.nt = note(d.nt, 'manual')
-            d.nt.manual.t = v
-          })
-        }
+        onTitle={(v) => noteDist('manual', 't', v)}
         text={dnt.manual?.c ?? ''}
-        onText={(v) =>
-          update((s) => {
-            const d = s.trip.dist
-            d.nt = note(d.nt, 'manual')
-            d.nt.manual.c = v
-          })
-        }
+        onText={(v) => noteDist('manual', 'c', v)}
         can={canEdit}
       />
     ),
@@ -208,21 +266,9 @@ export function RoadCalc({
     title: (
       <Title
         title={dnt.kBack?.t || 'Сколько концов пути'}
-        onTitle={(v) =>
-          update((s) => {
-            const d = s.trip.dist
-            d.nt = note(d.nt, 'kBack')
-            d.nt.kBack.t = v
-          })
-        }
+        onTitle={(v) => noteDist('kBack', 't', v)}
         text={dnt.kBack?.c ?? ''}
-        onText={(v) =>
-          update((s) => {
-            const d = s.trip.dist
-            d.nt = note(d.nt, 'kBack')
-            d.nt.kBack.c = v
-          })
-        }
+        onText={(v) => noteDist('kBack', 'c', v)}
         can={canEdit}
       />
     ),
@@ -254,21 +300,9 @@ export function RoadCalc({
     title: (
       <Title
         title={dnt.local?.t || 'Местные разъезды'}
-        onTitle={(v) =>
-          update((s) => {
-            const d = s.trip.dist
-            d.nt = note(d.nt, 'local')
-            d.nt.local.t = v
-          })
-        }
+        onTitle={(v) => noteDist('local', 't', v)}
         text={dnt.local?.c ?? ''}
-        onText={(v) =>
-          update((s) => {
-            const d = s.trip.dist
-            d.nt = note(d.nt, 'local')
-            d.nt.local.c = v
-          })
-        }
+        onText={(v) => noteDist('local', 'c', v)}
         can={canEdit}
       />
     ),
@@ -332,21 +366,21 @@ export function RoadCalc({
         <Title
           title={f.nt?.price?.t || `Цена ${f.n}`}
           onTitle={(v) =>
-            setFuel(f.i, (x) => {
-              x.nt = note(x.nt, 'price')
+            patchFuel(f.i, (x) => {
+              x.nt = noteBag(x.nt, 'price')
               x.nt.price.t = v
             })
           }
           text={f.nt?.price?.c ?? ''}
           onText={(v) =>
-            setFuel(f.i, (x) => {
-              x.nt = note(x.nt, 'price')
+            patchFuel(f.i, (x) => {
+              x.nt = noteBag(x.nt, 'price')
               x.nt.price.c = v
             })
           }
           extra={f.c}
           onExtra={(v) =>
-            setFuel(f.i, (x) => {
+            patchFuel(f.i, (x) => {
               x.c = v
             })
           }
@@ -367,7 +401,7 @@ export function RoadCalc({
           label={f.nt?.price?.t || `Цена ${f.n}`}
           can={canEdit}
           onSave={(v) =>
-            setFuel(f.i, (x) => {
+            patchFuel(f.i, (x) => {
               x.price = v
             })
           }
@@ -389,7 +423,7 @@ export function RoadCalc({
           <Title
             title={t.calcT || (t.n ? `Бензин ${fuelName(S, t.fuel)} ${DASH} ${t.n}` : '')}
             onTitle={(v) =>
-              patchTr(t.i, (x) => {
+              patchTransport(t.i, (x) => {
                 /* Только что заведённая строка ещё безымянна: первое имя
                    становится и названием техники, и подписью в расчёте. */
                 if (!x.n.trim()) x.n = v
@@ -401,15 +435,15 @@ export function RoadCalc({
             onEditEnd={onFreshEnd}
             second={t.n && t.n !== t.calcT ? t.n : ''}
             onSecond={(v) =>
-              patchTr(t.i, (x) => {
+              patchTransport(t.i, (x) => {
                 x.n = v
               })
             }
             text={t.c || (ck ? (t.nt[ck].c ?? '') : '')}
             onText={(v) =>
-              patchTr(t.i, (x) => {
+              patchTransport(t.i, (x) => {
                 if (ck) {
-                  x.nt = note(x.nt, ck)
+                  x.nt = noteBag(x.nt, ck)
                   x.nt[ck].c = v
                 } else {
                   x.c = v
@@ -430,12 +464,12 @@ export function RoadCalc({
             fallback={t.owner}
             what={t.calcT || t.n || 'Топливо'}
             onPayer={(id) =>
-              patchTr(t.i, (x) => {
+              patchTransport(t.i, (x) => {
                 x.payer = id
               })
             }
             onSp={(ids) =>
-              patchTr(t.i, (x) => {
+              patchTransport(t.i, (x) => {
                 x.sp = ids
               })
             }
@@ -451,7 +485,7 @@ export function RoadCalc({
               label={t.nt?.hours?.t || `Моточасы: ${t.n}`}
               can={canEdit}
               onSave={(v) =>
-                patchTr(t.i, (x) => {
+                patchTransport(t.i, (x) => {
                   x.hours = v
                 })
               }
@@ -473,7 +507,7 @@ export function RoadCalc({
               label={t.nt?.rate?.t || `Расход: ${t.n}`}
               can={canEdit}
               onSave={(v) =>
-                patchTr(t.i, (x) => {
+                patchTransport(t.i, (x) => {
                   x.rate = v
                 })
               }
@@ -489,7 +523,7 @@ export function RoadCalc({
               label={t.nt?.litres?.t || `Сколько литров: ${t.n}`}
               can={canEdit}
               onSave={(v) =>
-                patchTr(t.i, (x) => {
+                patchTransport(t.i, (x) => {
                   x.litres = v
                 })
               }
@@ -508,7 +542,7 @@ export function RoadCalc({
             label={`${f.nt?.price?.t || `Цена ${f.n}`} — общая для всей техники на этом топливе`}
             can={canEdit}
             onSave={(v) =>
-              setFuel(f.i, (x) => {
+              patchFuel(f.i, (x) => {
                 x.price = v
               })
             }
@@ -517,14 +551,16 @@ export function RoadCalc({
         ],
         actions: (
           <RowActions>
-            {canEdit ? (
-              <RowAction
-                key="s"
-                icon={Settings2}
-                label={`${t.n}: вид, топливо, чья, как считаем расход`}
-                onClick={() => onSetupTransport(t.i)}
-              />
-            ) : null}
+            {/* Настройку открывает и участник: за ней поля документа, которые
+                он вправе читать (постулат 4). Править их он всё равно не может —
+                органы внутри стоят с `can={canEdit}` и рисуются текстом.
+                Действия строки (убрать) остаются по правам. */}
+            <RowAction
+              key="s"
+              icon={Settings2}
+              label={`${t.n || 'без названия'}: вид, топливо, чья, как считаем расход`}
+              onClick={() => onSetup(t.i)}
+            />
             {canDel(t) ? (
               <RowAction
                 key="d"
@@ -536,6 +572,22 @@ export function RoadCalc({
             ) : null}
           </RowActions>
         ),
+        panel:
+          setupAt === t.i ? (
+            <>
+              <TransportSetup item={t} S={S} canEdit={canEdit} />
+              <DocNotes
+                nt={t.nt}
+                can={canEdit}
+                onSave={(key, part, v) =>
+                  patchTransport(t.i, (x) => {
+                    x.nt = noteBag(x.nt, key)
+                    x.nt[key][part] = v
+                  })
+                }
+              />
+            </>
+          ) : null,
       })
     }
   }
@@ -568,7 +620,7 @@ export function RoadCalc({
         <Title
           title={r.calcT || r.n}
           onTitle={(v) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               if (!x.n.trim()) x.n = v
               x.calcT = v
             })
@@ -578,15 +630,15 @@ export function RoadCalc({
           onEditEnd={onFreshEnd}
           second={r.n && r.n !== r.calcT ? r.n : ''}
           onSecond={(v) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               x.n = v
             })
           }
           text={r.c || (ck ? (r.nt[ck].c ?? '') : '')}
           onText={(v) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               if (ck) {
-                x.nt = note(x.nt, ck)
+                x.nt = noteBag(x.nt, ck)
                 x.nt[ck].c = v
               } else {
                 x.c = v
@@ -605,12 +657,12 @@ export function RoadCalc({
           sp={r.sp}
           what={r.calcT || r.n || 'Аренда'}
           onPayer={(id) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               x.payer = id
             })
           }
           onSp={(ids) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               x.sp = ids
             })
           }
@@ -626,7 +678,7 @@ export function RoadCalc({
           label={r.nt?.qty?.t || `Сколько берём: ${r.n}`}
           can={canEdit}
           onSave={(v) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               x.qty = v
             })
           }
@@ -640,7 +692,7 @@ export function RoadCalc({
           label={r.nt?.count?.t || `Сколько штук: ${r.n}`}
           can={canEdit}
           onSave={(v) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               x.count = v
             })
           }
@@ -655,7 +707,7 @@ export function RoadCalc({
           label={r.nt?.price?.t || `Цена: ${r.n}`}
           can={canEdit}
           onSave={(v) =>
-            patchRn(r.i, (x) => {
+            patchRent(r.i, (x) => {
               x.price = v
             })
           }
@@ -664,14 +716,14 @@ export function RoadCalc({
       ],
       actions: (
         <RowActions>
-          {canEdit ? (
-            <RowAction
-              key="s"
-              icon={Settings2}
-              label={`${r.n}: категория и что входит в стоимость`}
-              onClick={() => onSetupRent(r.i)}
-            />
-          ) : null}
+          {/* Та же причина, что у техники выше: смотреть поля позиции может
+              каждый, править — по правам. */}
+          <RowAction
+            key="s"
+            icon={Settings2}
+            label={`${r.n || 'без названия'}: категория и что входит в стоимость`}
+            onClick={() => onSetup(r.i)}
+          />
           {canDel(r) ? (
             <RowAction
               key="d"
@@ -683,6 +735,27 @@ export function RoadCalc({
           ) : null}
         </RowActions>
       ),
+      panel:
+        setupAt === r.i ? (
+          <>
+            {/* Числа аренды (сколько, штук, цена) стоят столбцами самой таблицы,
+                поэтому в панели от группы «Сколько и почём» остаётся единица. */}
+            <SetupGroup title="Сколько и почём">
+              <RentUnitField item={r} canEdit={canEdit} />
+            </SetupGroup>
+            <RentSetup item={r} S={S} canEdit={canEdit} />
+            <DocNotes
+              nt={r.nt}
+              can={canEdit}
+              onSave={(key, part, v) =>
+                patchRent(r.i, (x) => {
+                  x.nt = noteBag(x.nt, key)
+                  x.nt[key][part] = v
+                })
+              }
+            />
+          </>
+        ) : null,
     })
   }
 
@@ -857,175 +930,69 @@ export function RoadCalc({
     const zebra = !l.head && !l.total && z++ % 2 === 1
     const bg = l.head || l.total ? 'zebra' : zebra ? 'zebra' : 'surface'
     return (
-      <DataRow key={l.key} zebra={l.head || l.total || zebra} fresh={l.fresh} dataHit={l.hit}>
-        <DataCell sticky bg={bg} align="left" head={l.head}>
-          {/* ⚠️ Строка переносится, а текст держит наименьшую ширину: липкая
-              колонка на 390 всего 176 px, и две кнопки действий (90 px) съедали
-              у «Платит» всё, кроме 45 px — «Скинулись поровну» превращалось
-              в «Ски…» (У-81). Пусть кнопки уедут под текст, но кто платит
-              будет написан целиком. На 1280 колонка 328 px, места хватает
-              обоим — там перенос не случается. */}
-          <span className="flex w-full flex-wrap items-start gap-1">
-            <span className="min-w-0 flex-1 basis-40">
-              {l.head ? (
-                <span className="text-micro font-bold tracking-wider text-muted uppercase">
-                  {l.title}
-                </span>
-              ) : (
-                l.title
-              )}
-              {l.share}
+      <Fragment key={l.key}>
+        <DataRow zebra={l.head || l.total || zebra} fresh={l.fresh} dataHit={l.hit}>
+          <DataCell sticky bg={bg} align="left" head={l.head}>
+            {/* ⚠️ Строка переносится, а текст держит наименьшую ширину: липкая
+                колонка на 390 всего 176 px, и две кнопки действий (90 px) съедали
+                у «Платит» всё, кроме 45 px — «Скинулись поровну» превращалось
+                в «Ски…» (У-81). Пусть кнопки уедут под текст, но кто платит
+                будет написан целиком. На 1280 колонка 328 px, места хватает
+                обоим — там перенос не случается. */}
+            <span className="flex w-full flex-wrap items-start gap-1">
+              <span className="min-w-0 flex-1 basis-40">
+                {l.head ? (
+                  <span className="text-micro font-bold tracking-wider text-muted uppercase">
+                    {l.title}
+                  </span>
+                ) : (
+                  l.title
+                )}
+                {l.share}
+              </span>
+              {l.actions}
             </span>
-            {l.actions}
-          </span>
-        </DataCell>
-        {l.cells.map((cell, i) => (
-          <DataCell key={i} align="right" head={l.head}>
-            {l.head ? <span className="text-micro text-muted">{cell}</span> : cell}
           </DataCell>
-        ))}
-      </DataRow>
+          {l.cells.map((cell, i) => (
+            <DataCell key={i} align="right" head={l.head}>
+              {l.head ? <span className="text-micro text-muted">{cell}</span> : cell}
+            </DataCell>
+          ))}
+        </DataRow>
+
+        {/* Панель настройки — строка-вставка во всю ширину сетки. Оверлея нет:
+            таблица просто едет вниз, как раскрытая полоска в ленте. */}
+        {l.panel ? (
+          <DataRow zebra>
+            <DataCell align="left" className="col-span-full px-4 py-3">
+              {/* ⚠️ `w-full` обязателен: у ячейки `align="left"` стоит
+                  `items-start`, и без явной ширины полки настройки сжались бы
+                  по содержимому вместо того, чтобы занять строку. */}
+              {/* Потолок ширины — чтобы список выбора не растягивался на весь
+                  экран: строка в 1200 px читается хуже, чем в 768 (мера, а не
+                  вкус: та же плотность, что у полок в ленте). */}
+              <div className="w-full max-w-3xl">{l.panel}</div>
+            </DataCell>
+          </DataRow>
+        ) : null}
+      </Fragment>
     )
   })
 
   return (
-    /* `overflow-clip`, а не `hidden`: `hidden` делает блок прокручиваемым,
-       и липкая шапка таблицы внутри перестаёт прилипать (см. `DataTable`). */
-    <section className="overflow-clip rounded-xl border border-line bg-surface shadow-sm">
-      <div className="border-b border-line px-4 py-3">
-        <h3 className="text-head font-[650] text-ink">Расчёт дороги</h3>
-        <p className="tnum mt-0.5 text-note text-muted">
-          {`Пробег ${kmLabel(km)} · ${litresLabel(litresTotal(S))} топлива · ${money(c.transport, S.doc)}`}
-        </p>
+    <DataTable
+      cols={COLS}
+      minW={COLS_MIN}
+      label="Расчёт дороги: пробег, топливо, аренда, канистры и итоги"
+    >
+      {/* Полоса строк шириной со свои колонки, а не с экран: иначе зебра
+          и липкая граница обрываются там, где кончается видимая часть,
+          и таблица при прокрутке вбок выглядит порванной. ⛔ Ширина берётся
+          от сетки (`w-full`), а не от содержимого (`w-max`): с долевыми
+          колонками содержимое раздувало полосу за край блока. */}
+      <div role="rowgroup" className="w-full">
+        {rows}
       </div>
-
-      {mapStrip}
-
-      <DataTable
-        cols={COLS}
-        minW={COLS_MIN}
-        label="Расчёт дороги: пробег, топливо, аренда, канистры и итоги"
-      >
-        {/* Полоса строк шириной со свои колонки, а не с экран: иначе зебра
-            и липкая граница обрываются там, где кончается видимая часть,
-            и таблица при прокрутке вбок выглядит порванной. ⛔ Ширина берётся
-            от сетки (`w-full`), а не от содержимого (`w-max`): с долевыми
-            колонками содержимое раздувало полосу за край блока. */}
-        <div role="rowgroup" className="w-full">
-          {rows}
-        </div>
-      </DataTable>
-
-      {canEdit && (
-        <div className="border-t border-line">
-          <AddRow label="Добавить технику" onClick={onAddTransport} />
-          <AddRow label="Добавить аренду" onClick={onAddRent} />
-        </div>
-      )}
-    </section>
+    </DataTable>
   )
-}
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Ячейки
-   ────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Липкая ячейка статьи: название, второе имя (как техника зовётся сама),
- * описание и предупреждение. Всё правится на месте — у того, у кого есть право.
- */
-function Title({
-  title, onTitle, second, onSecond, text, onText, extra, onExtra, warn, can,
-  required, autoEdit, onEditEnd, strong,
-}: {
-  title: string
-  onTitle: (v: string) => void
-  second?: string
-  onSecond?: (v: string) => void
-  text?: string
-  onText?: (v: string) => void
-  /** второй комментарий — он есть только у топлива и только если заполнен */
-  extra?: string
-  onExtra?: (v: string) => void
-  warn?: string
-  can: boolean
-  required?: boolean
-  autoEdit?: boolean
-  onEditEnd?: () => void
-  strong?: boolean
-}) {
-  return (
-    <span className="block">
-      <InlineText
-        value={title}
-        onSave={onTitle}
-        can={can}
-        label={title || 'Название строки'}
-        required={required}
-        placeholder="Название"
-        autoEdit={autoEdit}
-        onEditEnd={onEditEnd}
-        className={cn('text-body leading-snug text-ink', strong ? 'font-[650]' : 'font-medium')}
-      />
-      {second && onSecond ? (
-        <InlineText
-          value={second}
-          onSave={onSecond}
-          can={can}
-          label="Как эта позиция называется сама"
-          className="text-micro text-muted"
-        />
-      ) : null}
-      {/* Пустая строка описания у того, кто править не может, — пустое место
-          на экране. Ему её просто нет. */}
-      {onText && (can || text) ? (
-        <InlineText
-          value={text ?? ''}
-          onSave={onText}
-          can={can}
-          multiline
-          label="Описание строки"
-          placeholder="Описание"
-          className="text-note leading-snug text-muted"
-        />
-      ) : text ? (
-        <span className="block text-note leading-snug text-muted">{text}</span>
-      ) : null}
-      {extra && onExtra ? (
-        <InlineText
-          value={extra}
-          onSave={onExtra}
-          can={can}
-          multiline
-          label="Ещё комментарий"
-          className="text-note leading-snug text-muted"
-        />
-      ) : null}
-      {warn ? (
-        <span className="mt-0.5 block text-note leading-snug font-semibold text-accent-text">
-          {warn}
-        </span>
-      ) : null}
-    </span>
-  )
-}
-
-/** Строка, которую нельзя переименовать: это не данные, а подпись самого расчёта. */
-function Static({ title, text }: { title: string; text?: string }) {
-  return (
-    <span className="block">
-      <span className="block text-body leading-snug font-[650] text-ink">{title}</span>
-      {text ? <span className="block text-note leading-snug text-muted">{text}</span> : null}
-    </span>
-  )
-}
-
-/** Посчитанное число: правке не подлежит, поэтому и намёка на неё нет. */
-function Calc({ children }: { children: ReactNode }) {
-  return <span className="tnum text-note text-muted">{children}</span>
-}
-
-/** Итог строки — самое крупное число в ней. */
-function Result({ children }: { children: ReactNode }) {
-  return <span className="tnum text-body font-bold text-ink">{children}</span>
 }

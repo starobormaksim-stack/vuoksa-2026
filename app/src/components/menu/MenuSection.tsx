@@ -5,7 +5,7 @@ import type { MenuDay, MenuDish } from '@/lib/types'
 import { readTrip, touch, useTrip } from '@/store'
 import {
   AddRow, DataCell, DataHead, DataRow, DataTable, EmptyState, Group, InlineText,
-  newTableScroll, RowAction, RowActions, SectionHead,
+  newTableScroll, RowAction, RowActions, SectionHead, StripField, StripRow, useIsDesktop,
 } from '@/components/flops'
 import { autoDayTitle } from '@/format'
 import { cn } from '@/lib/utils'
@@ -39,11 +39,18 @@ import { cn } from '@/lib/utils'
  * Отметка «приготовили» стоит на блюде, а старое поле дня `done` из документов
  * первой версии держится с ними в согласии: день готов, когда готовы все блюда.
  * Выбрасывать его нельзя — оно есть в боевом документе.
+ *
+ * ⛔ На телефоне матрицы нет: блюда идут вертикальной лентой `StripRow`, как
+ * «Сборы» и «Закупка» (решение заказчика 06.08.2026 — прокрутку вбок на телефоне
+ * он назвал «нереалистичной»). На широком экране матрица остаётся. Модель данных,
+ * права и способ правки у обоих видов общие, разная только расстановка; рисуется
+ * ровно один вид, а не два спрятанных.
  */
 export function MenuSection() {
   const { S, update, perms } = useTrip()
   const days = S.menu ?? []
   const canEdit = perms.isEditor()
+  const desktop = useIsDesktop()
 
   /* ⛔ Дни раскрыты все сразу на ОБЕИХ ширинах. Заказчик 06.08.2026: «по умолчанию
      у тебя все списки должны быть раскрыты, название разделов должно быть крупно
@@ -194,6 +201,7 @@ export function MenuSection() {
             key={day.i}
             day={day}
             canEdit={canEdit}
+            desktop={desktop}
             open={isOpen(day)}
             onToggle={() => setOpen((o) => ({ ...o, [day.i]: !isOpen(day) }))}
             fresh={fresh}
@@ -263,6 +271,8 @@ function endFreshWhenLeftRow(id: string, done: () => void) {
 interface DayProps {
   day: MenuDay
   canEdit: boolean
+  /** широкий экран — матрица блюд; узкий — вертикальная лента (решение 06.08.2026) */
+  desktop: boolean
   open: boolean
   onToggle: () => void
   fresh: string | null
@@ -287,7 +297,7 @@ interface DayProps {
  * и разъезжалась с ним при каждой правке общего оформления (постулат 3).
  */
 function DayCard({
-  day, canEdit, open, onToggle, fresh, sync, autoTitle, onPatch,
+  day, canEdit, desktop, open, onToggle, fresh, sync, autoTitle, onPatch,
   onFreshDayEnd, onFreshDishEnd, onAddDish, onToggleDish, onDelDish,
 }: DayProps) {
   const dishes = day.dishes ?? []
@@ -351,53 +361,72 @@ function DayCard({
         />
       ) : (
         <>
-          <DataTable
-            cols={cols}
-            minW="29rem"
-            label={`Раскладка: ${day.t || 'день без названия'}`}
-            sync={sync}
-            className={cn(
-              '[--acol:6.5rem] [--dcol:4.5rem] [--ncol:9rem] [--qcol:9rem]',
-              'lg:[--ncol:16rem] lg:[--qcol:20rem]',
-            )}
-          >
-            <DataHead>
-              <DataCell head sticky align="left">
-                Блюдо
-              </DataCell>
-              <DataCell head align="left">
-                Сколько брать
-              </DataCell>
-              <DataCell head>Готово</DataCell>
-              <DataCell head className="px-1" />
-            </DataHead>
+          {desktop ? (
+            <DataTable
+              cols={cols}
+              minW="29rem"
+              label={`Раскладка: ${day.t || 'день без названия'}`}
+              sync={sync}
+              className={cn(
+                '[--acol:6.5rem] [--dcol:4.5rem] [--ncol:9rem] [--qcol:9rem]',
+                'lg:[--ncol:16rem] lg:[--qcol:20rem]',
+              )}
+            >
+              <DataHead>
+                <DataCell head sticky align="left">
+                  Блюдо
+                </DataCell>
+                <DataCell head align="left">
+                  Сколько брать
+                </DataCell>
+                <DataCell head>Готово</DataCell>
+                <DataCell head className="px-1" />
+              </DataHead>
 
-            {dishes.map((dish, k) => {
-              /* до миграции у блюда ещё нет i — считаем его тем же ключом, что и она */
-              const id = dish.i ?? `${day.i}s${k}`
-              return (
-                <DishRow
-                  key={id}
-                  dish={dish}
-                  id={id}
-                  num={k + 1}
-                  zebra={k % 2 === 1}
-                  canEdit={canEdit}
-                  fresh={fresh === id}
-                  onFreshEnd={() => onFreshDishEnd(id)}
-                  onPatch={(f) =>
-                    onPatch((d) => {
-                      const x = d.dishes?.find((y) => y.i === id)
-                      if (x) f(x)
-                    })
-                  }
-                  onToggle={() => onToggleDish(id)}
-                  onAddBelow={() => onAddDish(k + 1)}
-                  onDelete={() => onDelDish(id, dish)}
-                />
-              )
-            })}
-          </DataTable>
+              {dishes.map((dish, k) => {
+                /* до миграции у блюда ещё нет i — считаем его тем же ключом, что и она */
+                const id = dish.i ?? `${day.i}s${k}`
+                return (
+                  <DishRow
+                    key={id}
+                    dish={dish}
+                    id={id}
+                    num={k + 1}
+                    zebra={k % 2 === 1}
+                    canEdit={canEdit}
+                    fresh={fresh === id}
+                    onFreshEnd={() => onFreshDishEnd(id)}
+                    onPatch={(f) =>
+                      onPatch((d) => {
+                        const x = d.dishes?.find((y) => y.i === id)
+                        if (x) f(x)
+                      })
+                    }
+                    onToggle={() => onToggleDish(id)}
+                    onAddBelow={() => onAddDish(k + 1)}
+                    onDelete={() => onDelDish(id, dish)}
+                  />
+                )
+              })}
+            </DataTable>
+          ) : (
+            <DishStrip
+              dishes={dishes}
+              dayId={day.i}
+              canEdit={canEdit}
+              fresh={fresh}
+              onFreshEnd={onFreshDishEnd}
+              onPatchDish={(id, f) =>
+                onPatch((d) => {
+                  const x = d.dishes?.find((y) => y.i === id)
+                  if (x) f(x)
+                })
+              }
+              onToggle={onToggleDish}
+              onAddBelow={onAddDish}
+              onDelete={onDelDish}
+            />
+          )}
           {canEdit && (
             <div className="border-t border-line">
               <AddRow label="Добавить блюдо" onClick={() => onAddDish(dishes.length)} />
@@ -494,6 +523,141 @@ function DishRow({
         </RowActions>
       </DataCell>
     </DataRow>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Блюда лентой — вид дня на телефоне
+   ────────────────────────────────────────────────────────────────────────── */
+
+interface StripProps {
+  dishes: MenuDish[]
+  /** нужен только для ключа блюда из документа v1, где у блюд нет своего i */
+  dayId: string
+  canEdit: boolean
+  /** только что заведённое блюдо: раскрыто и открыто на правку названия */
+  fresh: string | null
+  onFreshEnd: (id: string) => void
+  onPatchDish: (id: string, f: (d: MenuDish) => void) => void
+  onToggle: (id: string) => void
+  /** завести блюдо на этом месте: k + 1 — сразу под текущим */
+  onAddBelow: (at: number) => void
+  onDelete: (id: string, dish: MenuDish) => void
+}
+
+/**
+ * Блюда дня вертикальной лентой — то же, что «Сборы» на телефоне.
+ *
+ * В свёрнутой полоске кружок готовности слева, название крупно и «сколько брать»
+ * второй строкой: этого хватает, чтобы решить, раскрывать её или нет. Числа
+ * справа НЕТ — у блюда его попросту не бывает: «сколько брать» здесь текст
+ * («1 уп. хлеба, 2 уп. паштета, 100 г салями»), а не величина.
+ *
+ * ⛔ Ни одного нового способа правки: те же `InlineText`, тот же кружок
+ * `DoneMark`, те же `RowAction`, что в матрице, — просто расставленные столбиком.
+ * Заголовок дня остаётся общим у обоих видов и живёт в `Group`.
+ */
+function DishStrip({
+  dishes, dayId, canEdit, fresh, onFreshEnd, onPatchDish, onToggle, onAddBelow, onDelete,
+}: StripProps) {
+  /** раскрытое блюдо; открыто всегда одно — лента остаётся лентой */
+  const [openId, setOpenId] = useState('')
+
+  return (
+    <div role="list">
+      {dishes.map((dish, k) => {
+        /* до миграции у блюда ещё нет i — считаем его тем же ключом, что и она */
+        const id = dish.i ?? `${dayId}s${k}`
+        const isFresh = fresh === id
+        const open = openId === id || isFresh
+        const endFresh = endFreshWhenLeftRow(id, () => onFreshEnd(id))
+        /* Раскрытой полоска остаётся и после того, как перестала быть новой:
+           иначе подробность захлопывалась бы ровно в тот миг, когда человек
+           дописал название и тянется вписать «сколько брать». */
+        const endFreshKeepOpen = () => {
+          setOpenId(id)
+          endFresh()
+        }
+
+        return (
+          <StripRow
+            key={id}
+            dataHit={id}
+            zebra={k % 2 === 1}
+            done={!!dish.done}
+            open={open}
+            onToggle={() => setOpenId(open ? '' : id)}
+            lead={
+              <DoneMark
+                done={!!dish.done}
+                can={canEdit}
+                name={dish.n}
+                onToggle={() => onToggle(id)}
+              />
+            }
+            title={dish.n || 'Без названия'}
+            /* Длинный список продуктов сам обрежется на второй строке
+               (`line-clamp-2` в `StripRow`), целиком он читается в раскрытом. */
+            sub={dish.q || undefined}
+          >
+            <StripField label="Название" wide>
+              <InlineText
+                value={dish.n}
+                onSave={(v) => onPatchDish(id, (d) => { d.n = v })}
+                onEditEnd={isFresh ? endFreshKeepOpen : undefined}
+                autoEdit={isFresh}
+                can={canEdit}
+                label="Название блюда"
+                /* ⚠️ У новой строки обязательности нет: она заводится пустой,
+                   и требование «впиши название» заперло бы человека в поле,
+                   из которого на телефоне нет выхода (Esc там не нажать).
+                   Пустую новую строку раздел убирает сам. Тот же приём,
+                   что в «Закупке» (`BuyStrip`, урок У-100). */
+                required={!isFresh}
+                placeholder={canEdit ? 'Например, уха' : undefined}
+                className="text-body font-semibold text-ink"
+              />
+            </StripField>
+
+            <StripField label="Сколько брать" wide>
+              <InlineText
+                value={dish.q}
+                onSave={(v) => onPatchDish(id, (d) => { d.q = v })}
+                onEditEnd={isFresh ? endFreshKeepOpen : undefined}
+                can={canEdit}
+                multiline
+                label="Сколько брать продуктов"
+                placeholder={canEdit ? 'сколько брать' : undefined}
+                className="text-note leading-snug text-muted"
+              />
+            </StripField>
+
+            {/* ⛔ Полки «Готово» здесь больше нет. Кружок отметки уже стоит
+                в шапке полоски (`lead`), и второй такой же в раскрытии был
+                двумя органами на одно значение — ровно то, что запрещает
+                урок У-53. Орган остался один, в шапке. */}
+
+            {canEdit ? (
+              <div className="mt-2 flex justify-end border-t border-line/50 pt-2">
+                <RowActions>
+                  <RowAction
+                    icon={Plus}
+                    label="Вставить блюдо ниже"
+                    onClick={() => onAddBelow(k + 1)}
+                  />
+                  <RowAction
+                    icon={Trash2}
+                    tone="danger"
+                    label="Удалить блюдо"
+                    onClick={() => onDelete(id, dish)}
+                  />
+                </RowActions>
+              </div>
+            ) : null}
+          </StripRow>
+        )
+      })}
+    </div>
   )
 }
 

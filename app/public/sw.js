@@ -18,13 +18,37 @@
    имя кеша; ответы проверяются перед укладкой в кеш; страница сама перезагружается,
    когда новый работник встал у руля (см. `src/main.tsx`).
 
-   Чужие домены — Supabase, погода, тайлы карты — работник не трогает вовсе. */
+   Чужие домены — Supabase, погода — работник не трогает вовсе. Исключение одно
+   и появилось 06.08.2026: клетки карты OpenStreetMap (см. TILES ниже). */
 
 /* Версия сборки. Другой адрес сценария = браузер обязан его перекачать и поставить. */
 var VERSION = new URL(self.location.href).searchParams.get('v') || 'dev'
 var CACHE = 'pine-to-pine-' + VERSION
 var SHELL = './index.html'
 var CORE = ['./', SHELL, './manifest.webmanifest', './favicon.svg']
+
+/* ─── Клетки карты OpenStreetMap ────────────────────────────────────────────
+   Заказчик 06.08.2026: «карты в офлайн-режиме не работают… я в офлайн-режиме
+   без интернета хочу отметить точку, на которой я нахожусь». Без сети карта
+   исчезала совсем: библиотека Google не грузится, а клетки OpenStreetMap идут
+   с чужого домена, и работник чужие домены не трогал вовсе. Теперь каждая
+   показанная клетка оседает в отдельном кеше, и в лесу карта рисуется тем,
+   что уже открывали. Кеш свой, от версии сборки не зависит: выкладка не должна
+   стирать то, что человек набрал перед выездом. */
+var TILES = 'osm-tiles-v1'
+/** Потолок по числу клеток. ~800 штук — это примерно 15 МБ на диске. */
+var TILES_MAX = 800
+/** Как часто проверяем переполнение: считать длину на каждой клетке дорого. */
+var TILES_TRIM_EVERY = 40
+var tilesPut = 0
+
+/**
+ * Прозрачная клетка 1×1. Ею отвечаем, когда клетки нет ни в кеше, ни в сети:
+ * на отказ загрузки Leaflet ставит крест на каждой клетке экрана и сыплет
+ * ошибками в консоль, а на прозрачную картинку — просто оставляет пустое место.
+ */
+var BLANK_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII='
 
 /** Файлы сборки: в имени хеш, содержимое неизменно. */
 function isBuilt(url) {
@@ -68,6 +92,83 @@ function fromNetwork(req, ms) {
   })
 }
 
+/** Клетка карты: a|b|c.tile.openstreetmap.org/{z}/{x}/{y}.png (см. OsmRouteMap.tsx). */
+function isTile(url) {
+  return /(^|\.)tile\.openstreetmap\.org$/.test(url.hostname) && /\.png$/.test(url.pathname)
+}
+
+function blankTile() {
+  var bin = self.atob(BLANK_PNG)
+  var bytes = new Uint8Array(bin.length)
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Response(bytes, {
+    status: 200,
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' },
+  })
+}
+
+/** Переполнение: `keys()` отдаёт ключи в порядке укладки — сносим самые давние. */
+function trimTiles(c) {
+  return c.keys().then(function (keys) {
+    var extra = keys.length - TILES_MAX
+    if (extra <= 0) return
+    return Promise.all(
+      keys.slice(0, extra).map(function (k) {
+        return c.delete(k)
+      }),
+    )
+  })
+}
+
+/**
+ * Клетки карты: сначала кеш, потом сеть.
+ *
+ * ⚠️ Клетку забираем СВОИМ запросом с `mode: 'cors'`, а не пересылаем чужой.
+ * Картинка на странице просит клетку без CORS, и ответ на такую просьбу
+ * непрозрачен (`opaque`): проверить у него нечего — ни кода, ни длины, — а в
+ * хранилище браузер считает такой ответ по потолку, целыми мегабайтами за штуку.
+ * Восемьсот таких клеток выбрали бы квоту, и укладка начала бы падать.
+ * OpenStreetMap отдаёт `Access-Control-Allow-Origin: *`, поэтому честный ответ
+ * доступен; отдать его картинке, попросившей без CORS, разрешено.
+ *
+ * Если CORS всё же не сложился (перехватчик трафика, зеркало без заголовка),
+ * пересылаем исходный запрос как есть: пусть клетка не ляжет в кеш, но на экране
+ * при живой сети она будет. Молча пустой карты быть не должно.
+ */
+function tile(e, url) {
+  e.respondWith(
+    caches.open(TILES).then(function (c) {
+      return c.match(url.href).then(function (hit) {
+        if (hit) return hit
+        return fetch(url.href, { mode: 'cors', credentials: 'omit' }).then(
+          function (res) {
+            if (res && res.status === 200) {
+              var copy = res.clone()
+              e.waitUntil(
+                c
+                  .put(url.href, copy)
+                  .then(function () {
+                    tilesPut++
+                    if (tilesPut % TILES_TRIM_EVERY === 0) return trimTiles(c)
+                  })
+                  .catch(function () {}),
+              )
+            }
+            return res
+          },
+          function () {
+            /* Сеть отказала — или отказал именно CORS. Пробуем прямой пересылкой. */
+            return fetch(e.request).catch(function () {
+              /* Ни в кеше, ни в сети — прозрачная клетка вместо крестов. */
+              return blankTile()
+            })
+          },
+        )
+      })
+    }),
+  )
+}
+
 function keep(req, res) {
   var copy = res.clone()
   caches.open(CACHE).then(function (c) {
@@ -107,6 +208,10 @@ self.addEventListener('activate', function (e) {
                экране iPhone (localStorage у них разный — У-107). Снести его
                при выкладке значит вернуть человеку экран входа. */
             if (k.indexOf('pine-me') === 0) return
+            /* ⛔ Кеш клеток карты тоже не трогаем. Он не зависит от версии сборки:
+               человек набирает клетки дома перед выездом, и выкладка новой версии
+               не должна оставлять его в лесу с пустой картой. */
+            if (k === TILES) return
             if (k !== CACHE) return caches.delete(k)
           }),
         )
@@ -134,6 +239,13 @@ self.addEventListener('fetch', function (e) {
   } catch (err) {
     return
   }
+  /* ── Клетки карты: единственный чужой домен, который работник обслуживает ──
+     Проверка стоит ДО отсечки по домену: без неё сюда не дошло бы ничего. */
+  if (isTile(url)) {
+    tile(e, url)
+    return
+  }
+
   if (url.origin !== self.location.origin) return
 
   /* ── Файлы сборки: сначала кеш, но кладём в него только настоящий файл ── */

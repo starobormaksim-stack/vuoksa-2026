@@ -13,7 +13,7 @@ import { applyCard, clearGrab, grabProduct } from '@/lib/product'
 import { SpendShareEdit } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
 import {
-  buyerQty, descText, digitsOf, foldStatus, setBuyer, type BuyItem,
+  buyerQty, descText, digitsOf, foldStatus, restQty, setBuyer, type BuyItem,
 } from './buylocal'
 
 /**
@@ -242,11 +242,20 @@ export function BuyStrip({
             </StripField>
 
             {/* «Кто покупает» — его же слова: «покупает один человек, делит
-                на всех — потому что всё равно кто-то один будет оплачивать». */}
+                на всех — потому что всё равно кто-то один будет оплачивать»
+                и 06.08.2026: «кто покупает — там должны быть галочки, можно
+                отметить одного или двух; купил Макс — галочку поставил, идёт
+                в перерасчёт». Орган — тот же `Box`, что у «куплено» и «берём». */}
             <div className="mt-2 border-t border-line/50 pt-2">
               <div className="text-micro font-semibold text-muted">Кто покупает</div>
+              {/* Подсказка — правило, а не жест (постулат 7). */}
+              <div className="text-micro leading-snug text-muted">
+                Галочка — этот человек берёт остаток количества; число рядом идёт
+                в перерасчёт
+              </div>
               {people.map((who) => {
                 const qty = buyerQty(p, who.id)
+                const on = qty > 0
                 return (
                   <div
                     key={who.id}
@@ -260,32 +269,29 @@ export function BuyStrip({
                       size={32}
                     />
                     <span className="min-w-0 flex-1 truncate text-body text-ink">{who.name}</span>
-                    {perms.canMark(who.id) ? (
-                      qty > 0 ? (
-                        <InlineNum
-                          value={qty}
-                          can
-                          label={`${who.name} покупает`}
-                          kind="plain"
-                          digits={digitsOf(qty)}
-                          onSave={(v) => onPatch(p.i, (x) => setBuyer(x, who.id, v, perms.me))}
-                          className="text-body font-semibold text-ink"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => onPatch(p.i, (x) => setBuyer(x, who.id, 1, perms.me))}
-                          aria-label={`${who.name} покупает. Отметить`}
-                          className="grid size-11 place-items-center rounded-md text-note text-muted transition-colors hover:bg-zebra/70 active:scale-[0.98]"
-                        >
-                          &#8212;
-                        </button>
-                      )
-                    ) : (
-                      <span className="tnum min-w-11 text-right text-body font-semibold text-ink">
-                        {qty > 0 ? qty : '—'}
-                      </span>
-                    )}
+                    {on ? (
+                      <InlineNum
+                        value={qty}
+                        can={perms.canMark(who.id)}
+                        label={`${who.name} покупает: сколько берёт на себя`}
+                        kind="plain"
+                        digits={digitsOf(qty)}
+                        onSave={(v) => onPatch(p.i, (x) => setBuyer(x, who.id, v, perms.me))}
+                        className="text-body font-semibold text-ink"
+                      />
+                    ) : null}
+                    <Box
+                      on={on}
+                      can={perms.canMark(who.id)}
+                      label={`${who.name} покупает`}
+                      /* Галочка кладёт ОСТАТОК количества позиции, а не единицу:
+                         «купил 8 рулонов — галочку поставил» (см. `restQty`). */
+                      onToggle={() =>
+                        onPatch(p.i, (x) =>
+                          setBuyer(x, who.id, on ? 0 : restQty(p, who.id), perms.me),
+                        )
+                      }
+                    />
                   </div>
                 )
               })}

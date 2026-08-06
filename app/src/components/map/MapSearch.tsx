@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LoaderCircle, MapPin, Search, SearchX, X } from 'lucide-react'
-import { searchPlaces, shortPlaceName, type PlaceFound } from '@/lib/geocode'
+import { LoaderCircle, MapPin, Search, SearchX, TriangleAlert, WifiOff, X } from 'lucide-react'
+import {
+  searchPlaces, shortPlaceName, type PlaceFound, type SearchOutcome,
+} from '@/lib/geocode'
 
 /**
  * Строка поиска адреса над картой (заказчик 04.08.2026: «было бы круто к карте
@@ -12,7 +14,9 @@ import { searchPlaces, shortPlaceName, type PlaceFound } from '@/lib/geocode'
  *
  * Два обещания, которые эта строка обязана держать:
  *   ничего не подставляется молча — человек видит СПИСОК находок и выбирает сам;
- *   видно, что происходит — «ищем», «не нашлось», «вот что нашлось».
+ *   видно, что происходит — «ищем», «не нашлось», «вот что нашлось», «спросить
+ *   было некого». Последнее — отдельно от «не нашлось»: без сети строка честно
+ *   отвечала «Ничего не нашлось поблизости», хотя запрос никуда не уходил.
  * Геокодер не дёргается на каждую букву: запрос уходит через полсекунды после
  * того, как человек перестал печатать (или сразу по Enter).
  */
@@ -35,8 +39,11 @@ const MIN = 3
 export function MapSearch({ near, onPick, hint }: Props) {
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  /** null — ещё не искали; [] — искали и честно не нашли */
-  const [list, setList] = useState<PlaceFound[] | null>(null)
+  /**
+   * null — ещё не искали; `{ok:true,list:[]}` — искали и честно не нашли;
+   * `{ok:false}` — спросить было некого (нет сети, служба не ответила).
+   */
+  const [res, setRes] = useState<SearchOutcome | null>(null)
 
   const nearLat = near.lat
   const nearLon = near.lon
@@ -51,7 +58,7 @@ export function MapSearch({ near, onPick, hint }: Props) {
       setBusy(true)
       const found = await searchPlaces(query, { lat: nearLat, lon: nearLon })
       if (my !== seq.current) return
-      setList(found)
+      setRes(found)
       setBusy(false)
     },
     [nearLat, nearLon],
@@ -62,7 +69,7 @@ export function MapSearch({ near, onPick, hint }: Props) {
     if (query.length < MIN) {
       /* Строку стёрли — старый ответ больше не нужен, даже если он уже в пути. */
       seq.current++
-      setList(null)
+      setRes(null)
       setBusy(false)
       return
     }
@@ -73,7 +80,7 @@ export function MapSearch({ near, onPick, hint }: Props) {
   const clear = () => {
     seq.current++
     setQ('')
-    setList(null)
+    setRes(null)
     setBusy(false)
   }
 
@@ -122,11 +129,29 @@ export function MapSearch({ near, onPick, hint }: Props) {
       </div>
 
       {/* Что нашлось. Пока не искали — строка молчит и места не занимает. */}
-      {busy && list === null && (
+      {busy && res === null && (
         <p className="px-3 pb-2 text-note text-muted">Ищем на карте…</p>
       )}
 
-      {list !== null && list.length === 0 && !busy && (
+      {/* Спросить было некого. Раньше здесь стояло «Ничего не нашлось поблизости»
+          — то есть неправда: без сети запрос никуда не уходил. Причина и выход
+          из положения — словами (постулат 5). */}
+      {res !== null && !res.ok && !busy && (
+        <p className="flex items-start gap-2 px-3 pb-2 text-note text-muted">
+          {res.why === 'offline' ? (
+            <WifiOff size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+          ) : (
+            <TriangleAlert size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+          )}
+          <span>
+            {res.why === 'offline'
+              ? 'Сети нет — поиск адресов недоступен. Точку можно поставить прямо на карте.'
+              : 'Служба поиска адресов не ответила. Попробуйте ещё раз через минуту — или поставьте точку прямо на карте.'}
+          </span>
+        </p>
+      )}
+
+      {res !== null && res.ok && res.list.length === 0 && !busy && (
         <p className="flex items-start gap-2 px-3 pb-2 text-note text-muted">
           <SearchX size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
           <span>
@@ -136,11 +161,11 @@ export function MapSearch({ near, onPick, hint }: Props) {
         </p>
       )}
 
-      {list !== null && list.length > 0 && (
+      {res !== null && res.ok && res.list.length > 0 && (
         <>
           <p className="px-3 pb-1 text-micro font-semibold text-muted">{hint}</p>
           <ul className="max-h-56 overflow-y-auto border-t border-line">
-            {list.map((hit, idx) => (
+            {res.list.map((hit, idx) => (
               <li key={`${hit.lat}:${hit.lon}:${idx}`}>
                 <button
                   type="button"

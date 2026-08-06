@@ -11,7 +11,7 @@ import { applyCard, clearGrab, grabProduct } from '@/lib/product'
 import { SpendShareEdit } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
 import {
-  buyerQty, descText, digitsOf, foldStatus, setBuyer, type BuyItem,
+  buyerQty, descText, digitsOf, foldStatus, restQty, setBuyer, type BuyItem,
 } from './buylocal'
 
 /**
@@ -224,6 +224,9 @@ export function BuyRow({
         <DataCell key={who.id} align="center" className="px-1">
           <Buyer
             qty={buyerQty(p, who.id)}
+            /* Ставим галочку — человек берёт на себя весь остаток позиции,
+               а не одну штуку (см. `restQty`). */
+            rest={restQty(p, who.id)}
             /* Отметиться покупателем может и участник без права правки строки —
                это его собственная отметка, а за других он не отмечает. */
             can={perms.canMark(who.id)}
@@ -291,45 +294,50 @@ function Box({
 }
 
 /**
- * Сколько берёт на себя один человек. Пусто — значит покупают все вместе, поэтому
- * пустая ячейка не кричит: тире. Одно нажатие ставит единицу, дальше число правится
- * прямо в ячейке.
+ * Кто покупает — галочкой, и сколько он берёт на себя — числом под ней.
+ *
+ * Слово заказчика 06.08.2026: «кто покупает — там должны быть галочки, можно
+ * отметить одного или двух; купил Макс — галочку поставил, идёт в перерасчёт».
+ * Поэтому орган здесь тот же `Box`, что у «куплено» и «берём»: пустой квадратик —
+ * не покупает, галочка — покупает. Отметить можно нескольких, снимается
+ * повторным нажатием. Прежнее тире человек читал как «тут ничего нет», а не как
+ * «сюда можно нажать».
+ *
+ * ⛔ Считается всё как считалось: галочка ставит количество тем же `setBuyer`,
+ * снятие — ноль, число рядом правится как прежде. Ни `buyerQty`, ни `foldStatus`,
+ * ни `lib/calc.ts` не тронуты.
+ *
+ * ⚠️ Галочка кладёт ОСТАТОК позиции, а не единицу: «купил 8 рулонов — галочку
+ * поставил» (06.08.2026). Единица давала 1 из 8 в перерасчёте.
  */
 function Buyer({
-  qty, can, label, onSet,
+  qty, rest, can, label, onSet,
 }: {
   qty: number
+  /** сколько подставить по галочке: остаток количества позиции */
+  rest: number
   can: boolean
   label: string
   onSet: (v: number) => void
 }) {
-  if (qty > 0) {
-    return (
-      <InlineNum
-        value={qty}
-        can={can}
-        label={label}
-        kind="plain"
-        digits={digitsOf(qty)}
-        onSave={onSet}
-        className="text-note font-semibold text-ink"
-      />
-    )
-  }
-  if (!can) return <span className="text-note text-muted">&#8212;</span>
+  const on = qty > 0
   return (
-    <button
-      type="button"
-      onClick={() => onSet(1)}
-      aria-label={`${label}. Отметить`}
-      className={cn(
-        'relative grid size-8 place-items-center rounded-md text-note text-muted',
-        'transition-colors hover:bg-zebra/70 active:scale-[0.98]',
-        /* Невидимое расширение зоны нажатия до 44 × 44 в узкой колонке. */
-        'before:absolute before:-inset-2 before:content-[""]',
-      )}
-    >
-      &#8212;
-    </button>
+    /* Галочка сверху, число под ней: колонка узкая (4,5 rem), и в ряд они
+       не встают. Галочка стоит на одном месте у всех строк — колонка читается
+       сверху вниз одним взглядом. */
+    <span className="flex flex-col items-center gap-0.5">
+      <Box on={on} can={can} label={label} onToggle={() => onSet(on ? 0 : rest)} />
+      {on ? (
+        <InlineNum
+          value={qty}
+          can={can}
+          label={`${label}: сколько берёт на себя`}
+          kind="plain"
+          digits={digitsOf(qty)}
+          onSave={onSet}
+          className="text-note font-semibold text-ink"
+        />
+      ) : null}
+    </span>
   )
 }

@@ -55,6 +55,29 @@ export async function reversePlace(lat: number, lon: number): Promise<PlaceGuess
 export type PlaceFound = GeoHit
 
 /**
+ * Чем кончился поиск. Пустой список и «спросить было некого» — РАЗНЫЕ вещи,
+ * и путать их нельзя: без сети человек читал «Ничего не нашлось поблизости»,
+ * хотя искать никто и не ходил. Молчаливых и подменных отказов не бывает
+ * (постулат 5).
+ */
+export type SearchOutcome =
+  | { ok: true; list: PlaceFound[] }
+  /**
+   * 'offline'  — сети нет вовсе: запрос никуда не ушёл;
+   * 'noanswer' — сеть есть, а служба поиска ответила не по делу (лимит, 5xx).
+   */
+  | { ok: false; why: 'offline' | 'noanswer' }
+
+/**
+ * Браузер знает, что сети нет. Обратного он не гарантирует: `onLine === true`
+ * бывает и при мёртвом канале, поэтому «нет сети» ставится только по `false`
+ * либо по упавшему запросу.
+ */
+function netDown(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+/**
  * Дальше этого от места поездки находка считается промахом геокодера.
  * Санкт-Петербург от Вуоксы — 130 км, так что запас пятикратный; а вот «КАД»
  * без ограничения находится в другом конце страны, и такую находку надо отбросить,
@@ -93,7 +116,8 @@ export async function forwardPlace(
       /* ключ отозвали, лимит, нет сети — пробуем бесплатный путь */
     }
   }
-  const hit = (await nominatimSearchAll(query, near, 1))[0] ?? null
+  const r = await nominatimSearchAll(query, near, 1)
+  const hit = (r.ok ? r.list[0] : null) ?? null
   return hit && distKm(hit, near) <= MAX_KM ? hit : null
 }
 
@@ -104,24 +128,30 @@ export async function forwardPlace(
  *
  * Пустой список — честное «не нашлось» (или «нашлось, но за тысячу километров
  * отсюда», что для поездки на Вуоксу одно и то же). Исключений не бросает:
- * строке поиска нечего делать с ошибкой, ей нужен ответ «нашлось / не нашлось».
+ * строке поиска нечего делать с ошибкой, ей нужен ответ, который можно показать
+ * человеческим языком, — поэтому отказ приезжает не пустотой, а причиной
+ * (`SearchOutcome`).
  */
 export async function searchPlaces(
   query: string,
   near: { lat: number; lon: number },
   limit = 5,
-): Promise<PlaceFound[]> {
+): Promise<SearchOutcome> {
   const near_ = { lat: near.lat, lon: near.lon }
+  /* Сети нет — идти некуда: и Google, и Nominatim живут в сети. Раньше здесь
+     выходил пустой список, и человек читал «ничего не нашлось» — неправда. */
+  if (netDown()) return { ok: false, why: 'offline' }
   if (googleUsable()) {
     try {
       const list = await forwardGeocodeAll(query, near_, limit)
-      return list.filter((h) => distKm(h, near_) <= MAX_KM)
+      return { ok: true, list: list.filter((h) => distKm(h, near_) <= MAX_KM) }
     } catch {
       /* ключ отозвали, лимит, нет сети — пробуем бесплатный путь */
     }
   }
-  const list = await nominatimSearchAll(query, near_, limit)
-  return list.filter((h) => distKm(h, near_) <= MAX_KM)
+  const r = await nominatimSearchAll(query, near_, limit)
+  if (!r.ok) return r
+  return { ok: true, list: r.list.filter((h) => distKm(h, near_) <= MAX_KM) }
 }
 
 /**
@@ -143,12 +173,15 @@ interface NominatimHit {
   place_rank?: number
 }
 
-/** Прямой поиск в Nominatim, жёстко ограниченный окрестностями поездки. */
+/**
+ * Прямой поиск в Nominatim, жёстко ограниченный окрестностями поездки.
+ * Отдаёт причину отказа, а не пустоту: см. `SearchOutcome`.
+ */
 async function nominatimSearchAll(
   query: string,
   near: { lat: number; lon: number },
   limit: number,
-): Promise<PlaceFound[]> {
+): Promise<SearchOutcome> {
   try {
     const box = [near.lon - 8, near.lat + 4, near.lon + 8, near.lat - 4].join(',')
     const url =
@@ -156,9 +189,11 @@ async function nominatimSearchAll(
       '&accept-language=ru' +
       `&bounded=1&viewbox=${encodeURIComponent(box)}&q=${encodeURIComponent(query)}`
     const r = await fetch(url, { headers: { Accept: 'application/json' } })
-    if (!r.ok) return []
+    /* Ответ пришёл, но не тот: превышен лимит запросов, сервис лежит. Это не
+       «не нашлось», и выдавать это за «не нашлось» — врать человеку. */
+    if (!r.ok) return { ok: false, why: 'noanswer' }
     const list = (await r.json()) as NominatimHit[]
-    if (!Array.isArray(list)) return []
+    if (!Array.isArray(list)) return { ok: false, why: 'noanswer' }
     const out: PlaceFound[] = []
     for (const j of list) {
       const lat = Number(j.lat)
@@ -172,9 +207,11 @@ async function nominatimSearchAll(
         precise: (j.place_rank ?? 0) >= 14,
       })
     }
-    return out
+    return { ok: true, list: out }
   } catch {
-    return []
+    /* `fetch` падает исключением только тогда, когда запрос не дошёл вовсе:
+       сети нет, обрыв, имя не разрешилось. Считаем это отсутствием сети. */
+    return { ok: false, why: 'offline' }
   }
 }
 

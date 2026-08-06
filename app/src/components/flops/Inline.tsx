@@ -494,7 +494,7 @@ export interface InlinePickOption {
  * его список системными цветами, и он читается плохо — проверено в прошлой сессии.
  */
 export function InlinePick({
-  value, options, onPick, can, label, placeholder, allowFree, onFree, className,
+  value, options, onPick, can, label, placeholder, allowFree, onFree, freeText, className,
 }: {
   /** id выбранного варианта; пусто — ничего не выбрано */
   value: string
@@ -506,13 +506,28 @@ export function InlinePick({
   /** можно вписать своё слово, которого нет в справочнике (единицы измерения) */
   allowFree?: boolean
   onFree?: (text: string) => void
+  /**
+   * Своё слово, уже вписанное вместо варианта справочника.
+   *
+   * ⚠️ Показывается вместо подсказки, когда `value` в справочнике не нашлось:
+   * у техники со своим видом в документе лежит `kind`, которого в `S.kinds` нет,
+   * а название её вида — в отдельном поле `kindT`. Без этого на месте «снегохода»
+   * стояло бы общее слово-заглушка, то есть поле документа пропадало бы с экрана
+   * (постулат 4).
+   */
+  freeText?: string
   className?: string
 }) {
   const [open, setOpen] = useState(false)
   const chosen = options.find((o) => o.id === value)
-  const shown = chosen?.title || placeholder || '—'
+  const own = chosen ? '' : (freeText ?? '')
+  const shown = chosen?.title || own || placeholder || '—'
 
-  if (!can) return <span className={cn('block', !chosen && 'text-muted', className)}>{shown}</span>
+  if (!can) {
+    return (
+      <span className={cn('block', !chosen && !own && 'text-muted', className)}>{shown}</span>
+    )
+  }
 
   return (
     <span className="block">
@@ -522,11 +537,16 @@ export function InlinePick({
         aria-expanded={open}
         aria-label={`${label}: ${shown}. Выбрать`}
         className={cn(
-          '-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors',
+          /* Цель нажатия — вся строка выбора и не меньше 44 px по высоте:
+             у подписи мелким кеглем видимая высота выходила 26 px, и палец
+             промахивался мимо неё (правило «интерактив ≥ 44 × 44»). */
+          '-mx-1 flex min-h-11 w-[calc(100%+0.5rem)] items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors',
           'hover:bg-zebra/70 active:bg-zebra',
         )}
       >
-        <span className={cn('editable min-w-0 flex-1 truncate', !chosen && 'text-muted', className)}>
+        <span
+          className={cn('editable min-w-0 flex-1 truncate', !chosen && !own && 'text-muted', className)}
+        >
           {shown}
         </span>
         <ChevronDown
@@ -560,7 +580,9 @@ export function InlinePick({
           {allowFree && onFree ? (
             <span className="block border-t border-line px-3 py-2">
               <InlineText
-                value={chosen ? '' : value}
+                /* Своё слово живёт либо прямо в `value` (единицы измерения),
+                   либо в отдельном поле документа — тогда его подаёт `freeText`. */
+                value={chosen ? '' : (freeText ?? value)}
                 onSave={(v) => {
                   onFree(v)
                   setOpen(false)

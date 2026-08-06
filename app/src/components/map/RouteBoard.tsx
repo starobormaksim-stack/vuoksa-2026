@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { RoutePoint, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
-import { remove, touch, update } from '@/store'
+import { touch, update } from '@/store'
 import { onListFocus, type ListFocus } from '@/lib/mapfocus'
 import { RouteTiming } from '@/components/road/RouteTiming'
 import { RouteStrip } from '@/components/road/RouteStrip'
-import { RoutePointSheet } from '@/components/road/RoutePointSheet'
 import { TextSheet, useIsDesktop } from '@/components/flops'
 import { plural } from '@/format'
 
@@ -27,8 +26,10 @@ import { plural } from '@/format'
  *
  * Правка точки живёт в двух местах, и оба на месте, а не в шторке: карточка
  * метки прямо на карте (название, время, описание, техника) и строка в ленте.
- * Шторка RoutePointSheet осталась только как карточка точки из ленты — она
- * показывает поля, которых на карте нет (метка этапа, способ передвижения).
+ * Шторки точки (`RoutePointSheet`) больше нет вовсе: метка этапа, чем
+ * добираемся, расстояние от прошлой точки и координаты правятся в раскрытой
+ * полоске ленты на телефоне и в панели под строкой матрицы на широком экране —
+ * один общий блок `road/RoutePointSetup.tsx` (06.08.2026, постулат 2).
  */
 
 interface Props {
@@ -39,7 +40,6 @@ interface Props {
 export function RouteBoard({ S, perms }: Props) {
   const canEdit = perms.isEditor()
   const desktop = useIsDesktop()
-  const [sheet, setSheet] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   /** какую точку подсветить в ленте: по её метке тапнули на карте */
   const [active, setActive] = useState<ListFocus | null>(null)
@@ -64,10 +64,11 @@ export function RouteBoard({ S, perms }: Props) {
       })
     })
     toast('Точка в маршруте')
-    setSheet(id)
+    /* Новую точку подводим к глазам и раскрываем — тем же путём, каким это
+       делает тап по метке на карте. Прежде на её месте открывалась шторка. */
+    setActive({ pointId: id, at: Date.now() })
   }
 
-  const current = sheet ? S.route.find((p) => p.i === sheet) : null
   const onMap = S.route.filter((p) => typeof p.lat === 'number' && typeof p.lon === 'number').length
 
   return (
@@ -117,7 +118,6 @@ export function RouteBoard({ S, perms }: Props) {
                   p.done = !p.done
                 })
               }
-              onOpen={setSheet}
               onAdd={() => setAdding(true)}
               activeId={active?.pointId ?? null}
               activeAt={active?.at}
@@ -133,7 +133,6 @@ export function RouteBoard({ S, perms }: Props) {
                   p.done = !p.done
                 })
               }
-              onOpen={setSheet}
               onAdd={() => setAdding(true)}
               activeId={active?.pointId ?? null}
               activeAt={active?.at}
@@ -141,21 +140,6 @@ export function RouteBoard({ S, perms }: Props) {
           )}
         </section>
       </section>
-
-      {current && (
-        <RoutePointSheet
-          item={current}
-          index={S.route.findIndex((p) => p.i === current.i) + 1}
-          canEdit={canEdit}
-          canDelete={canEdit}
-          onPatch={(f) => patch(current.i, f)}
-          onDelete={() => {
-            remove('route', current.i)
-            toast(`«${current.n}» убрана`)
-          }}
-          onClose={() => setSheet(null)}
-        />
-      )}
 
       <TextSheet
         open={adding}

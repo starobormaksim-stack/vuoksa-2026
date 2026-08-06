@@ -13,8 +13,6 @@ import { MDASH, plural } from '@/format'
 import { cn } from '@/lib/utils'
 import { RouteBoard } from '@/components/map/RouteBoard'
 import { RoadCalc } from './RoadCalc'
-import { TransportSheet } from './TransportSheet'
-import { RentSheet } from './RentSheet'
 import { calcLegsByMap } from './legs'
 import { kmLabel } from './roadx'
 
@@ -33,7 +31,11 @@ import { kmLabel } from './roadx'
  *     Теперь оно одно, в своей строке расчёта, и правится прямо в ней;
  *   отдельного блока «Канистры» — он свернулся в ту же таблицу;
  *   шторок с числами (NumberSheet) — «мне не нужен поп-ап, в котором всё
- *     написано; это прямо вот здесь, в этой таблице уже должно быть».
+ *     написано; это прямо вот здесь, в этой таблице уже должно быть»;
+ *   карточек техники и аренды (TransportSheet, RentSheet) — 06.08.2026: «всё,
+ *     что связано с настройками по конкретным позициям, выпадающим списком,
+ *     чтобы принцип был везде единообразен». Вид техники, топливо, хозяин,
+ *     категория аренды и подписи чисел живут в раскрытии строки (`RoadSetup`).
  *
  * Сюда же переехали расчёты с обложки поездки: транспорт, продукты, общий
  * бюджет и «с каждого» стоят последней группой таблицы — «сами расчёты должны
@@ -49,9 +51,6 @@ export function RoadSection() {
   const canAsk = canEdit || !!perms.me
 
   const [open, setOpen] = useState<Record<string, boolean>>({ ideas: false })
-  /** карточка выбора: вид, топливо, чья техника */
-  const [trSheet, setTrSheet] = useState<string | null>(null)
-  const [rnSheet, setRnSheet] = useState<string | null>(null)
   /** id только что добавленной строки — она открывается сразу в правке названия */
   const [fresh, setFresh] = useState<string | null>(null)
   /** идёт запрос к маршрутизатору */
@@ -194,9 +193,6 @@ export function RoadSection() {
     setFresh(id)
   }
 
-  const curTr = trSheet ? S.transport.find((t) => t.i === trSheet) : null
-  const curRn = rnSheet ? S.rent.find((r) => r.i === rnSheet) : null
-
   /* ─────────── полоса «посчитать по карте» ─────────── */
 
   const mapStrip = (
@@ -250,8 +246,6 @@ export function RoadSection() {
         onAddRent={addRent}
         onDelTransport={(t: Transport) => drop('transport', t, 'убрана')}
         onDelRent={(r: Rent) => drop('rent', r, 'убрана')}
-        onSetupTransport={setTrSheet}
-        onSetupRent={setRnSheet}
         fresh={fresh}
         onFreshEnd={() => setFresh(null)}
         mapStrip={mapStrip}
@@ -385,44 +379,6 @@ export function RoadSection() {
           </>
         )}
       </Group>
-
-      {/* ─────────── карточки выбора ─────────── */}
-
-      {curTr && (
-        <TransportSheet
-          item={curTr}
-          S={S}
-          canEdit={canEdit}
-          onPatch={(f) =>
-            update((s) => {
-              const t = s.transport.find((x) => x.i === curTr.i)
-              if (t) {
-                f(t)
-                touch(t)
-              }
-            })
-          }
-          onClose={() => setTrSheet(null)}
-        />
-      )}
-
-      {curRn && (
-        <RentSheet
-          item={curRn}
-          S={S}
-          canEdit={canEdit}
-          onPatch={(f) =>
-            update((s) => {
-              const r = s.rent.find((x) => x.i === curRn.i)
-              if (r) {
-                f(r)
-                touch(r)
-              }
-            })
-          }
-          onClose={() => setRnSheet(null)}
-        />
-      )}
     </div>
   )
 }

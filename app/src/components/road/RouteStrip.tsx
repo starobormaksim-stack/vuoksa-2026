@@ -9,6 +9,7 @@ import {
 import { remove, touch, update } from '@/store'
 import { cn } from '@/lib/utils'
 import { pointMeta } from './roadx'
+import { RoutePointCoords, RoutePointSetup } from './RoutePointSetup'
 import { Dot, PlaceRow, Rider, useRouteFocus } from './RouteTiming'
 
 /**
@@ -23,7 +24,9 @@ import { Dot, PlaceRow, Rider, useRouteFocus } from './RouteTiming'
  * `StripField`, образцы расстановки — `gear/GearStrip` и `buy/BuyStrip`. Кружок
  * этапа (`Dot`), отметка «едет» (`Rider`) и строка места (`PlaceRow`) взяты
  * из матрицы (`RouteTiming`) прямо теми же функциями: два вида одного раздела
- * обязаны показывать одно и то же одинаково.
+ * обязаны показывать одно и то же одинаково. Настройка точки — метка этапа,
+ * чем добираемся, расстояние от прошлой точки и координаты — общий с матрицей
+ * `RoutePointSetup.tsx`: те же поля стоят в панели под строкой таблицы на 1280.
  *
  * В полоске — **название слева и время справа**: время и есть то главное число,
  * ради которого человек листает маршрут (у «Сборов» на этом месте количество,
@@ -42,8 +45,6 @@ interface Props {
   canEdit: boolean
   /** отметить этап пройденным */
   onToggle: (id: string) => void
-  /** открыть карточку точки: метка, чем добираемся, расстояние */
-  onOpen: (id: string) => void
   onAdd: () => void
   /** какую точку подсветить: по её метке только что тапнули на карте */
   activeId?: string | null
@@ -52,7 +53,7 @@ interface Props {
 }
 
 export function RouteStrip({
-  points, people, perms, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
+  points, people, perms, canEdit, onToggle, onAdd, activeId, activeAt,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
   /** раскрытая точка; открыта всегда одна — лента остаётся лентой */
@@ -137,24 +138,15 @@ export function RouteStrip({
                 />
               </StripField>
 
-              {/* Метка этапа, способ передвижения и длина перегона выбираются
-                  из списков — они живут в карточке точки, и второго органа
-                  для них заводить нельзя (У-53). Здесь — то же значение
-                  и та же карточка, только цель нажатия во всю строку. */}
-              <StripField label="Метка, путь, расстояние">
-                {canEdit ? (
-                  <button
-                    type="button"
-                    onClick={() => onOpen(p.i)}
-                    aria-label={`${p.n || 'Точка'}: метка, чем добираемся, расстояние. Изменить`}
-                    className="grid min-h-11 min-w-11 place-items-center rounded-md px-2 transition-colors hover:bg-zebra/70 active:bg-zebra"
-                  >
-                    <span className="editable text-body text-ink">{meta || 'не указано'}</span>
-                  </button>
-                ) : (
-                  <span className="text-body text-ink">{meta || '—'}</span>
-                )}
-              </StripField>
+              {/* Метка этапа, способ передвижения и длина перегона правятся
+                  здесь же, на месте: кнопка-переход в карточку точки упразднена
+                  06.08.2026 вместе с самой карточкой. Тот же блок стоит в панели
+                  под строкой матрицы на широком экране (`RoutePointSetup`). */}
+              <RoutePointSetup
+                item={p}
+                canEdit={canEdit}
+                onPatch={(f) => patch(p.i, f)}
+              />
 
               <StripField label="Описание" wide>
                 <InlineText
@@ -175,6 +167,12 @@ export function RouteStrip({
                   onAddr={(v) => patch(p.i, (x) => { x.addr = v })}
                 />
               </StripField>
+
+              <RoutePointCoords
+                item={p}
+                canEdit={canEdit}
+                onPatch={(f) => patch(p.i, f)}
+              />
 
               <StripField label="Пройдено">
                 {canEdit ? (

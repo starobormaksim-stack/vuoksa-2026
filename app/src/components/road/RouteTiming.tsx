@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { Fragment, useEffect, useRef, useState, type RefObject } from 'react'
 import { Check, MapPin, MapPinPlus, Route, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Person, RoutePoint } from '@/lib/types'
@@ -12,6 +12,7 @@ import { remove, touch, update } from '@/store'
 import { scrollToSection } from '@/sections'
 import { cn } from '@/lib/utils'
 import { coordLabel, pointMeta } from './roadx'
+import { RoutePointCoords, RoutePointSetup } from './RoutePointSetup'
 
 /**
  * Попросить карту и подвести к ней страницу.
@@ -40,8 +41,12 @@ function askHere(pointId: string, mode: MapMode): void {
  * ⛔ Прежней ленты `<ol>` с ниткой между кружками здесь больше нет: она была
  * пятой формой списка в сервисе, где заказчик просил одну.
  *
- * Правится всё прямо в строке (постулат 2). Карточка точки осталась только
- * ради того, что выбирается из списка, — метка этапа и способ передвижения.
+ * Правится всё прямо в строке (постулат 2). То, что выбирается из списка —
+ * метка этапа, чем добираемся, расстояние от прошлой точки и координаты, —
+ * раскрывается кнопкой ⚙ панелью ПОД строкой и толкает таблицу вниз, ровно как
+ * настройка позиции в «Расчёте дороги» (`RoadCalc.Matrix`). Шторки точки
+ * (`RoutePointSheet`) больше нет: заказчик 06.08.2026 — «всё, что связано
+ * с настройками по конкретным позициям, выпадающим списком».
  *
  * Матрица и карта — одна вещь, а не две, и связь у них двусторонняя через
  * lib/mapfocus.ts: строка адреса наводит карту, а тап по метке на карте
@@ -59,8 +64,6 @@ interface Props {
   canEdit: boolean
   /** отметить этап пройденным */
   onToggle: (id: string) => void
-  /** открыть карточку точки: метка, чем добираемся, расстояние */
-  onOpen: (id: string) => void
   onAdd: () => void
   /** какую точку подсветить: по её метке только что тапнули на карте */
   activeId?: string | null
@@ -99,7 +102,13 @@ export function useRouteFocus(
     let pane: HTMLElement | null = wrap
     while (pane && pane.scrollHeight <= pane.clientHeight + 1) pane = pane.parentElement
     if (!pane) return
-    const top = el.offsetTop - pane.offsetTop
+    /* ⛔ `offsetTop` здесь считать нельзя: у строки он отмеряется от ближайшего
+       позиционированного предка (обёртки полоски), а у самой области прокрутки —
+       от страницы. Разность двух разных начал отсчёта всегда выходила
+       отрицательной, `scrollTop` зажимался в 0, и лента вместо подводки точки
+       прыгала к своему началу. Считаем честно: положение строки относительно
+       видимой части области плюс то, на сколько область уже прокручена. */
+    const top = el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop
     const bottom = top + el.offsetHeight
     if (top < pane.scrollTop) pane.scrollTop = top
     else if (bottom > pane.scrollTop + pane.clientHeight) pane.scrollTop = bottom - pane.clientHeight
@@ -107,10 +116,22 @@ export function useRouteFocus(
 }
 
 export function RouteTiming({
-  points, people, perms, canEdit, onToggle, onOpen, onAdd, activeId, activeAt,
+  points, people, perms, canEdit, onToggle, onAdd, activeId, activeAt,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
+  /** у какой точки раскрыта панель настройки; открыта всегда одна */
+  const [setupAt, setSetupAt] = useState('')
   useRouteFocus(box, activeId, activeAt)
+
+  /* Тап по метке на карте и «Добавить точку» обещают одно и то же: подвести
+     точку к глазам И раскрыть её. Подводит `useRouteFocus`, раскрывает вот это.
+     Без него на широком экране человек получал только подсветку строки, а поля
+     новой точки — метку этапа, чем добираемся, координаты — приходилось искать
+     кнопкой ⚙ самому. В ленте на телефоне (`RouteStrip`) раскрытие по `activeId`
+     стояло с самого начала — здесь оно теперь такое же. */
+  useEffect(() => {
+    if (activeId) setSetupAt(activeId)
+  }, [activeId, activeAt])
 
   const patch = (id: string, f: (p: RoutePoint) => void) =>
     update((s) => {
@@ -182,124 +203,156 @@ export function RouteTiming({
         {points.map((p, idx) => {
           const meta = pointMeta(p)
           const bg = idx % 2 === 1 ? 'zebra' : 'surface'
+          /* Панель открывается и участнику: он читает те же поля документа,
+             а органы внутри сами встают в режим чтения (`can={canEdit}`). */
+          const setup = setupAt === p.i
           return (
-            <DataRow
-              key={p.i}
-              zebra={idx % 2 === 1}
-              fresh={p.i === activeId}
-              dataHit={p.i}
-            >
-              <DataCell sticky bg={bg} align="left">
-                <span className="flex w-full items-baseline gap-2">
-                  <span className="w-14 shrink-0">
+            <Fragment key={p.i}>
+              <DataRow
+                zebra={idx % 2 === 1}
+                fresh={p.i === activeId}
+                dataHit={p.i}
+              >
+                <DataCell sticky bg={bg} align="left">
+                  <span className="flex w-full items-baseline gap-2">
+                    <span className="w-14 shrink-0">
+                      <InlineText
+                        value={p.time}
+                        onSave={(v) => patch(p.i, (x) => { x.time = v })}
+                        can={canEdit}
+                        label="Время"
+                        placeholder="··:··"
+                        className="tnum text-note font-bold text-accent-text"
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <InlineText
+                        value={p.n}
+                        onSave={(v) => patch(p.i, (x) => { x.n = v })}
+                        can={canEdit}
+                        required
+                        label="Название точки"
+                        placeholder="Например, Приозерск: закупка"
+                        className={cn(
+                          'text-body leading-snug font-semibold text-ink',
+                          p.done && 'line-through',
+                        )}
+                      />
+                    </span>
+                  </span>
+
+                  {canEdit || p.c ? (
                     <InlineText
-                      value={p.time}
-                      onSave={(v) => patch(p.i, (x) => { x.time = v })}
+                      value={p.c}
+                      onSave={(v) => patch(p.i, (x) => { x.c = v })}
                       can={canEdit}
-                      label="Время"
-                      placeholder="··:··"
-                      className="tnum text-note font-bold text-accent-text"
+                      multiline
+                      label="Описание точки"
+                      placeholder="Что здесь важно не забыть"
+                      className="text-note leading-snug text-muted"
                     />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <InlineText
-                      value={p.n}
-                      onSave={(v) => patch(p.i, (x) => { x.n = v })}
-                      can={canEdit}
-                      required
-                      label="Название точки"
-                      placeholder="Например, Приозерск: закупка"
-                      className={cn(
-                        'text-body leading-snug font-semibold text-ink',
-                        p.done && 'line-through',
-                      )}
-                    />
-                  </span>
-                </span>
+                  ) : null}
 
-                {canEdit || p.c ? (
-                  <InlineText
-                    value={p.c}
-                    onSave={(v) => patch(p.i, (x) => { x.c = v })}
-                    can={canEdit}
-                    multiline
-                    label="Описание точки"
-                    placeholder="Что здесь важно не забыть"
-                    className="text-note leading-snug text-muted"
-                  />
-                ) : null}
+                  {meta ? (
+                    <span className="tnum mt-1 block text-micro leading-snug font-medium text-muted">
+                      {meta}
+                    </span>
+                  ) : null}
 
-                {meta ? (
-                  <span className="tnum mt-1 block text-micro leading-snug font-medium text-muted">
-                    {meta}
-                  </span>
-                ) : null}
-
-                <PlaceRow
-                  point={p}
-                  canEdit={canEdit}
-                  onAddr={(v) => patch(p.i, (x) => { x.addr = v })}
-                />
-              </DataCell>
-
-              <DataCell>
-                {canEdit ? (
-                  <button
-                    type="button"
-                    onClick={() => onToggle(p.i)}
-                    aria-label={`${p.n}: ${p.done ? 'этап пройден' : 'этап впереди'}. Отметить`}
-                    aria-pressed={p.done}
-                    className="grid size-11 shrink-0 place-items-center rounded-xl transition-colors hover:bg-zebra"
-                  >
-                    <Dot done={p.done} />
-                  </button>
-                ) : (
-                  <span className="grid size-11 shrink-0 place-items-center">
-                    <Dot done={p.done} />
-                  </span>
-                )}
-              </DataCell>
-
-              {people.map((who) => (
-                <DataCell key={who.id} align="center" className="px-1">
-                  <Rider
-                    on={!!p.o?.[who.id]}
-                    /* Отметиться может и участник без права правки точки:
-                       это его собственная отметка, за других он не отмечает. */
-                    can={perms.canMark(who.id)}
-                    label={`${who.name} едет точкой «${p.n || 'без названия'}»`}
-                    onSet={(v) =>
-                      patch(p.i, (x) => {
-                        const o = { ...(x.o || {}) }
-                        if (v) o[who.id] = 1
-                        else delete o[who.id]
-                        x.o = o
-                      })
-                    }
+                  <PlaceRow
+                    point={p}
+                    canEdit={canEdit}
+                    onAddr={(v) => patch(p.i, (x) => { x.addr = v })}
                   />
                 </DataCell>
-              ))}
 
-              <DataCell className="px-1">
-                <RowActions>
+                <DataCell>
                   {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggle(p.i)}
+                      aria-label={`${p.n}: ${p.done ? 'этап пройден' : 'этап впереди'}. Отметить`}
+                      aria-pressed={p.done}
+                      className="grid size-11 shrink-0 place-items-center rounded-xl transition-colors hover:bg-zebra"
+                    >
+                      <Dot done={p.done} />
+                    </button>
+                  ) : (
+                    <span className="grid size-11 shrink-0 place-items-center">
+                      <Dot done={p.done} />
+                    </span>
+                  )}
+                </DataCell>
+
+                {people.map((who) => (
+                  <DataCell key={who.id} align="center" className="px-1">
+                    <Rider
+                      on={!!p.o?.[who.id]}
+                      /* Отметиться может и участник без права правки точки:
+                         это его собственная отметка, за других он не отмечает. */
+                      can={perms.canMark(who.id)}
+                      label={`${who.name} едет точкой «${p.n || 'без названия'}»`}
+                      onSet={(v) =>
+                        patch(p.i, (x) => {
+                          const o = { ...(x.o || {}) }
+                          if (v) o[who.id] = 1
+                          else delete o[who.id]
+                          x.o = o
+                        })
+                      }
+                    />
+                  </DataCell>
+                ))}
+
+                <DataCell className="px-1">
+                  <RowActions>
+                    {/* Смотреть поля точки может каждый — это не правка,
+                        а просмотр документа (постулат 4). Кнопки действий
+                        ниже остаются по правам. */}
                     <RowAction
                       icon={Settings2}
-                      label={`${p.n}: метка, чем добираемся, расстояние`}
-                      onClick={() => onOpen(p.i)}
+                      label={`${p.n || 'без названия'}: метка, чем добираемся, расстояние, координаты`}
+                      onClick={() => setSetupAt(setupAt === p.i ? '' : p.i)}
                     />
-                  ) : null}
-                  {canEdit ? (
-                    <RowAction
-                      icon={Trash2}
-                      tone="danger"
-                      label={`Убрать точку «${p.n}»`}
-                      onClick={() => drop(p)}
-                    />
-                  ) : null}
-                </RowActions>
-              </DataCell>
-            </DataRow>
+                    {canEdit ? (
+                      <RowAction
+                        icon={Trash2}
+                        tone="danger"
+                        label={`Убрать точку «${p.n}»`}
+                        onClick={() => drop(p)}
+                      />
+                    ) : null}
+                  </RowActions>
+                </DataCell>
+              </DataRow>
+
+              {/* Панель настройки — строка-вставка во всю ширину сетки. Оверлея
+                  нет: таблица просто едет вниз, как раскрытая полоска в ленте
+                  (образец — `RoadCalc.Matrix`). */}
+              {setup ? (
+                <DataRow zebra>
+                  <DataCell align="left" className="col-span-full px-4 py-3">
+                    {/* ⚠️ `w-full` обязателен: у ячейки `align="left"` стоит
+                        `items-start`, и без явной ширины полки настройки сжались
+                        бы по содержимому вместо того, чтобы занять строку.
+                        Потолок ширины — чтобы список выбора не растягивался
+                        на весь экран. */}
+                    <div className="w-full max-w-3xl">
+                      <RoutePointSetup
+                        item={p}
+                        canEdit={canEdit}
+                        onPatch={(f) => patch(p.i, f)}
+                      />
+                      <RoutePointCoords
+                        item={p}
+                        canEdit={canEdit}
+                        onPatch={(f) => patch(p.i, f)}
+                      />
+                    </div>
+                  </DataCell>
+                </DataRow>
+              ) : null}
+            </Fragment>
           )
         })}
       </DataTable>
