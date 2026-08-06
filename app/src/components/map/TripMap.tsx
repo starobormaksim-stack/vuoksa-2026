@@ -19,7 +19,7 @@ import {
 } from '@/lib/mapfocus'
 import { mapCenter, mapPoints } from '@/components/road/roadx'
 import { goSection } from '@/lib/jump'
-import { Btn } from '@/components/flops'
+import { Btn, useIsDesktop } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { GoogleRouteMap, type MapCard, type MapDest } from './GoogleRouteMap'
 import { OsmRouteMap } from './OsmRouteMap'
@@ -167,6 +167,12 @@ export function TripMap({ S, perms, className }: Props) {
   const canEdit = perms.isEditor()
   const points = mapPoints(S)
   const center = mapCenter(S)
+  /**
+   * Где показывать карточку метки. На широком экране — плавающим окном у самой
+   * метки, как было. На телефоне — полосой под картой: карточка выше карты,
+   * и над меткой её срезает `overflow-hidden` блока (У-112).
+   */
+  const desktop = useIsDesktop()
 
   /* Нитки маршрута и линии по настоящим дорогам.
      ⚠️ Считаются ЗДЕСЬ, до всех ранних возвратов: `useRoadShapes` — хук, а хук
@@ -561,6 +567,38 @@ export function TripMap({ S, perms, className }: Props) {
   /* ── карточка метки ── */
   const shownId = pinned ?? hover
   const shown = shownId ? points.find((p) => p.i === shownId) : null
+  /* Сама карточка. Кто её держит — карта или полоса под ней — решается ниже
+     по ширине экрана, но собирается она в одном месте и одна. */
+  const cardNode = shown ? (
+    <MapPointCard
+      key={shown.i}
+      point={shown}
+      index={points.findIndex((p) => p.i === shown.i) + 1}
+      canEdit={canEdit}
+      transports={S.transport}
+      busy={addrBusy === shown.i}
+      fresh={fresh === shown.i}
+      flat={!desktop}
+      onPatch={(f) => patch(shown.i, f)}
+      onKeep={() => setFresh(null)}
+      onDelete={() => {
+        closeCard()
+        remove('route', shown.i)
+        toast(`«${shown.n}» убрана из маршрута`)
+      }}
+      onClose={closeCard}
+      onPin={() => {
+        window.clearTimeout(hoverOff.current)
+        setPinned(shown.i)
+      }}
+      onPointerEnter={() => window.clearTimeout(hoverOff.current)}
+      onPointerLeave={() => {
+        if (pinned) return
+        hoverOff.current = window.setTimeout(() => setHover(null), HOVER_OFF_MS)
+      }}
+    />
+  ) : null
+
   const card: MapCard | null = shown
     ? {
         id: shown.i,
@@ -569,34 +607,10 @@ export function TripMap({ S, perms, className }: Props) {
         /* Вид подводим только под карточку, открытую насовсем: от наведения
            мышью карта не должна уезжать из-под руки. */
         pan: pinned === shown.i,
-        node: (
-          <MapPointCard
-            key={shown.i}
-            point={shown}
-            index={points.findIndex((p) => p.i === shown.i) + 1}
-            canEdit={canEdit}
-            transports={S.transport}
-            busy={addrBusy === shown.i}
-            fresh={fresh === shown.i}
-            onPatch={(f) => patch(shown.i, f)}
-            onKeep={() => setFresh(null)}
-            onDelete={() => {
-              closeCard()
-              remove('route', shown.i)
-              toast(`«${shown.n}» убрана из маршрута`)
-            }}
-            onClose={closeCard}
-            onPin={() => {
-              window.clearTimeout(hoverOff.current)
-              setPinned(shown.i)
-            }}
-            onPointerEnter={() => window.clearTimeout(hoverOff.current)}
-            onPointerLeave={() => {
-              if (pinned) return
-              hoverOff.current = window.setTimeout(() => setHover(null), HOVER_OFF_MS)
-            }}
-          />
-        ),
+        /* На телефоне карта карточку не держит — она стоит полосой ниже.
+           Карте всё равно сказано, какая метка открыта: подвести к ней вид
+           нужно и там, иначе метка остаётся за краем видимой части. */
+        node: desktop ? cardNode : null,
       }
     : null
 
@@ -634,7 +648,13 @@ export function TripMap({ S, perms, className }: Props) {
 
   return (
     <>
-      <Card className={className}>
+      {/* ⚠️ `h-auto` обязателен, пока внизу стоит полоса карточки. На телефоне
+          высота блока задана числом снаружи (`h-[460px]` в TripSection), и без
+          снятия этой высоты полоса не растянула бы блок, а отняла бы место
+          у самой карты — та схлопнулась бы под свой `min-h-[280px]` и ниже.
+          `cn` здесь не украшение: только tailwind-merge умеет погасить
+          `h-[460px]` из чужого класса. */}
+      <Card className={cn(className, !desktop && cardNode && 'h-auto')}>
         <div className="flex h-full flex-col">
           <MapSearch near={center} onPick={onPick} hint={searchHint} />
 
@@ -686,6 +706,17 @@ export function TripMap({ S, perms, className }: Props) {
             />
           ) : (
             <OsmRouteMap {...mapProps} />
+          )}
+
+          {/* Карточка открытой метки на телефоне — полосой ПОД картой.
+              Плавающим окном над меткой она там не помещается: 366 px карточки
+              против 280 px карты, и блок с `overflow-hidden` срезал ей верх
+              вместе с рядом техники (У-112). Полоса стоит в потоке, поэтому
+              блок под неё растёт, а не режет. На широком экране этой полосы
+              нет вовсе — там карточка висит у своей метки и помещается
+              целиком (постулат 6: лишнего органа на десктопе не заводим). */}
+          {!desktop && cardNode && (
+            <div className="shrink-0 border-t border-line">{cardNode}</div>
           )}
 
           <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-t border-line px-3 py-2">

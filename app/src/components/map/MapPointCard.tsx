@@ -43,6 +43,15 @@ interface Props {
    * а не просто закрывает карточку.
    */
   fresh: boolean
+  /**
+   * Карточка стоит ПОЛОСОЙ под картой, а не плавающим окном у метки.
+   *
+   * Так она живёт на телефоне: карточка 366 px выше карты 280 px, и в блоке
+   * с `overflow-hidden` ей срезало верх — до ряда техники палец не доходил
+   * вовсе (У-112, замер 06.08.2026 на 390). Полосе рамка и тень не нужны:
+   * её край рисует сам блок карты, а плавающему окну — нужны.
+   */
+  flat?: boolean
   onPatch: (f: (p: RoutePoint) => void) => void
   /** точка перестала быть новой: название сохранили, Esc её больше не убирает */
   onKeep: () => void
@@ -62,7 +71,7 @@ const LEG_ICONS: Record<LegMode, LucideIcon> = {
 }
 
 export function MapPointCard({
-  point, index, canEdit, transports, busy, fresh,
+  point, index, canEdit, transports, busy, fresh, flat,
   onPatch, onKeep, onDelete, onClose, onPin, onPointerEnter, onPointerLeave,
 }: Props) {
   /**
@@ -99,7 +108,10 @@ export function MapPointCard({
       onPointerDown={onPin}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
-      className="w-64 rounded-xl border border-line bg-surface p-2 shadow-lg"
+      className={cn(
+        'bg-surface p-2',
+        flat ? 'w-full' : 'w-64 rounded-xl border border-line shadow-lg',
+      )}
     >
       <div className="flex items-start gap-2">
         <span

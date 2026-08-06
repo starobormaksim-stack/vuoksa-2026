@@ -438,7 +438,10 @@ export function GoogleRouteMap({
       {/* z-0 у полотна обязателен: карта раскладывает свои слои собственными
           z-index, и без отдельного слоя они перекрыли бы карточку метки. */}
       <div ref={box} className="absolute inset-0 z-0 bg-zebra" />
-      {card && at && (
+      {/* `card.node` может быть пустым: на телефоне карточку держит не карта,
+          а полоса под ней (см. TripMap.tsx, У-112). Метка при этом карте всё
+          равно названа — вид к ней подводится. */}
+      {card?.node && at && (
         <div
           className={cn('absolute z-10 -translate-x-1/2', !at.under && '-translate-y-full')}
           style={{ left: at.x, top: at.y + (at.under ? 22 : -22) }}

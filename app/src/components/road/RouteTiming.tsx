@@ -98,10 +98,24 @@ export function useRouteFocus(
     const wrap = box.current
     const el = wrap?.querySelector<HTMLElement>(`[data-hit="${CSS.escape(activeId)}"]`)
     if (!wrap || !el) return
-    /* Своя прокрутка может быть не у самого списка, а у обёртки-карточки. */
+    /* Своя прокрутка может быть не у самого списка, а у обёртки-карточки.
+       ⛔ Страница своей прокруткой ленты НЕ считается. На телефоне лента стоит
+       в блоке `overflow-clip`, прокручиваемых предков у неё нет вовсе, и подъём
+       доходил до самого `<html>`: тап по метке на карте уносил страницу к ленте
+       «Дороги» (замер 06.08.2026 на 390: `scrollY` 734 → 18217), а карта вместе
+       с карточкой метки уезжала из вида. Это тот же договор, ради которого
+       здесь нет `scrollIntoView` (У-109): карта рядом остаётся на месте. */
+    const страница: Element | null = document.scrollingElement ?? document.documentElement
     let pane: HTMLElement | null = wrap
-    while (pane && pane.scrollHeight <= pane.clientHeight + 1) pane = pane.parentElement
-    if (!pane) return
+    while (
+      pane &&
+      pane !== страница &&
+      pane !== document.body &&
+      pane.scrollHeight <= pane.clientHeight + 1
+    ) {
+      pane = pane.parentElement
+    }
+    if (!pane || pane === страница || pane === document.body) return
     /* ⛔ `offsetTop` здесь считать нельзя: у строки он отмеряется от ближайшего
        позиционированного предка (обёртки полоски), а у самой области прокрутки —
        от страницы. Разность двух разных начал отсчёта всегда выходила
