@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --mode offline && node scripts/offline-into-dist.mjs",
     "build:offline": "tsc -b && vite build --mode offline",
     "lint": "oxlint",
     "preview": "vite preview"

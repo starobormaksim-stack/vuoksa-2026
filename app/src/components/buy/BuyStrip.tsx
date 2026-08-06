@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Check, Plus, Trash2 } from 'lucide-react'
 import type { Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
@@ -54,6 +54,12 @@ export function BuyStrip({
   rows, S, perms, people, fresh, onPatch, onDelete, onInsert, onFreshEnd, canAdd,
 }: Props) {
   const [openId, setOpenId] = useState('')
+  /* Успели ли что-то вписать в новую строку. ⛔ Читать здесь `p.n` нельзя:
+     обработчик замкнут на тот рендер, где названия ещё нет, и строка,
+     в которую человек только что вписал название, удалялась как «пустая»
+     (урок У-100). В матрице (`BuyRow`) это давно сделано ссылкой — здесь
+     ссылка одна на список, потому что свежая строка бывает только одна. */
+  const saved = useRef(false)
 
   return (
     <div role="list">
@@ -109,11 +115,20 @@ export function BuyStrip({
                 autoEdit={isFresh}
                 placeholder={isFresh ? 'Что купить' : undefined}
                 onSave={(v) => {
+                  saved.current = true
                   onPatch(p.i, (x) => { saveNameOrUrl(x, v) })
                   const u = safeUrl(v)
                   if (u) grab(u)
                 }}
-                onEditEnd={isFresh ? () => onFreshEnd(p.i, !!p.n) : undefined}
+                onEditEnd={
+                  isFresh
+                    ? () => {
+                        const ok = saved.current
+                        saved.current = false
+                        onFreshEnd(p.i, ok)
+                      }
+                    : undefined
+                }
                 className="text-body font-semibold text-ink"
               />
               {p.url ? (

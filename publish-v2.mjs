@@ -70,8 +70,11 @@ if (fs.existsSync(assets)) {
 }
 copyDir(dist, ROOT)
 
-/* ── 3. Офлайн-файл рядом ── */
+/* ── 3. Офлайн-файл рядом ──
+   ⛔ Имя латиницей и такое же, как в `app/src/lib/offline.ts` и в
+   `app/scripts/offline-into-dist.mjs`. Старое «Вуокса-2026.html» осталось
+   у первой версии в `v1/` и трогать его незачем (У-101). */
 say('\nОфлайн-файл в корень:')
-copy(offline, path.join(ROOT, 'Вуокса-2026.html'))
+copy(offline, path.join(ROOT, 'pine-offline.html'))
 
 say('\nГотово. Дальше: git add -A && git commit && git push')

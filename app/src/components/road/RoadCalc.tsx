@@ -859,8 +859,14 @@ export function RoadCalc({
     return (
       <DataRow key={l.key} zebra={l.head || l.total || zebra} fresh={l.fresh} dataHit={l.hit}>
         <DataCell sticky bg={bg} align="left" head={l.head}>
-          <span className="flex w-full items-start gap-1">
-            <span className="min-w-0 flex-1">
+          {/* ⚠️ Строка переносится, а текст держит наименьшую ширину: липкая
+              колонка на 390 всего 176 px, и две кнопки действий (90 px) съедали
+              у «Платит» всё, кроме 45 px — «Скинулись поровну» превращалось
+              в «Ски…» (У-81). Пусть кнопки уедут под текст, но кто платит
+              будет написан целиком. На 1280 колонка 328 px, места хватает
+              обоим — там перенос не случается. */}
+          <span className="flex w-full flex-wrap items-start gap-1">
+            <span className="min-w-0 flex-1 basis-40">
               {l.head ? (
                 <span className="text-micro font-bold tracking-wider text-muted uppercase">
                   {l.title}

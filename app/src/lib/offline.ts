@@ -36,8 +36,16 @@ import type { State } from './types.ts'
 import { docKey } from './trips.ts'
 import { fmtDate } from '../format.ts'
 
-/** Имя офлайн-сборки рядом с index.html (его кладёт publish-v2.mjs). */
-const OFFLINE_FILE = 'Вуокса-2026.html'
+/**
+ * Имя офлайн-сборки рядом с index.html.
+ *
+ * ⛔ Латиницей и ровно такое же, как в `app/scripts/offline-into-dist.mjs`:
+ * файл кладут в `app/dist` оба пути публикации — сборка Cloudflare
+ * (`npm run build`) и `publish-v2.mjs`. До 06.08.2026 он назывался
+ * «Вуокса-2026.html» и лежал только в корне репозитория, которого боевой
+ * адрес не раздаёт: копия скачивалась битой (У-101).
+ */
+const OFFLINE_FILE = 'pine-offline.html'
 
 /** Что скрипт `pine-boot` рассказывает приложению о файле, в котором оно живёт. */
 interface OfflineInfo {
@@ -250,7 +258,14 @@ async function template(): Promise<string> {
   if (w?.__PINE_HTML__) return w.__PINE_HTML__
   const res = await fetch('./' + encodeURIComponent(OFFLINE_FILE), { cache: 'no-store' })
   if (!res.ok) throw new Error(String(res.status))
-  return res.text()
+  const html = await res.text()
+  /* ⛔ Ответ 200 ещё не значит, что приехала заготовка: на неизвестный путь край
+     отдаёт SPA-заглушку — тот же index.html, и с виду всё хорошо. Отличить их
+     просто: самодостаточный файл не ссылается наружу ни одним тегом, а заглушка
+     тянет `/assets/*.js`. Без этой проверки человек уносил в лес копию, которая
+     открывается пустой страницей (У-101). */
+  if (/(src|href)="\.?\/assets\//.test(html)) throw new Error('это не заготовка, а страница сайта')
+  return html
 }
 
 /** Имя скачиваемого файла: название поездки и сегодняшняя дата. */
