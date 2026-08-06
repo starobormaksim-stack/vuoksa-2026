@@ -2,9 +2,11 @@
  * Расстояния по дорогам между точками маршрута.
  *
  * Считает публичный маршрутизатор OSRM (router.project-osrm.org) — без ключа
- * и без регистрации. Мы спрашиваем у него одну вещь: сколько километров по дорогам
- * от каждой точки маршрута до следующей. Никакой геометрии, никаких подсказок —
- * `overview=false`, чтобы ответ был коротким.
+ * и без регистрации. Спрашиваем у него две разные вещи, и каждая своим запросом:
+ *   `roadLegs` — сколько километров по дорогам от точки до следующей. Ответ
+ *     нужен короткий, поэтому `overview=false`: геометрия там лишний вес;
+ *   `roadShape` — сама линия по дорогам, `overview=full&geometries=geojson`.
+ *     Она нужна только чтобы нарисовать нитку, и в документ не попадает.
  *
  * Правила этого файла:
  *   ничего не пишет в документ — только считает и возвращает числа;
@@ -44,7 +46,11 @@ const BASE = 'https://router.project-osrm.org/route/v1/driving/'
 /** Ответ OSRM в том объёме, который нам нужен. */
 interface OsrmAnswer {
   code?: string
-  routes?: { legs?: { distance?: number }[] }[]
+  routes?: {
+    legs?: { distance?: number }[]
+    /** приезжает только при `geometries=geojson`; координаты в порядке [долгота, широта] */
+    geometry?: { coordinates?: [number, number][] }
+  }[]
 }
 
 /** Есть ли у точки координаты (без них маршрутизатору её показать нечем). */
@@ -86,6 +92,65 @@ export async function roadLegs(points: OsrmPoint[], timeoutMs = TIMEOUT_MS): Pro
   } catch {
     /* нет сети, отказ сервиса, обрыв по времени — просто не считаем */
     return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/* ─────────── геометрия линии ─────────── */
+
+/** Точка ломаной по дорогам: широта и долгота, в порядке Leaflet и Google. */
+export type ShapePoint = [number, number]
+
+/**
+ * Линия маршрута ПО НАСТОЯЩИМ ДОРОГАМ между точками, по порядку.
+ *
+ * Заказчик 06.08.2026: «Google-карты простраивали реальный маршрут». До этой
+ * правки нитка на карте шла прямой из точки в точку — через леса и залив, —
+ * а километры при этом считались по дорогам (`roadLegs`). Картинка расходилась
+ * с числом, и верить приходилось числу.
+ *
+ * ⛔ Возвращённая ломаная в документ НЕ кладётся и класться не должна: это
+ * несколько тысяч координат на каждую нитку, а форму хранения потом не
+ * поменять (постулат 4). Линия живёт в памяти вкладки, ровно до перезагрузки.
+ *
+ * `null` — честный отказ: точек меньше двух, нет сети, сервис не ответил или
+ * ответил непонятным. Вызывающий рисует прямую и ГОВОРИТ, почему она прямая
+ * (постулат 5): молчаливого отката не бывает.
+ */
+export async function roadShape(
+  points: OsrmPoint[],
+  timeoutMs = TIMEOUT_MS,
+): Promise<ShapePoint[] | null> {
+  const pts = points.filter(placed).slice(0, MAX_POINTS)
+  if (pts.length < 2) return null
+
+  const url =
+    `${BASE}${pts.map((p) => `${p.lon},${p.lat}`).join(';')}` +
+    '?overview=full&geometries=geojson'
+
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const r = await fetch(url, { signal: ctl.signal, headers: { Accept: 'application/json' } })
+    if (!r.ok) return null
+    const j = (await r.json()) as OsrmAnswer
+    const coords = j.routes?.[0]?.geometry?.coordinates
+    if (j.code !== 'Ok' || !Array.isArray(coords) || coords.length < 2) return null
+
+    const out: ShapePoint[] = []
+    for (const c of coords) {
+      /* GeoJSON отдаёт [долгота, широта] — обе карты ждут обратного порядка. */
+      const lon = c?.[0]
+      const lat = c?.[1]
+      if (typeof lat !== 'number' || typeof lon !== 'number') continue
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
+      out.push([lat, lon])
+    }
+    return out.length > 1 ? out : null
+  } catch {
+    /* нет сети, отказ сервиса, обрыв по времени — линия останется прямой */
+    return null
   } finally {
     clearTimeout(timer)
   }

@@ -8,6 +8,7 @@ import {
   type MapTone,
 } from './marks'
 import { PAN_DOWN, type MapCard, type MapDest, type Spot } from './GoogleRouteMap'
+import { threadKey, type RoadShapes } from './shapes'
 
 /**
  * Карта маршрута на OpenStreetMap (Leaflet).
@@ -30,6 +31,8 @@ interface Props {
   points: RoutePoint[]
   /** техника поездки — по ней раскладываются нитки и тона */
   transports: Transport[]
+  /** линии ниток по настоящим дорогам; чего нет — рисуется прямой (см. shapes.ts) */
+  shapes?: RoadShapes
   centerLat: number
   centerLon: number
   canEdit: boolean
@@ -77,7 +80,7 @@ function destIcon(name: string) {
 }
 
 export function OsmRouteMap({
-  points, transports, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
+  points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
   dest, onMoveDest, focusId, focusAt, fitAt, lookAt, card, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
@@ -134,6 +137,12 @@ export function OsmRouteMap({
     points.map((p) => `${p.i}:${p.lat}:${p.lon}:${p.done ? 1 : 0}:${p.n}:${p.tr ?? ''}`).join('|') +
     '#' +
     transports.map((t) => `${t.i}:${t.leg}`).join(',')
+  /* Линии приезжают позже точек — слой обязан пересобраться, когда они пришли.
+     Отдельным слепком, а не внутри `sig`: на `sig` висит ещё и покачивание метки
+     по просьбе из ленты, и от прихода линии оно повторяться не должно. */
+  const shapeSig = shapes
+    ? [...shapes.entries()].map(([k, v]) => `${k}:${v.length}`).join(',')
+    : ''
   useEffect(() => {
     const m = map.current
     const g = layer.current
@@ -145,12 +154,17 @@ export function OsmRouteMap({
     const styles = markStyles(list)
 
     /* Нитки: своя на каждую технику. Тон и рисунок линии идут парой — по одному
-       цвету маршруты не различить (WCAG 1.4.1). */
+       цвету маршруты не различить (WCAG 1.4.1).
+
+       Ломаная по дорогам берётся из `shapes`, если её успели спросить. Нет её —
+       линия идёт прямой из точки в точку, как было всегда, а причину человек
+       читает под картой (постулат 5). */
     list
       .filter((t) => t.points.length > 1)
       .forEach((t) => {
+        const road = shapes?.get(threadKey(t))
         L.polyline(
-          t.points.map((p) => [p.lat as number, p.lon as number]),
+          road ?? t.points.map((p) => [p.lat as number, p.lon as number] as [number, number]),
           {
             color: t.tone.fill,
             weight: 3,
@@ -188,7 +202,7 @@ export function OsmRouteMap({
       fitted.current = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, canEdit, centerLat, centerLon])
+  }, [sig, shapeSig, canEdit, centerLat, centerLon])
 
   /* ── метка конечной точки ──
      Живёт в trip.places, а не в route, и рисуется иначе: это цель поездки.

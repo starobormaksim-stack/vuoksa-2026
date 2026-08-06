@@ -1,7 +1,9 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Car, Footprints, Sailboat, Trash2, X, type LucideIcon } from 'lucide-react'
+import { Car, Footprints, Plus, Sailboat, Trash2, X, type LucideIcon } from 'lucide-react'
 import type { LegMode, RoutePoint, Transport } from '@/lib/types'
 import { InlineText } from '@/components/flops'
+import { requestAdd } from '@/lib/addnew'
+import { travels } from '@/components/road/roadx'
 import { cn } from '@/lib/utils'
 import { toneAt, COMMON_TONE, type MapTone } from './marks'
 
@@ -76,6 +78,20 @@ export function MapPointCard({
   }
 
   const chosen = point.tr ? transports.find((t) => t.i === point.tr) : null
+
+  /**
+   * Что предлагать у точки: только ту технику, что едет.
+   *
+   * ⚠️ Номер `idx` берётся ИСХОДНЫЙ, из `S.transport`: тон нитки считается по
+   * месту в этом списке (`toneAt`), и после фильтра кружок в карточке взял бы
+   * чужой цвет — тот, каким на карте нарисована другая техника.
+   *
+   * Уже выбранная техника остаётся в ряду всегда, даже если ездить она перестала:
+   * иначе снять привязку было бы нечем (постулат 4).
+   */
+  const offered = transports
+    .map((t, idx) => ({ t, idx }))
+    .filter(({ t }) => travels(t) || chosen?.i === t.i)
 
   return (
     <div
@@ -154,7 +170,11 @@ export function MapPointCard({
         />
       </div>
 
-      {canEdit && transports.length > 0 && (
+      {/* Ряд техники стоит и тогда, когда техники в поездке ещё ни одной: заказчик
+          06.08.2026 — «Дать возможность добавлять автотранспорт, и он появляется
+          в списке, когда я указываю точку». Пустой ряд с одним «＋» и есть эта
+          возможность; без него завести машину прямо от точки было бы нечем. */}
+      {canEdit && (
         <div className="mt-2 border-t border-line pt-2 pl-8">
           <div className="flex flex-wrap items-center gap-1">
             <TrBtn
@@ -167,7 +187,7 @@ export function MapPointCard({
                 })
               }
             />
-            {transports.map((t, idx) => (
+            {offered.map(({ t, idx }) => (
               <TrBtn
                 key={t.i}
                 tone={toneAt(idx)}
@@ -184,8 +204,14 @@ export function MapPointCard({
                 }
               />
             ))}
+            {/* Заводит строку техники её собственный раздел и уводит туда человека
+                (`requestAdd` из lib/addnew.ts): правила создания живут в одном
+                месте, второй их копии здесь не заводится. */}
+            <AddTrBtn onClick={() => requestAdd('fuel')} />
           </div>
-          <p className="mt-1 text-micro text-muted">{chosen ? chosen.n : 'Общая точка'}</p>
+          <p className="mt-1 text-micro text-muted">
+            {chosen ? chosen.n : transports.length > 0 ? 'Общая точка' : 'Техники в поездке пока нет'}
+          </p>
         </div>
       )}
 
@@ -259,6 +285,33 @@ function TrBtn({
       style={{ background: tone.fill, color: tone.text }}
     >
       {Icon ? <Icon size={16} strokeWidth={1.75} aria-hidden /> : null}
+    </button>
+  )
+}
+
+/**
+ * «＋ Техника» — завести новую машину или лодку прямо от точки.
+ *
+ * Контуром, а не заливкой: рядом стоят кружки уже заведённой техники, и новый
+ * залитый кружок читался бы как ещё одна из них. Размер и невидимая зона нажатия
+ * те же, что у соседей, — ряд обязан выглядеть одним рядом.
+ */
+function AddTrBtn({ onClick }: { onClick: () => void }) {
+  const label = 'Добавить технику — заведём её в «Дороге»'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'relative grid size-8 shrink-0 place-items-center rounded-full transition-colors',
+        'border border-dashed border-line text-muted',
+        'hover:border-accent hover:text-accent-text active:scale-95',
+        'before:absolute before:-inset-1.5 before:content-[""]',
+      )}
+    >
+      <Plus size={16} strokeWidth={1.75} aria-hidden />
     </button>
   )
 }

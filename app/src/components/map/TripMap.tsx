@@ -27,6 +27,7 @@ import { RouteMarkSheet } from './RouteMarkSheet'
 import { MapSearch } from './MapSearch'
 import { MapPointCard } from './MapPointCard'
 import { leafletDash, threads, type Thread } from './marks'
+import { useRoadShapes } from './shapes'
 
 /**
  * Карта поездки — правый из двух блоков раздела «Поездка», рядом с обложкой
@@ -166,6 +167,14 @@ export function TripMap({ S, perms, className }: Props) {
   const canEdit = perms.isEditor()
   const points = mapPoints(S)
   const center = mapCenter(S)
+
+  /* Нитки маршрута и линии по настоящим дорогам.
+     ⚠️ Считаются ЗДЕСЬ, до всех ранних возвратов: `useRoadShapes` — хук, а хук
+     нельзя звать после `return` (у скачанной копии карты нет вовсе, и возврат
+     ниже случается). В самой копии линии не спрашиваются: `copy` их гасит,
+     ровно как и отсутствие сети. */
+  const list = threads(points, S.transport)
+  const road = useRoadShapes(list, live && !copy)
 
   const [focus, setFocus] = useState<MapRequest | null>(null)
   /** какой точке ждём координаты: следующий тап по карте отдаст их именно ей */
@@ -594,6 +603,7 @@ export function TripMap({ S, perms, className }: Props) {
   const mapProps = {
     points,
     transports: S.transport,
+    shapes: road.shapes,
     centerLat: center.lat,
     centerLon: center.lon,
     canEdit,
@@ -621,8 +631,6 @@ export function TripMap({ S, perms, className }: Props) {
       : waiting
         ? `Выберите — сюда встанет «${waiting.n}»`
         : 'Выберите — поставим новую точку маршрута'
-
-  const list = threads(points, S.transport)
 
   return (
     <>
@@ -682,6 +690,11 @@ export function TripMap({ S, perms, className }: Props) {
 
           <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-t border-line px-3 py-2">
             <Legend list={list} S={S} />
+
+            {/* Почему линия прямая — словами, а не догадкой (постулат 5, У-32).
+                Молчаливый откат заказчик читает как «сервис сломан», и он прав:
+                прямая через залив выглядит ровно как ошибка расчёта. */}
+            {road.note && <p className="w-full text-micro text-muted">{road.note}</p>}
 
             {waiting ? (
               <>

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import {
   destPinEl, googleDash, markStyles, pointPinEl, threads, type MapTone,
 } from './marks'
+import { threadKey, type RoadShapes } from './shapes'
 
 /**
  * Карта маршрута на Google Maps.
@@ -65,6 +66,8 @@ interface Props {
   points: RoutePoint[]
   /** техника поездки — по ней раскладываются нитки и тона */
   transports: Transport[]
+  /** линии ниток по настоящим дорогам; чего нет — рисуется прямой (см. shapes.ts) */
+  shapes?: RoadShapes
   /** куда смотреть, если точек на карте ещё нет */
   centerLat: number
   centerLon: number
@@ -138,7 +141,7 @@ function gmaps(): typeof google.maps {
 }
 
 export function GoogleRouteMap({
-  points, transports, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
+  points, transports, shapes, centerLat, centerLon, canEdit, onAdd, onMove, onSelect, onHover,
   dest, onMoveDest, focusId, focusAt, fitAt, lookAt, card, onFail, className,
 }: Props) {
   const box = useRef<HTMLDivElement | null>(null)
@@ -231,6 +234,12 @@ export function GoogleRouteMap({
     points.map((p) => `${p.i}:${p.lat}:${p.lon}:${p.done ? 1 : 0}:${p.n}:${p.tr ?? ''}`).join('|') +
     '#' +
     transports.map((t) => `${t.i}:${t.leg}`).join(',')
+  /* Линии приезжают позже точек — слой обязан пересобраться, когда они пришли.
+     Отдельным слепком, а не внутри `sig`: на `sig` висит ещё и покачивание метки
+     по просьбе из ленты, и от прихода линии оно повторяться не должно. */
+  const shapeSig = shapes
+    ? [...shapes.entries()].map(([k, v]) => `${k}:${v.length}`).join(',')
+    : ''
   useEffect(() => {
     const m = map.current
     if (!m || !ready) return
@@ -269,17 +278,24 @@ export function GoogleRouteMap({
     })
 
     /* Нитки: своя на каждую технику. Тон и рисунок линии идут парой — по одному
-       цвету маршруты не различить (WCAG 1.4.1). */
+       цвету маршруты не различить (WCAG 1.4.1).
+
+       Ломаная по дорогам берётся из `shapes`, если её успели спросить. Нет её —
+       линия идёт прямой из точки в точку, как было всегда, а причину человек
+       читает под картой (постулат 5). */
     lines.current.forEach((l) => l.setMap(null))
     lines.current = list
       .filter((t) => t.points.length > 1)
-      .map((t) =>
-        new maps.Polyline({
-          path: t.points.map((p) => ({ lat: p.lat as number, lng: p.lon as number })),
+      .map((t) => {
+        const road = shapes?.get(threadKey(t))
+        return new maps.Polyline({
+          path: road
+            ? road.map(([lat, lng]) => ({ lat, lng }))
+            : t.points.map((p) => ({ lat: p.lat as number, lng: p.lon as number })),
           map: m,
           ...strokeOf(maps, t.tone),
-        }),
-      )
+        })
+      })
 
     /* Подгоняем вид один раз: дальше человек сам решает, куда смотреть. */
     if (!fitted.current) {
@@ -287,7 +303,7 @@ export function GoogleRouteMap({
       fitted.current = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, canEdit, ready, centerLat, centerLon])
+  }, [sig, shapeSig, canEdit, ready, centerLat, centerLon])
 
   /* ── метка конечной точки ──
      Отдельно от маршрута: это цель поездки, а не остановка по пути, и живёт она
