@@ -41,7 +41,7 @@ Radix и vaul кликать тройкой `pointerdown` + `pointerup` + `click
 открытия — `javascript_tool`:
 
 ```js
-location.replace('http://localhost:5199/?u=Maks&k=zdzua343&sandbox=1')
+location.replace('http://localhost:5199/?u=Maks&k=<ключ>&sandbox=1')
 ```
 
 Голый адрес даёт права владельца. Защита `isSandbox()` держит любой `localhost`

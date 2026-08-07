@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import type { State } from '@/lib/types'
+import type { SpendSplit } from '@/lib/settle'
+import { money } from '@/lib/calc'
 import { InlinePick } from '@/components/flops'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { cn } from '@/lib/utils'
 
 /**
  * «Кто платит» и «на кого делится» — прямо в строке расчёта, без шторки.
@@ -23,6 +26,70 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 /** Вариант «никто конкретно» — он же умолчание. */
 const NOBODY = ''
+
+/**
+ * Раскладка одной траты словами: кто выложил деньги и по сколько с каждого.
+ *
+ * Заказчик 08.08.2026: «если разворачивается список — кто покупает; если делится,
+ * по сколько частей между участниками». Считает `lib/settle.ts` теми же правилами,
+ * что и весь зачёт, — здесь только показ, ни одной своей формулы (У-58).
+ *
+ * ⛔ Это НЕ орган правки: круг делящих правится соседним `SpendShareEdit`,
+ * плательщик — колонками людей. Вычисленная величина, которую никто не показывает,
+ * это отсутствующая функция (постулат 5), но второй орган для того же — дубль.
+ */
+export function SpendSplitLine({
+  split, S, className,
+}: {
+  split: SpendSplit
+  S: State
+  className?: string
+}) {
+  if (split.sum <= 0 || split.share.length === 0) return null
+
+  /* Доли у всех одинаковые — так и говорим одним числом, а не тремя равными.
+     Премиальность это сдержанность (постулат 7). */
+  const parts = split.share
+  const same = parts.every((x) => x.sum === parts[0].sum)
+
+  return (
+    <span className={cn('block text-micro leading-snug text-muted', className)}>
+      {split.paid.length > 0 ? (
+        <span className="block">
+          {'Выложил'}{' '}
+          {split.paid.map((x, i) => (
+            <span key={x.id}>
+              {i > 0 ? ', ' : ''}
+              <span className="font-semibold text-ink">{x.name}</span>{' '}
+              <span className="tnum">{money(x.sum, S.doc)}</span>
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="block">Скинулись поровну</span>
+      )}
+      <span className="block">
+        {same
+          ? `${split.everyone ? 'Делят все' : 'Делят'} по `
+          : 'Делят: '}
+        {same ? (
+          <span className="tnum font-semibold text-ink">{money(parts[0].sum, S.doc)}</span>
+        ) : (
+          parts.map((x, i) => (
+            <span key={x.id}>
+              {i > 0 ? ' · ' : ''}
+              {x.name}{' '}
+              <span className="tnum font-semibold text-ink">{money(x.sum, S.doc)}</span>
+            </span>
+          ))
+        )}
+        {same && !split.everyone ? (
+          <span>{` (${parts.map((x) => x.name).join(', ')})`}</span>
+        ) : null}
+      </span>
+    </span>
+  )
+}
 
 export function SpendShareEdit({
   S, can, payer, sp, fallback, what, onPayer, onSp, circleOnly,

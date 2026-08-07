@@ -2,15 +2,16 @@ import { useRef, useState } from 'react'
 import { Check, Plus, Trash2 } from 'lucide-react'
 import type { Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
-import { counted, unitOf } from '@/lib/buyx'
+import { counted, planSumOf, sumOf, unitOf } from '@/lib/buyx'
 import { money } from '@/lib/calc'
+import { buySplit } from '@/lib/settle'
 import {
   InlineNum, InlineText, PersonHead, ProductLink, RowAction, RowActions,
   StripField, StripRow,
 } from '@/components/flops'
 import { safeUrl, saveNameOrUrl } from '@/lib/producturl'
 import { applyCard, clearGrab, grabProduct } from '@/lib/product'
-import { SpendShareEdit } from '@/components/road/SpendShare'
+import { SpendShareEdit, SpendSplitLine } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
 import {
   buyerQty, descText, digitsOf, foldStatus, restQty, setBuyer, type BuyItem,
@@ -70,11 +71,13 @@ export function BuyStrip({
         const open = openId === p.i || isFresh
         const take = counted(p)
         const desc = descText(p, S)
-        /* Главное число справа — цена. Факт, как только он появился: он и есть
-           то, что заказчик называет суммой. Пока факта нет — план, и подпись
-           под числом честно говорит, какая это цена. */
+        /* Главное число справа — СТОИМОСТЬ ПОЗИЦИИ ЦЕЛИКОМ, а не цена за штуку.
+           Заказчик 08.08.2026: «справа должна быть указана финальная стоимость,
+           а не за единицу, и там фактическая». Три пачки по 90 ₽ показывали 90,
+           и человек складывал глазами не то, что стоит внизу в «Сумма, факт».
+           Цены за единицу никуда не делись — они правятся ниже, в развороте. */
         const hasFact = p.prf > 0
-        const price = hasFact ? p.prf : p.pr
+        const cost = hasFact ? sumOf(p) : planSumOf(p)
 
         const grab = (url: string) =>
           void grabProduct(p.i, url, (card) => onPatch(p.i, (x) => applyCard(x, card)))
@@ -103,8 +106,8 @@ export function BuyStrip({
                   ? `Не берём. ${desc}`
                   : 'Не берём — в сумму не идёт'
             }
-            right={money(price, S.doc)}
-            rightHint={hasFact ? 'цена факт' : 'цена план'}
+            right={money(cost, S.doc)}
+            rightHint={hasFact ? 'стоимость, факт' : 'стоимость, план'}
           >
             <StripField label="Название" wide>
               <InlineText
@@ -307,6 +310,9 @@ export function BuyStrip({
                 what={p.n || 'Позиция'}
                 onSp={(ids) => onPatch(p.i, (x) => { x.sp = ids })}
               />
+              {/* «по сколько частей между участниками» — 08.08.2026. Считается
+                  теми же правилами, что и весь зачёт (`lib/settle.ts`). */}
+              <SpendSplitLine split={buySplit(p, S)} S={S} className="mt-1" />
             </StripField>
 
             <div className="mt-2 flex justify-end border-t border-line/50 pt-2">

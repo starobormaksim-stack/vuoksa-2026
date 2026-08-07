@@ -154,7 +154,7 @@ node publish-v2.mjs                  # разложить собранное п�
   на `vuoksa2026-test`; тесты «запись в обход» НИКОГДА не на боевой; служебные строки
   называть только `*-test`; песочницу после работы удалять.
 * `preview_start` открывает голый адрес — уводить только `location.replace(...)`
-  на `http://localhost:5199/?u=Maks&k=zdzua343&sandbox=1`.
+  на `http://localhost:5199/?u=Maks&k=<ключ>&sandbox=1` (ключ — из `backups/prod-*.json`, в репозиторий не писать).
 * Запись через `trip_write` в `lib/sync.ts` с откатом на прямую при 404; `isSandbox()`
   считает песочницей любой `localhost`.
 * Модель прав (владелец/редактор/участник) и слияние `mergeInto` + `fillMissingKeys`.

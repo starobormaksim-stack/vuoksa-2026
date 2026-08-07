@@ -35,19 +35,34 @@ GET https://…/rest/v1/trips?id=eq.vuoksa2026&select=data,updated_at,author
 ## Локальный запуск
 
 ```
-http://localhost:5199/?u=Maks&k=zdzua343&sandbox=1
+http://localhost:5199/?u=Maks&k=<ключ Макса>&sandbox=1
 ```
 
 ⚠️ **`preview_start` открывает голый адрес.** `navigate` его не уводит. Работает только
-`location.replace('http://localhost:5199/?u=Maks&k=zdzua343&sandbox=1')` через
+`location.replace('http://localhost:5199/?u=Maks&k=<ключ>&sandbox=1')` через
 `javascript_tool` сразу после открытия.
 
 Голый адрес без `?u=` даёт права владельца — поведение первой версии, портировано
 намеренно. Защита: `isSandbox()` в `app/src/lib/supabase.ts` считает песочницей **любой**
 `localhost` / `127.0.0.1`, а не только `?sandbox=1`. Снимать нельзя.
 
-Ссылки команды: Макс `?u=Maks&k=zdzua343` · Костя `?u=Kostya&k=pc2s6bsg` ·
-Миша `?u=Misha&k=9ak33b2w` · Женя `?u=Zhenya&k=idz7qw3y`.
+⛔ **Ключей команды здесь больше нет, и вписывать их сюда нельзя.** Репозиторий
+`github.com/starobormaksim-stack/vuoksa-2026` **публичный**: всё, что попало в этот
+файл, читает кто угодно. Ключ — это пропуск в боевой лист; однажды они уже утекли
+именно так и были заменены (запись в `HANDOFF.md`, «ключи заменены»).
+
+Действующий ключ брать из последнего снимка `backups/prod-*.json` (папка в гит
+не ходит — `.gitignore`), поле `people[].key`:
+
+```bash
+node -e "const d=require('./backups/prod-2026-08-06T2246.json')['0'].data; for(const p of d.people) console.log(p.slug, p.key, p.perm)"
+```
+
+⚠️ **08.08.2026: ключи в этом файле были устаревшие на двое суток**, и ссылка
+из задания сессии боевым листом не признавалась — `rpc/trip_read` отвечал
+`401 {"code":"42501","message":"ключ не подходит"}`. Живая проба со ключом
+из снимка открыла лист с первого раза. Ключ, который «перестал работать», —
+это почти всегда старый ключ, а не поломка сервера.
 
 ## ⛔ Вкладка не рисует кадров
 

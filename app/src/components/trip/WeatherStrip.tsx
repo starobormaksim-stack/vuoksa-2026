@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, CloudSun, Droplets, Wind } from 'lucide-react'
 import type { State } from '@/lib/types'
 import { NBSP } from '@/format'
 import { cn } from '@/lib/utils'
+import {
+  askKey, fetchWeather, FRESH_MS, isoDay, readCache, type LiveWeather,
+} from '@/lib/weather'
 
 /**
  * Погода на дни поездки.
@@ -48,6 +51,112 @@ function weatherOf(S: State): WeatherData {
   }
 }
 
+/** Что вернул живой прогноз: сами числа и то, удалось ли за ними сходить. */
+export interface Live {
+  data: LiveWeather | null
+  /** сходить не удалось — на экране об этом говорится словами (постулат 5) */
+  failed: boolean
+}
+
+/**
+ * Живой прогноз: снять при открытии листа и обновлять сам каждые полчаса,
+ * а также когда человек возвращается во вкладку.
+ *
+ * Заказчик 08.08.2026: «пускай автоматически актуализируется». Раньше числа
+ * лежали в документе и обновлялись руками.
+ *
+ * ⛔ Документ этой функцией не правится — см. `lib/weather.ts`.
+ */
+export function useLiveWeather(S: State): Live {
+  const place = S.trip.places?.find((p) => p.main) ?? S.trip.places?.[0]
+  const lat = place?.lat
+  const lon = place?.lon
+  const from = isoDay(S.trip.start)
+  const to = isoDay(S.trip.end) || from
+  const key = lat !== undefined && lon !== undefined && from ? askKey(lat, lon, from, to) : ''
+
+  /* Сохранённое с прошлого раза показывается сразу, не дожидаясь сети:
+     иначе при каждом открытии лист на секунду показывал бы позавчерашние
+     цифры и только потом свежие. */
+  const [data, setData] = useState<LiveWeather | null>(() => (key ? readCache(key) : null))
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (!key || lat === undefined || lon === undefined) return
+    const ac = new AbortController()
+    let live = true
+
+    const tick = () => {
+      /* Свежее получаса — не тревожим сеть. */
+      const have = readCache(key)
+      if (have && Date.now() - have.at < FRESH_MS) {
+        if (live) {
+          setData(have)
+          setFailed(false)
+        }
+        return
+      }
+      void fetchWeather(lat, lon, from, to, ac.signal).then((r) => {
+        if (!live) return
+        if (r) {
+          setData(r)
+          setFailed(false)
+        } else {
+          /* Отказ не стирает уже показанное: лучше вчерашние числа с честной
+             подписью, чем пустая лента. */
+          setFailed(true)
+        }
+      })
+    }
+
+    tick()
+    const timer = window.setInterval(tick, FRESH_MS)
+    /* Вкладку открыли снова — спрашиваем сразу, а не через полчаса: телефон
+       усыпляет таймеры, и на экране заказчика они не сработают вовсе. */
+    const wake = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', wake)
+
+    return () => {
+      live = false
+      ac.abort()
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', wake)
+    }
+  }, [key, lat, lon, from, to])
+
+  return { data, failed }
+}
+
+/**
+ * Наложить живые числа на дни документа.
+ *
+ * ⛔ Совпадение ищется по дате («10.08»), а `means` — авторский текст «что это
+ * значит для нас» — остаётся документным всегда: его писал человек. Дней,
+ * которых в документе нет, живой прогноз не добавляет — кроме случая, когда
+ * документ про погоду не знает вовсе.
+ */
+function withLive(w: WeatherData, live: LiveWeather | null): WeatherData {
+  if (!live || live.days.length === 0) return w
+  if (w.days.length === 0) {
+    return {
+      ...w,
+      updated: live.updated,
+      days: live.days.map((d) => ({ ...d, i: `w-${d.d}`, means: '' })),
+    }
+  }
+  const by = new Map(live.days.map((d) => [d.d, d]))
+  return {
+    ...w,
+    updated: live.updated,
+    days: w.days.map((d) => {
+      const x = by.get(d.d)
+      return x ? { ...d, wd: x.wd || d.wd, day: x.day, night: x.night, prec: x.prec, wind: x.wind } : d
+    }),
+  }
+}
+
 /**
  * Лента дней в панели обложки.
  *
@@ -58,14 +167,16 @@ function weatherOf(S: State): WeatherData {
  * объясняет, ЧТО это, а не как этим пользоваться (постулат 7).
  */
 export function WeatherRow({
-  S, open, onOpen,
+  S, open, onOpen, live,
 }: {
   S: State
   /** id раскрытого дня */
   open: string | null
   onOpen: (id: string | null) => void
+  /** свежие числа поверх сохранённых; `null` — показываем документ */
+  live: LiveWeather | null
 }) {
-  const { days } = weatherOf(S)
+  const { days } = withLive(weatherOf(S), live)
   if (days.length === 0) return null
 
   return (
@@ -106,9 +217,15 @@ export function WeatherRow({
  * Подробности под фотографией: раскрытый день и складная строка «Световой день
  * и выводы». Пустых заглушек не рисуем — нет данных, нет и блока.
  */
-export function WeatherDetail({ S, open }: { S: State; open: string | null }) {
+export function WeatherDetail({
+  S, open, live,
+}: {
+  S: State
+  open: string | null
+  live: Live
+}) {
   const [more, setMore] = useState(false)
-  const w = weatherOf(S)
+  const w = withLive(weatherOf(S), live.data)
   const day = open ? w.days.find((d) => d.i === open) : undefined
   const hasMore = w.daylight.length > 0 || w.concl.length > 0 || !!w.src || !!w.updated
   if (!day && !hasMore) return null
@@ -156,6 +273,14 @@ export function WeatherDetail({ S, open }: { S: State; open: string | null }) {
               {w.updated ? (
                 <p className="text-note text-muted">
                   Прогноз обновлён <span className="tnum">{w.updated}</span>
+                  {live.data ? ' — сам, каждые полчаса' : null}
+                </p>
+              ) : null}
+              {/* Отказ говорится словами: молчание человек читает как «сервис
+                  сломан», и он прав (постулат 5). */}
+              {live.failed ? (
+                <p className="text-note text-muted">
+                  Свежий прогноз получить не удалось{live.data ? '' : ' — показан сохранённый'}
                 </p>
               ) : null}
 

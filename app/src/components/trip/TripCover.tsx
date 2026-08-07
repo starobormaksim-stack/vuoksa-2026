@@ -8,7 +8,7 @@ import { askMapLook, askPlaceMain } from '@/lib/mapfocus'
 import { update } from '@/store'
 import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
 import { MoneyTiles } from './MoneyTiles'
-import { WeatherDetail, WeatherRow } from './WeatherStrip'
+import { useLiveWeather, WeatherDetail, WeatherRow } from './WeatherStrip'
 
 /**
  * Обложка поездки — левый из двух одинаковых блоков раздела «Поездка»
@@ -98,6 +98,10 @@ export function TripCover({ S, perms, onEditDates }: Props) {
 
   /** какой день прогноза раскрыт под фотографией */
   const [wDay, setWDay] = useState<string | null>(null)
+  /* Прогноз обновляется сам (08.08.2026). Снимается здесь один раз и раздаётся
+     обоим блокам — ленте и подробностям: два вызова означали бы два похода
+     в сеть за одним и тем же. Документ при этом не правится (`lib/weather.ts`). */
+  const live = useLiveWeather(S)
   /** выбранный файл ждёт кадрирования */
   const [src, setSrc] = useState<string | null>(null)
   const { pick, input } = usePhotoPick(setSrc)
@@ -348,11 +352,11 @@ export function TripCover({ S, perms, onEditDates }: Props) {
         </div>
 
         <MoneyTiles S={S} perms={perms} />
-        <WeatherRow S={S} open={wDay} onOpen={setWDay} />
+        <WeatherRow S={S} open={wDay} onOpen={setWDay} live={live.data} />
       </div>
 
       {/* Что не влезло в ленту прогноза: разбор дня, световой день и выводы. */}
-      <WeatherDetail S={S} open={wDay} />
+      <WeatherDetail S={S} open={wDay} live={live} />
 
       {src && (
         <PhotoCropSheet

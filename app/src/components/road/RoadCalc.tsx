@@ -17,7 +17,8 @@ import { Calc, Result, Static, Title } from './cells'
 import { DocNotes } from './DocNotes'
 import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
 import { RoadStrip } from './RoadStrip'
-import { SpendShareEdit } from './SpendShare'
+import { spendSplit } from '@/lib/settle'
+import { SpendShareEdit, SpendSplitLine } from './SpendShare'
 
 /**
  * «Расчёт дороги» — ОДНА таблица на весь лист «Логистика» заказчика.
@@ -488,24 +489,33 @@ function Matrix({
         /* Кто выложил деньги за это топливо и между кем оно делится —
            прямо в строке, без шторки (постулат 2). Пустое = как было. */
         share: (
-          <SpendShareEdit
-            S={S}
-            can={canEdit}
-            payer={t.payer}
-            sp={t.sp}
-            fallback={t.owner}
-            what={t.calcT || t.n || 'Топливо'}
-            onPayer={(id) =>
-              patchTransport(t.i, (x) => {
-                x.payer = id
-              })
-            }
-            onSp={(ids) =>
-              patchTransport(t.i, (x) => {
-                x.sp = ids
-              })
-            }
-          />
+          <>
+            <SpendShareEdit
+              S={S}
+              can={canEdit}
+              payer={t.payer}
+              sp={t.sp}
+              fallback={t.owner}
+              what={t.calcT || t.n || 'Топливо'}
+              onPayer={(id) =>
+                patchTransport(t.i, (x) => {
+                  x.payer = id
+                })
+              }
+              onSp={(ids) =>
+                patchTransport(t.i, (x) => {
+                  x.sp = ids
+                })
+              }
+            />
+            {/* «То же самое касается бензина» (08.08.2026): по сколько выходит
+                с каждого — здесь же, а не только в разделе взаиморасчётов. */}
+            <SpendSplitLine
+              split={spendSplit(fuelCost(t, S), t.payer ?? t.owner, t.sp, S)}
+              S={S}
+              className="mt-1 max-w-[19rem]"
+            />
+          </>
         ),
         cells: [
           t.rateU === 'lh' ? (
@@ -685,23 +695,30 @@ function Matrix({
         />
       ),
       share: (
-        <SpendShareEdit
-          S={S}
-          can={canEdit}
-          payer={r.payer}
-          sp={r.sp}
-          what={r.calcT || r.n || 'Аренда'}
-          onPayer={(id) =>
-            patchRent(r.i, (x) => {
-              x.payer = id
-            })
-          }
-          onSp={(ids) =>
-            patchRent(r.i, (x) => {
-              x.sp = ids
-            })
-          }
-        />
+        <>
+          <SpendShareEdit
+            S={S}
+            can={canEdit}
+            payer={r.payer}
+            sp={r.sp}
+            what={r.calcT || r.n || 'Аренда'}
+            onPayer={(id) =>
+              patchRent(r.i, (x) => {
+                x.payer = id
+              })
+            }
+            onSp={(ids) =>
+              patchRent(r.i, (x) => {
+                x.sp = ids
+              })
+            }
+          />
+          <SpendSplitLine
+            split={spendSplit(rentSum(r), r.payer, r.sp, S)}
+            S={S}
+            className="mt-1 max-w-[19rem]"
+          />
+        </>
       ),
       cells: [
         <InlineNum

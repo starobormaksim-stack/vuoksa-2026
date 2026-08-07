@@ -8,10 +8,12 @@ import {
 } from '@/components/flops'
 import { safeUrl, saveNameOrUrl } from '@/lib/producturl'
 import { applyCard, clearGrab, grabProduct } from '@/lib/product'
-import { SpendShareEdit } from '@/components/road/SpendShare'
+import { SpendShareEdit, SpendSplitLine } from '@/components/road/SpendShare'
 import { cn } from '@/lib/utils'
+import { buySplit } from '@/lib/settle'
 import {
-  buyerQty, descText, digitsOf, foldStatus, restQty, setBuyer, type BuyItem,
+  buyerQty, costOf, descText, digitsOf, foldStatus, restQty, setBuyer, setCost,
+  type BuyItem,
 } from './buylocal'
 
 /**
@@ -57,6 +59,13 @@ export function BuyRow({
   const bg = zebra ? 'zebra' : 'surface'
   const take = counted(p)
   const saved = useRef(false)
+  const { cost, fact } = costOf(p)
+  /* Раскладка печатается в матрице ТОЛЬКО когда она не по умолчанию: кто-то
+     выложил деньги вперёд или круг делящих сужен. «Делят все по 300 ₽»
+     у каждой из полусотни строк — это шум, а не сведения (постулат 7).
+     В ленте на телефоне она стоит в развороте всегда: там строка одна. */
+  const split = buySplit(p, S)
+  const showSplit = split.sum > 0 && (split.paid.length > 0 || !split.everyone)
 
   /**
    * Прочитать карточку товара со страницы и положить снятое в позицию.
@@ -143,6 +152,7 @@ export function BuyRow({
               what={p.n || 'Позиция'}
               onSp={(ids) => onPatch((x) => { x.sp = ids })}
             />
+            {showSplit ? <SpendSplitLine split={split} S={S} className="mt-0.5" /> : null}
           </span>
         </span>
       </DataCell>
@@ -199,11 +209,23 @@ export function BuyRow({
         />
       </DataCell>
 
-      {/* ⛔ Колонки «Сумма» здесь больше нет — 06.08.2026: «Сумма — я не понимаю,
-          что это такое. Бред же… по сути это оно и есть, это есть цена факт».
-          Вместе с ней ушла и правка суммы, вписывавшая `prf = сумма ÷ количество`:
-          орган, которого человек не понимает, менял ту самую цифру, на которой
-          держатся контрольные суммы. `sumOf` при этом цел и считает итоги внизу. */}
+      {/* Стоимость позиции целиком — главное число строки (08.08.2026).
+          Правится тоже: вписанная стоимость ложится в цену по факту,
+          делённую на количество (`setCost`). */}
+      <DataCell align="right">
+        <InlineNum
+          value={cost}
+          can={canEdit}
+          label="Стоимость позиции"
+          kind="plain"
+          digits={0}
+          onSave={(v) => onPatch((x) => { setCost(x, v) })}
+          className={cn(
+            'text-note font-bold',
+            cost > 0 ? (fact ? 'text-ink' : 'text-muted') : 'text-muted',
+          )}
+        />
+      </DataCell>
 
       <DataCell align="center" className="px-1">
         <Box

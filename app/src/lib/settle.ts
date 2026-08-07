@@ -227,6 +227,122 @@ function spends(S: State): Spend[] {
   return out
 }
 
+/**
+ * Разложить ОДНУ трату по людям — ровно теми же правилами, что и весь зачёт.
+ *
+ * ⛔ Арифметика живёт здесь в единственном экземпляре: `shares()` зовёт эту же
+ * функцию в цикле. Иначе строка списка и раздел взаиморасчётов однажды сказали
+ * бы про одну покупку разное — а два ответа на один вопрос это дефект (У-58).
+ */
+function applySpend(
+  sp: Spend,
+  paidBy: Record<string, number>,
+  shareBy: Record<string, number>,
+): void {
+  if (sp.sharers.length === 0) return
+
+  /* Доля: сумма поровну между делящими. */
+  const part = sp.sum / sp.sharers.length
+  for (const id of sp.sharers) shareBy[id] = (shareBy[id] ?? 0) + part
+
+  /* Уплачено. Покрытая часть идёт по весам плательщиков, непокрытая —
+     поровну между делящими: каждый выложил ровно свою долю и остался при
+     нулях, то есть ведёт себя как сегодня. Так Σ уплачено всегда равно
+     сумме траты целиком, и первый инвариант не может разойтись. */
+  const keys = Object.keys(sp.payers)
+  const cover = keys.length === 0 ? 0 : Math.min(1, Math.max(0, sp.cover))
+  if (cover < 1) {
+    const rest = (sp.sum * (1 - cover)) / sp.sharers.length
+    for (const id of sp.sharers) paidBy[id] = (paidBy[id] ?? 0) + rest
+  }
+  if (cover > 0) {
+    const total = keys.reduce((s, k) => s + sp.payers[k], 0)
+    for (const k of keys) paidBy[k] = (paidBy[k] ?? 0) + (sp.sum * cover * sp.payers[k]) / total
+  }
+}
+
+/** Одна доля одного человека — то, что печатается в строке списка. */
+export interface SplitPart {
+  id: string
+  name: string
+  /** целые рубли: человек их складывает глазами, копейки тут только мешают */
+  sum: number
+}
+
+/** Как одна трата ложится на людей: кто выложил и по сколько с каждого. */
+export interface SpendSplit {
+  sum: number
+  /** кто заплатил вперёд и сколько; пусто — скинулись поровну */
+  paid: SplitPart[]
+  /** по сколько приходится на каждого делящего */
+  share: SplitPart[]
+  /** делится на всю команду, а не на выбранный круг */
+  everyone: boolean
+}
+
+/** Собрать раскладку одной траты в целых рублях. */
+function splitOf(sp: Spend, S: State, all: string[]): SpendSplit {
+  const paidBy: Record<string, number> = {}
+  const shareBy: Record<string, number> = {}
+  applySpend(sp, paidBy, shareBy)
+
+  const name = (id: string) => S.people.find((p) => p.id === id)?.name ?? id
+  /* Целые рубли раздаются «наибольшим остатком» — теми же весами, что и в зачёте,
+     иначе три доли по 333,33 ₽ показались бы суммой 999 ₽ при сумме траты 1 000. */
+  const whole = (bag: Record<string, number>): SplitPart[] => {
+    const vals = Object.keys(bag).map((id) => ({ id, v: bag[id] }))
+    const round = spread(vals, Math.round(vals.reduce((s, x) => s + x.v, 0)))
+    return vals.map((x) => ({ id: x.id, name: name(x.id), sum: round[x.id] ?? 0 }))
+  }
+
+  /* Плательщики показываются, только когда кто-то действительно выложил вперёд:
+     «скинулись поровну» — это не «заплатили все», а «никто не выложил за других». */
+  const anyPayer = Object.keys(sp.payers).length > 0 && sp.cover > 0
+  return {
+    sum: sp.sum,
+    paid: anyPayer ? whole(paidBy).filter((x) => x.sum !== 0) : [],
+    share: whole(shareBy),
+    everyone: sp.sharers.length === all.length,
+  }
+}
+
+/**
+ * Раскладка одной позиции закупки — для показа прямо в её строке.
+ *
+ * Заказчик 08.08.2026: «если разворачивается список — кто покупает; если делится,
+ * по сколько частей между участниками». До этого доли считались только в разделе
+ * взаиморасчётов, то есть в другом месте, чем сама покупка.
+ */
+export function buySplit(b: Buy, S: State): SpendSplit {
+  const all = everyone(S)
+  return splitOf(
+    { sum: buyItemSum(b), payers: buyPayers(b, all), sharers: sharersOf(b.sp, all), cover: buyCover(b) },
+    S,
+    all,
+  )
+}
+
+/**
+ * Раскладка одной траты «Дороги» — топлива, аренды, стоянки.
+ *
+ * Дословно там же: «то же самое касается бензина». Плательщик у этих трат задан
+ * явным полем, а не отметками покупателей, поэтому веса считаются `payerWeight`.
+ */
+export function spendSplit(
+  sum: number,
+  payer: string | undefined,
+  sp: string[] | undefined,
+  S: State,
+): SpendSplit {
+  const all = everyone(S)
+  const payers = payerWeight(payer, all)
+  return splitOf(
+    { sum, payers, sharers: sharersOf(sp, all), cover: Object.keys(payers).length > 0 ? 1 : 0 },
+    S,
+    all,
+  )
+}
+
 /** Личные покупки по людям: в зачёт не идут, но человек обязан их видеть. */
 function personalByPerson(S: State): Record<string, number> {
   const all = everyone(S)
@@ -292,28 +408,7 @@ export function shares(S: State): Settle {
   const paidBy: Record<string, number> = {}
   const shareBy: Record<string, number> = {}
 
-  for (const sp of spends(S)) {
-    if (sp.sharers.length === 0) continue
-
-    /* Доля: сумма поровну между делящими. */
-    const part = sp.sum / sp.sharers.length
-    for (const id of sp.sharers) shareBy[id] = (shareBy[id] ?? 0) + part
-
-    /* Уплачено. Покрытая часть идёт по весам плательщиков, непокрытая —
-       поровну между делящими: каждый выложил ровно свою долю и остался при
-       нулях, то есть ведёт себя как сегодня. Так Σ уплачено всегда равно
-       сумме траты целиком, и первый инвариант не может разойтись. */
-    const keys = Object.keys(sp.payers)
-    const cover = keys.length === 0 ? 0 : Math.min(1, Math.max(0, sp.cover))
-    if (cover < 1) {
-      const rest = (sp.sum * (1 - cover)) / sp.sharers.length
-      for (const id of sp.sharers) paidBy[id] = (paidBy[id] ?? 0) + rest
-    }
-    if (cover > 0) {
-      const total = keys.reduce((s, k) => s + sp.payers[k], 0)
-      for (const k of keys) paidBy[k] = (paidBy[k] ?? 0) + (sp.sum * cover * sp.payers[k]) / total
-    }
-  }
+  for (const sp of spends(S)) applySpend(sp, paidBy, shareBy)
 
   const rows: Balance[] = S.people.map((p) => {
     const paid = paidBy[p.id] ?? 0

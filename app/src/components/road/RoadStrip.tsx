@@ -16,7 +16,8 @@ import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
 import { Calc, Result, Title } from './cells'
 import { DocNotes } from './DocNotes'
 import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
-import { SpendShareEdit } from './SpendShare'
+import { spendSplit } from '@/lib/settle'
+import { SpendShareEdit, SpendSplitLine } from './SpendShare'
 
 /**
  * «Расчёт дороги» лентой — вид на телефоне.
@@ -443,6 +444,12 @@ export function RoadStrip({
                 })
               }
             />
+            {/* «То же самое касается бензина» (08.08.2026). */}
+            <SpendSplitLine
+              split={spendSplit(fuelCost(t, S), t.payer ?? t.owner, t.sp, S)}
+              S={S}
+              className="mt-1"
+            />
           </SetupGroup>
 
           <DocNotes
@@ -645,6 +652,7 @@ export function RoadStrip({
               })
             }
           />
+          <SpendSplitLine split={spendSplit(rentSum(r), r.payer, r.sp, S)} S={S} className="mt-1" />
         </SetupGroup>
 
         <DocNotes

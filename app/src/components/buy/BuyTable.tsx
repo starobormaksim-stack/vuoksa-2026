@@ -109,6 +109,11 @@ export function BuyTable({
           <DataCell head align="right">
             Цена, факт
           </DataCell>
+          {/* 08.08.2026: «справа должна быть указана финальная стоимость,
+              а не за единицу, и там фактическая» — см. `colsFor`. */}
+          <DataCell head align="right">
+            Стоимость
+          </DataCell>
           <DataCell head className="px-1">
             Берём
           </DataCell>
