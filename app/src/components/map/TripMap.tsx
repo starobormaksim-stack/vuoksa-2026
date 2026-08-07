@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  LoaderCircle, LocateFixed, MapPinPlus, Maximize2, Minimize2, TriangleAlert, WifiOff,
-} from 'lucide-react'
+import { MapPinPlus, Maximize2, Minimize2, TriangleAlert, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import type { RoutePoint, State, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
@@ -11,7 +9,7 @@ import { reversePlace, shortPlaceName, humanAddr, type PlaceFound } from '@/lib/
 import { onAskPlaceMain, onMapLook, onMapPoint } from '@/lib/mapfocus'
 import { mapCenter, mapPoints } from '@/components/road/roadx'
 import { calcLegsByMap } from '@/components/road/legs'
-import { MDASH, plural } from '@/format'
+import { MDASH } from '@/format'
 import { Btn, useIsDesktop } from '@/components/flops'
 import { cn } from '@/lib/utils'
 import { GoogleRouteMap, type MapCard, type MapDest } from './GoogleRouteMap'
@@ -67,12 +65,6 @@ interface Props {
 const AUTO_LEGS_MS = 1500
 
 /**
- * Сколько ждём геопозицию. Спутник в лесу отвечает не сразу, но десять секунд —
- * потолок: дальше человек уже решил, что кнопка сломана, и надо сказать словами.
- */
-const GEO_MS = 10_000
-
-/**
  * Имя точки, которую ещё никто не назвал.
  *
  * ⚠️ Строка одна на весь файл намеренно: по ней же проверяется, можно ли
@@ -88,20 +80,6 @@ const NEW_POINT = 'Новая точка'
  */
 function netDown(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
-/**
- * Отказ геолокации — человеческими словами. Кодов ровно три, и они значат разное:
- * право не дано, устройство не смогло, не успело за отведённое время. «Не получилось»
- * одним словом на все три случая не годится: чинятся они по-разному.
- */
-function geoWhy(err: GeolocationPositionError): string {
-  if (err.code === err.PERMISSION_DENIED) {
-    return 'доступ к месту не разрешён — включите его для этого сайта в настройках браузера'
-  }
-  if (err.code === err.POSITION_UNAVAILABLE) return 'устройство не смогло определить место'
-  if (err.code === err.TIMEOUT) return 'место не определилось за десять секунд'
-  return 'причина неизвестна'
 }
 
 /** Живая метка «есть сеть» — от неё зависит, рисуем карту или объяснение. */
@@ -267,8 +245,6 @@ export function TripMap({ S, perms, className }: Props) {
   const [fitAt, setFitAt] = useState(0)
   /** куда навести карту по находке из строки поиска */
   const [lookAt, setLookAt] = useState<{ lat: number; lon: number; at: number } | null>(null)
-  /** спрашиваем у устройства, где мы: ответ идёт до десяти секунд, и это надо показать */
-  const [locBusy, setLocBusy] = useState(false)
   /**
    * Карта раскрыта на весь экран.
    *
@@ -555,43 +531,12 @@ export function TripMap({ S, perms, className }: Props) {
     void guessAddr(id, lat, lon, true)
   }
 
-  /**
-   * «Я здесь» — точка там, где человек стоит. Заказчик 06.08.2026: «я в офлайн-режиме
-   * хочу отметить точку, на которой я нахожусь».
-   *
-   * Геолокация живёт и без сети: координаты даёт сам телефон со спутника, интернет
-   * им не нужен. Дальше — ровно тот же путь, что у тапа по карте (`onAdd`), включая
-   * офлайновый: точка встанет с пустым адресом, а человек об этом прочитает.
-   *
-   * Кнопка живёт только в спокойном ряду органов управления: в режимах ожидания
-   * («тапните, где стоит точка X», «где конечная») её на экране нет вовсе, поэтому
-   * `onAdd` здесь всегда идёт по своей последней ветке — заводит новую точку.
-   */
-  const placeMeHere = () => {
-    if (locBusy) return
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      toast('Геопозиция недоступна: браузер её не отдаёт')
-      return
-    }
-    setLocBusy(true)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocBusy(false)
-        const lat = pos.coords.latitude
-        const lon = pos.coords.longitude
-        /* Карта могла смотреть совсем в другое место — иначе новая точка встанет
-           за краем экрана, и человек решит, что ничего не произошло. */
-        setLookAt({ lat, lon, at: Date.now() })
-        onAdd(lat, lon)
-        toast('Точка стоит там, где вы сейчас')
-      },
-      (err) => {
-        setLocBusy(false)
-        toast(`Геопозиция недоступна: ${geoWhy(err)}`)
-      },
-      { enableHighAccuracy: true, timeout: GEO_MS, maximumAge: 0 },
-    )
-  }
+  /* ⛔ Здесь жила кнопка «Я здесь» — точка по геопозиции устройства. Убрана
+     08.08.2026 по прямому слову заказчика: он перечислил её вместе со строками
+     «Без места на карте…» и «По воде и пешком линия прямая» — «вот это вот
+     вообще убери, оно здесь не нужно». Под картой остался один орган — «Точка».
+     Функция геопозиции нигде больше не звалась; вернуть её — вернуть этот блок
+     и кнопку рядом с «Точкой». */
 
   /** Находка строки поиска. Карта наводится всегда, точка ставится по обстановке. */
   const onPick = (hit: PlaceFound) => {
@@ -645,8 +590,6 @@ export function TripMap({ S, perms, className }: Props) {
   )
 
   const waiting = placing ? S.route.find((p) => p.i === placing) : null
-  /** Точки без места на карте — пока они есть, маршрута на карте не видно. */
-  const unplaced = S.route.filter((p) => typeof p.lat !== 'number' || typeof p.lon !== 'number')
 
   const place = mainPlace(S)
   const dest: MapDest | null =
@@ -928,24 +871,16 @@ export function TripMap({ S, perms, className }: Props) {
                 `trip.route` на месте, слияние переносит его как раньше,
                 и вернуть строку — одна правка. Тот же маршрут виден на карте
                 ниткой и точками, то есть показан лучше, чем словами. */}
-            {/* Число точек говорится только тогда, когда часть из них НЕ видна
-                на карте. Пока все точки на месте, эта строка повторяет то, что
-                и так нарисовано метками, — а лишнюю строку заказчик 07.08.2026
-                назвал «позорнейшим количеством информации». Точки без координат
-                метки не имеют вовсе, и молчать о них нельзя (постулат 5). */}
-            {unplaced.length > 0 && !full ? (
-              <p className="w-full text-micro text-muted">
-                Без места на карте <span className="tnum">{unplaced.length}</span>{' '}
-                {plural(unplaced.length, 'точка', 'точки', 'точек')} из{' '}
-                <span className="tnum">{S.route.length}</span>
-              </p>
-            ) : null}
-
-            {/* Почему линия прямая — словами, а не догадкой (постулат 5, У-32).
-                Молчаливый откат заказчик читает как «сервис сломан», и он прав:
-                прямая через залив выглядит ровно как ошибка расчёта. */}
-            {road.note && !full && <p className="w-full text-micro text-muted">{road.note}</p>}
-
+            {/* ⛔ Здесь стояли ещё две строки, и обе убраны 08.08.2026 по прямому
+                слову заказчика — «вот это вот вообще убери, оно здесь не нужно»:
+                  «Без места на карте 6 точек из 26» — точки без координат теперь
+                  видны там, где ими и занимаются: чипом «Точки без ветки»
+                  в полосе веток, где их можно раскрыть, поставить на карту
+                  и удалить (`RouteBranches`);
+                  «По воде и пешком линия прямая: дорог там нет» — свойство,
+                  которое он знает сам и которое повторялось на экране всегда.
+                ⚠️ Убраны С ЭКРАНА: `road.note` считается по-прежнему и живёт
+                в `shapes.ts`, вернуть строку — одна правка (постулат 4). */}
             {waiting ? (
               <>
                 <span className="min-w-0 flex-1 text-note text-ink">
@@ -1015,30 +950,9 @@ export function TripMap({ S, perms, className }: Props) {
                       <MapPinPlus size={16} strokeWidth={1.75} aria-hidden />
                       Точка
                     </Btn>
-                    {/* «Я здесь» — та же точка маршрута, только координаты берутся
-                        у устройства, а не с пальца. Единственный способ отметиться
-                        на воде и в лесу, где карта показывает сохранённые клетки
-                        и опознать место глазами нечем. Кнопка стоит рядом с «Точкой»,
-                        потому что делает то же самое, и контуром — потому что путь
-                        всё-таки запасной. */}
-                    <Btn
-                      tone="secondary"
-                      aria-label="Поставить точку маршрута там, где я сейчас"
-                      aria-busy={locBusy}
-                      onClick={placeMeHere}
-                    >
-                      {locBusy ? (
-                        <LoaderCircle
-                          size={16}
-                          strokeWidth={1.75}
-                          aria-hidden
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <LocateFixed size={16} strokeWidth={1.75} aria-hidden />
-                      )}
-                      Я здесь
-                    </Btn>
+                    {/* ⛔ Здесь стояла кнопка «Я здесь» — точка по геопозиции
+                        устройства. Убрана 08.08.2026, см. вырезанный блок
+                        `placeMeHere` выше. */}
                     {/* ⛔ Здесь стояла кнопка «Конечная». Заказчик 06.08.2026,
                         поздний вечер: «карта идиотски сделана с этими снизу
                         какими-то конечными точками… Конечная точка указывается

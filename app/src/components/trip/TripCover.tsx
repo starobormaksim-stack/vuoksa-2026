@@ -48,6 +48,16 @@ import { WeatherDetail, WeatherRow } from './WeatherStrip'
 const SCRIM = 'bg-brand-dark/90'
 
 /**
+ * Значок места: кнопка 44 × 44, вынутая из потока строки.
+ *
+ * Сдвиг влево на 14 px = (44 − 16) / 2: он ставит сам значок на 0, то есть
+ * на ту же вертикаль, где стоит значок дат строкой выше. Подробнее — в разметке.
+ */
+const PIN_BTN =
+  'absolute top-1/2 left-0 grid size-11 -translate-x-3.5 -translate-y-1/2 place-items-center ' +
+  'rounded-md text-muted transition-colors hover:bg-zebra hover:text-ink'
+
+/**
  * Подпись с датами. Считается из trip.start и trip.end — из тех же полей, из которых
  * считается обратный отсчёт. Готовая строка trip.dates берётся только тогда, когда
  * владелец вписал её руками (datesAuto === false).
@@ -234,7 +244,19 @@ export function TripCover({ S, perms, onEditDates }: Props) {
           )}
 
           {(places.length > 0 || canEdit) && (
-            <div className="flex min-h-11 items-center gap-2 text-note text-muted">
+            /* ⛔ Значок здесь стоит ПОВЕРХ строки, а не в её потоке, и это
+               единственный способ поставить его на ту же вертикаль, что значок
+               дат строкой выше. В строке дат значок и текст лежат внутри одной
+               кнопки: значок занимает 16 px, `gap-2` даёт 8 — текст начинается
+               на 24 px. Здесь текст правится на месте и в кнопку его не завернуть,
+               поэтому значок был кнопкой 44 × 44 в потоке, и название уезжало
+               на 44 px — на 20 px правее даты. Заказчик 08.08.2026: «у тебя
+               выравнивание… с иконкой локации какая-то дичь полная».
+               Теперь кнопка вынута из потока и сдвинута влево на 14 px, так что
+               сам значок стоит ровно на 0, а текст получает свои 24 px отступом.
+               Цель касания осталась 44 × 44; текст лежит выше кнопки (`z-10`),
+               поэтому правка названия нажатие себе не отдаёт. */
+            <div className="relative flex min-h-11 items-center text-note text-muted">
               {/* ⛔ Иконка геолокации здесь ОДНА, и она же — орган.
                   Заказчик 06.08.2026: «у тебя рядом геолокация, ещё одна иконка
                   геолокации, название… короче, бред какой-то. Я хочу, чтобы там
@@ -254,11 +276,7 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                   type="button"
                   onClick={() => askMapLook(mapPlace.lat as number, mapPlace.lon as number)}
                   aria-label={`Показать «${mapPlace.n}» на карте`}
-                  /* Значок прижат к тому же левому краю, что и у строки дат
-                     (`-mx-2 px-2` там даёт то же нулевое смещение): раньше
-                     `place-items-center` в квадрате 44 px центрировал значок и
-                     сдвигал его на 6 px правее соседей — строки «съезжали». */
-                  className="-ml-2 flex size-11 shrink-0 items-center rounded-md pl-2 text-muted transition-colors hover:bg-zebra hover:text-ink"
+                  className={PIN_BTN}
                 >
                   <MapPin size={16} strokeWidth={1.75} aria-hidden />
                 </button>
@@ -267,14 +285,19 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                   type="button"
                   onClick={askPlaceMain}
                   aria-label="Указать место поездки на карте"
-                  className="-ml-2 flex size-11 shrink-0 items-center rounded-md pl-2 text-muted transition-colors hover:bg-zebra hover:text-ink"
+                  className={PIN_BTN}
                 >
                   <MapPin size={16} strokeWidth={1.75} aria-hidden />
                 </button>
               ) : (
-                <MapPin size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                <MapPin
+                  size={16}
+                  strokeWidth={1.75}
+                  aria-hidden
+                  className="absolute top-1/2 left-0 -translate-y-1/2"
+                />
               )}
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4">
+              <div className="relative z-10 flex min-w-0 flex-1 flex-wrap items-center gap-x-4 pl-6">
                 {places.map((p) => (
                   <span key={p.i} className="flex min-w-0 max-w-full items-center gap-1">
                     <InlineText

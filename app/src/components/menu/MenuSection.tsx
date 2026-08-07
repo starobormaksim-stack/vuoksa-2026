@@ -52,12 +52,15 @@ export function MenuSection() {
   const canEdit = perms.isEditor()
   const desktop = useIsDesktop()
 
-  /* ⛔ Дни раскрыты все сразу на ОБЕИХ ширинах. Заказчик 06.08.2026: «по умолчанию
-     у тебя все списки должны быть раскрыты, название разделов должно быть крупно
-     написано… чтобы было очевидно». Прежде на телефоне открывался только первый
-     день, и остальные читались как пустой список. */
+  /* ⛔ Дни СВЁРНУТЫ по умолчанию. Заказчик 08.08.2026: «у тебя есть меню —
+     по умолчанию пускай будет свёрнуто, они развёрнуты… всё должно сворачиваться
+     в простоту». Это отменяет прежнее «все списки раскрыты» (06.08.2026):
+     тогда дней было мало, а раскладка на пять дней даёт полтора экрана
+     заголовков и три экрана блюд, через которые надо листать до всего
+     остального. Название дня, дата и «приготовлено: 3 из 7» видны и в свёрнутом
+     виде — то, ради чего раскладку открывают чаще всего. */
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const isOpen = (d: MenuDay) => (d.i in open ? open[d.i] : true)
+  const isOpen = (d: MenuDay) => (d.i in open ? open[d.i] : false)
 
   /**
    * Только что добавленная строка (день или блюдо): её поле открывается сразу
@@ -167,6 +170,39 @@ export function MenuSection() {
     setFresh(id)
   }
 
+  /**
+   * Убрать день целиком, со всеми его блюдами.
+   *
+   * ⛔ Заказчик 08.08.2026: «пункты меню… на 10 августа вообще полностью,
+   * допустим, на целый день можно удалять — уже вообще всё удалить». Раньше
+   * день уходил только сам собой: пустой и безымянный (`finishFreshDay`),
+   * а день с блюдами не убирался вовсе — блюда приходилось сносить по одному,
+   * и последний, уже пустой, день всё равно оставался на экране.
+   * Возврат — кнопкой в сообщении: `confirm()` в проекте нет (постулат 9),
+   * а разрушительное действие обязано иметь обратный ход.
+   */
+  const delDay = (day: MenuDay, idx: number) => {
+    update((s) => {
+      s.menu = (s.menu ?? []).filter((x) => x.i !== day.i)
+    })
+    toast(`День «${day.t || autoDayTitle(S.trip.start, idx) || 'без названия'}» убран`, {
+      description:
+        (day.dishes?.length ?? 0) > 0 ? `Вместе с ним ушли блюда: ${day.dishes.length}` : undefined,
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            s.menu = s.menu ?? []
+            if (s.menu.some((x) => x.i === day.i)) return
+            /* Свежая метка — иначе слияние сочтёт вернувшийся день старее
+               метки удаления и уберёт его снова. Место в списке возвращаем
+               то же, откуда он ушёл. */
+            s.menu.splice(Math.min(idx, s.menu.length), 0, { ...day, ua: Date.now() })
+          }),
+      },
+    })
+  }
+
   /** Новый день без названия и без блюд — то же самое, что и пустая строка блюда. */
   const finishFreshDay = (id: string) => {
     setFresh(null)
@@ -213,6 +249,7 @@ export function MenuSection() {
             onAddDish={(at) => addDish(day.i, at)}
             onToggleDish={(id) => toggleDish(day.i, id)}
             onDelDish={(id, dish) => delDish(day.i, id, dish)}
+            onDelDay={() => delDay(day, idx)}
           />
         ))
       )}
@@ -286,6 +323,8 @@ interface DayProps {
   onAddDish: (at: number) => void
   onToggleDish: (id: string) => void
   onDelDish: (id: string, dish: MenuDish) => void
+  /** убрать день целиком — действие живёт в его же заголовке */
+  onDelDay: () => void
 }
 
 /**
@@ -298,7 +337,7 @@ interface DayProps {
  */
 function DayCard({
   day, canEdit, desktop, open, onToggle, fresh, sync, autoTitle, onPatch,
-  onFreshDayEnd, onFreshDishEnd, onAddDish, onToggleDish, onDelDish,
+  onFreshDayEnd, onFreshDishEnd, onAddDish, onToggleDish, onDelDish, onDelDay,
 }: DayProps) {
   const dishes = day.dishes ?? []
   const done = dishes.filter((x) => x.done).length
@@ -342,10 +381,29 @@ function DayCard({
       }
       done={done}
       total={dishes.length}
+      /* Счётчик и «убрать день» стоят в заголовке рядом: заголовок — это и есть
+         строка дня, а действие над строкой живёт в самой строке (постулат 1).
+         ⚠️ `badge` рисуется ВНЕ кнопки сворачивания (см. `Group`), поэтому
+         кнопка в кнопке здесь не возникает. */
       badge={
-        dishes.length > 0 ? (
-          <span className="tnum shrink-0 text-note font-semibold text-muted">
-            приготовлено: {done} из {dishes.length}
+        dishes.length > 0 || canEdit ? (
+          <span className="flex shrink-0 items-center gap-1">
+            {dishes.length > 0 && (
+              <span className="tnum text-note font-semibold text-muted">
+                приготовлено: {done} из {dishes.length}
+              </span>
+            )}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={onDelDay}
+                aria-label={`Убрать день «${day.t || autoTitle || 'без названия'}» целиком`}
+                title="Убрать день целиком"
+                className="grid size-11 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-zebra hover:text-danger"
+              >
+                <Trash2 size={18} strokeWidth={1.75} aria-hidden />
+              </button>
+            )}
           </span>
         ) : undefined
       }

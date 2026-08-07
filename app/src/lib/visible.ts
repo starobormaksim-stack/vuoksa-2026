@@ -22,20 +22,38 @@ function headerHeight(): number {
 }
 
 /**
- * Id блока, в который попадёт новая позиция.
+ * Id блока, в который попадёт новая позиция: тот, что стоит перед глазами.
  *
- * Берём первый блок, чей низ ещё ниже полосы шапки, — то есть тот, который
- * человек сейчас читает. Все прокручены выше — значит он в конце списка,
- * и новая позиция идёт в последний блок.
+ * ⛔ Мерим по СЕРЕДИНЕ видимой части, а не по её верхнему краю. Прежнее правило
+ * («первый блок, чей низ ниже полосы шапки») выбирало блок, который лишь
+ * доживает в верхних пикселях экрана: замер 08.08.2026 на 390 — человек читает
+ * «Алкоголь и сигареты» посреди экрана, нажимает «плюс», а строка ложится
+ * в «Снеки и сладкое», потому что низ «Снеков» проходил на 420 px, то есть
+ * «ниже шапки». Заказчик в тот день сказал ровно об этом: «если я добавляю
+ * какой-то пункт, допустим, в снеки… вот там, где я добавил, там оно и должно
+ * появляться… чтобы я никуда не прыгал, не скакал, потом не искал».
+ *
+ * Середина — это то место, куда человек смотрит. Блок, который её накрывает,
+ * и есть читаемый; если середину не накрывает никто (короткий список между
+ * двумя длинными), берём ближайший к ней.
  */
 export function visibleBlockId(root: HTMLElement | null, fallback: string): string {
   if (!root) return fallback
   const nodes = Array.from(root.querySelectorAll<HTMLElement>('[data-block]'))
   if (nodes.length === 0) return fallback
-  const edge = headerHeight() + 1
+  const top = headerHeight()
+  const mid = top + Math.max(0, window.innerHeight - top) / 2
+
+  let best = nodes[0]
+  let bestGap = Infinity
   for (const el of nodes) {
     const r = el.getBoundingClientRect()
-    if (r.bottom > edge) return el.dataset.block || fallback
+    if (r.top <= mid && r.bottom >= mid) return el.dataset.block || fallback
+    const gap = r.bottom < mid ? mid - r.bottom : r.top - mid
+    if (gap < bestGap) {
+      bestGap = gap
+      best = el
+    }
   }
-  return nodes[nodes.length - 1].dataset.block || fallback
+  return best.dataset.block || fallback
 }

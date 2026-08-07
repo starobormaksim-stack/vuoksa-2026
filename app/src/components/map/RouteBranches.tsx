@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import {
-  Car, Check, ChevronDown, Footprints, Palette, Plus, Repeat2, Sailboat, X,
+  Car, Check, ChevronDown, Footprints, Palette, Plus, Repeat2, Sailboat, Trash2, X,
   type LucideIcon,
 } from 'lucide-react'
-import type { LegMode, State, Transport } from '@/lib/types'
-import { update, touch } from '@/store'
+import { toast } from 'sonner'
+import type { LegMode, RoutePoint, State, Transport } from '@/lib/types'
+import { update, touch, remove } from '@/store'
 import { kmOf, kBackOf } from '@/lib/calc'
 import { dg, kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
@@ -129,10 +130,40 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
    * вернут (постулат 5, урок У-124).
    */
   const [open, setOpen] = useState(false)
+  /**
+   * Раскрыт ли перечень точек без ветки.
+   *
+   * ⛔ Заказчик 08.08.2026 про строку «Общие точки»: «откуда они взялись,
+   * их нет в принципе и не надо… я их вообще не расставлял, я хочу их удалить.
+   * Я должен иметь эту возможность сделать. Почему ты не даёшь, я не знаю».
+   * Это точки старого документа, у которых не проставлен транспорт: чип их
+   * СЧИТАЛ, но не показывал и удалить их было нечем — метки на карте у точки
+   * без координат нет вовсе, а карточка открывается только тапом по метке.
+   * Теперь чип раскрывается тем же шевроном, что и ветка, а внутри — сами
+   * точки, каждую видно и каждую можно убрать (постулат 1).
+   */
+  const [openCommon, setOpenCommon] = useState(false)
 
   const list = branchesOf(S)
   const order = S.transport.map((t) => t.i)
   const common = S.route.filter((p) => !p.tr || !order.includes(p.tr))
+
+  /** Убрать точку, оставив дорогу назад: `confirm()` в проекте нет (постулат 9). */
+  const dropPoint = (p: RoutePoint) => {
+    remove('route', p.i)
+    toast(`«${p.n || 'Точка'}» убрана из маршрута`, {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            if (s.del) delete s.del['route:' + p.i]
+            /* Свежий `ua` обязателен: без него слияние сочтёт вернувшуюся
+               позицию старее метки удаления у соседа и уберёт её снова. */
+            if (!s.route.some((x) => x.i === p.i)) s.route.push({ ...p, ua: Date.now() })
+          }),
+      },
+    })
+  }
 
   const patch = (id: string, f: (t: Transport) => void) =>
     update((s) => {
@@ -187,12 +218,17 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
           искать пальцем. Строкам край экрана не мешает. */}
       <div className="flex flex-col gap-1.5">
         {common.length > 0 && (
+          /* Название говорит, ЧТО это: «Общие точки» не объясняли ничего,
+             и заказчик спросил, откуда они взялись. Это точки, которым
+             не назначен транспорт. */
           <BranchChip
             tone={MAP_TONES[0]}
-            name="Общие точки"
+            name="Точки без транспорта"
             note={`${common.length}`}
             on={active === ''}
             onClick={() => onActive('')}
+            open={active === '' && canEdit ? openCommon : undefined}
+            onToggle={() => setOpenCommon((v) => !v)}
           />
         )}
 
@@ -238,6 +274,32 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
           </button>
         )}
       </div>
+
+      {/* ── Точки без транспорта: перечнем, и каждую видно ──
+          Единственное место, где такая точка вообще показана: метки на карте
+          у неё нет. Правки полей здесь нет — только имя и «убрать»: всё
+          остальное правится в карточке точки, когда точка встанет на карту
+          (постулат 3.5 — второго списка точек не заводим). */}
+      {active === '' && canEdit && openCommon && common.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
+          {common.map((p) => (
+            <div key={p.i} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-note text-ink">
+                {p.n || 'Без названия'}
+              </span>
+              <button
+                type="button"
+                onClick={() => dropPoint(p)}
+                aria-label={`Убрать точку «${p.n || 'Без названия'}» из маршрута`}
+                title="Убрать точку"
+                className="grid size-11 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-zebra hover:text-ink"
+              >
+                <Trash2 size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Выбор вида: списком прямо здесь, а не шторкой (постулат 2) ── */}
       {adding && canEdit && (

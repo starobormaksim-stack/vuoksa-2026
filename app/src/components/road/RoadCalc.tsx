@@ -1,7 +1,8 @@
 import { Fragment, useState, type ReactNode } from 'react'
-import { Settings2, Trash2 } from 'lucide-react'
+import { ChevronDown, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import { calcAll, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
   AddRow, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions, useIsDesktop,
@@ -78,6 +79,13 @@ interface Line {
   key: string
   /** заголовок группы: слева название группы, справа — имена её столбцов */
   head?: boolean
+  /**
+   * Ключ заголовка, под которым идёт строка. Проставляется одним проходом
+   * перед отрисовкой (см. `GROUP_SHUT`), руками его не задают.
+   */
+  grp?: string
+  /** что показать справа в свёрнутом заголовке: итог группы одним числом */
+  sum?: ReactNode
   /** итог группы: плотнее и крупнее */
   total?: boolean
   title: ReactNode
@@ -182,6 +190,9 @@ export function RoadCalc({
    Матрица — вид расчёта на широком экране
    ────────────────────────────────────────────────────────────────────────── */
 
+/** Какие группы расчёта свёрнуты, пока человек не сказал иначе. */
+const GROUP_SHUT = ['h-km', 'h-can']
+
 function Matrix({
   S, c, km, canEdit, canDel, onDelTransport, onDelRent, fresh, onFreshEnd, setupAt, onSetup,
 }: {
@@ -203,6 +214,23 @@ function Matrix({
   const people = S.people.length
   const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
 
+  /**
+   * Свёрнутые группы расчёта.
+   *
+   * ⛔ Заказчик 08.08.2026 про «Дорогу»: «парковка автомобиля тоже
+   * не сворачивается, аренда лодки „Ладога“ тоже не сворачивается… всё должно
+   * сворачиваться в простоту». На телефоне расчёт давно лента полосок
+   * (`RoadStrip`), где каждая строка складывается; на широком экране он был
+   * плоской простынёй в четыре десятка строк без единого способа её укоротить.
+   *
+   * По умолчанию свёрнуто ровно то, что смотрят раз в поездку: числа пробега
+   * и канистры. «Топливо и техника», «Аренда и парковка» и «Итоги» открыты —
+   * туда ведут переход из поиска и плитки сумм с обложки, а свёрнутая группа
+   * не отрисована вовсе, и прыжок пришёл бы в пустоту.
+   */
+  const [shut, setShut] = useState<Record<string, boolean>>({})
+  const isShut = (key: string) => (key in shut ? shut[key] : GROUP_SHUT.includes(key))
+
   /** Подпись числа пробега из документа: правим только своё поле. */
   const noteDist = (key: string, part: 't' | 'c', v: string) =>
     update((s) => {
@@ -217,10 +245,13 @@ function Matrix({
 
   /* ── Пробег ── */
 
+  /* У каждого заголовка — итог его группы (`sum`): свёрнутая группа обязана
+     говорить главное число, иначе сворачивание прячет смысл (постулат 5). */
   lines.push({
     key: 'h-km',
     head: true,
     title: 'Пробег',
+    sum: kmLabel(km),
     cells: ['Сколько', '', '', '', 'Итого'],
   })
 
@@ -346,6 +377,7 @@ function Matrix({
     key: 'h-fuel',
     head: true,
     title: 'Топливо и техника',
+    sum: money(c.fuel, S.doc),
     cells: ['Километры / часы', 'Расход', 'Литры', 'Цена', 'Итого'],
   })
 
@@ -600,6 +632,7 @@ function Matrix({
     key: 'h-rent',
     head: true,
     title: 'Аренда и парковка',
+    sum: money(c.rent, S.doc),
     cells: ['Сколько', 'Штук', '', 'Цена', 'Итого'],
   })
 
@@ -767,6 +800,7 @@ function Matrix({
     key: 'h-can',
     head: true,
     title: 'Канистры',
+    sum: `${c.cans.reduce((n, x) => n + x.cans, 0)} шт.`,
     cells: ['', 'В канистре', 'Литров', '', 'Канистр'],
   })
 
@@ -860,6 +894,7 @@ function Matrix({
     key: 'h-sum',
     head: true,
     title: 'Итоги поездки',
+    sum: money(c.total, S.doc),
     cells: ['', '', '', '', 'Итого'],
   })
 
@@ -927,8 +962,21 @@ function Matrix({
 
   /* ─────────── показ ─────────── */
 
+  /* Каждая строка знает свой заголовок: группа — это всё, что идёт до
+     следующего `head`. Один проход вместо ручной пометки в двух десятках мест. */
+  let grp = ''
+  for (const l of lines) {
+    if (l.head) grp = l.key
+    else l.grp = grp
+  }
+
+  /* Только что заведённая строка раскрывает свою группу сама: её заводили,
+     чтобы в неё вписать, и появиться в свёрнутом блоке — молчаливый отказ. */
+  const freshGrp = fresh ? lines.find((l) => l.hit === fresh)?.grp : undefined
+  const hidden = (l: Line) => !!l.grp && l.grp !== freshGrp && isShut(l.grp)
+
   let z = 0
-  const rows = lines.map((l) => {
+  const rows = lines.filter((l) => !hidden(l)).map((l) => {
     const zebra = !l.head && !l.total && z++ % 2 === 1
     const bg = l.head || l.total ? 'zebra' : zebra ? 'zebra' : 'surface'
     return (
@@ -944,9 +992,28 @@ function Matrix({
             <span className="flex w-full flex-wrap items-start gap-1">
               <span className="min-w-0 flex-1 basis-40">
                 {l.head ? (
-                  <span className="text-micro font-bold tracking-wider text-muted uppercase">
-                    {l.title}
-                  </span>
+                  /* Заголовок группы — кнопка: он и называет блок, и складывает
+                     его. Своего ряда орган не занимает (постулат 7), приём тот же,
+                     что у шеврона ветки в `map/RouteBranches`. */
+                  <button
+                    type="button"
+                    onClick={() => setShut((o) => ({ ...o, [l.key]: !isShut(l.key) }))}
+                    aria-expanded={!isShut(l.key)}
+                    className="-my-1 flex min-h-11 w-full items-center gap-2 rounded-md text-left transition-colors hover:bg-line/40"
+                  >
+                    <ChevronDown
+                      size={16}
+                      strokeWidth={1.75}
+                      aria-hidden
+                      className={cn(
+                        'shrink-0 text-muted transition-transform',
+                        isShut(l.key) && '-rotate-90',
+                      )}
+                    />
+                    <span className="text-micro font-bold tracking-wider text-muted uppercase">
+                      {l.title}
+                    </span>
+                  </button>
                 ) : (
                   l.title
                 )}
@@ -955,11 +1022,28 @@ function Matrix({
               {l.actions}
             </span>
           </DataCell>
-          {l.cells.map((cell, i) => (
-            <DataCell key={i} align="right" head={l.head}>
-              {l.head ? <span className="text-micro text-muted">{cell}</span> : cell}
-            </DataCell>
-          ))}
+          {l.cells.map((cell, i) => {
+            /* Свёрнутая группа показывает не имена своих столбцов, а свой итог:
+               имена без строк ничего не значат, а число — значит. */
+            const shutHead = l.head && isShut(l.key)
+            const last = i === l.cells.length - 1
+            return (
+              <DataCell key={i} align="right" head={l.head}>
+                {l.head ? (
+                  <span
+                    className={cn(
+                      'text-micro text-muted',
+                      shutHead && last && 'tnum font-semibold text-ink',
+                    )}
+                  >
+                    {shutHead ? (last ? l.sum : '') : cell}
+                  </span>
+                ) : (
+                  cell
+                )}
+              </DataCell>
+            )
+          })}
         </DataRow>
 
         {/* Панель настройки — строка-вставка во всю ширину сетки. Оверлея нет:

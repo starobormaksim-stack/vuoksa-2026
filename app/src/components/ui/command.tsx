@@ -43,12 +43,15 @@ function CommandDialog({
   children,
   className,
   showCloseButton = false,
+  shouldFilter,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  /** отбирать ли находки своими силами: `false` — отбор делает экран (см. SearchCommand) */
+  shouldFilter?: boolean
 }) {
   return (
     <Dialog {...props}>
@@ -71,7 +74,7 @@ function CommandDialog({
             и сносит ВСЁ дерево приложения — экран становится пустым.
             Заказчик 04.08.2026: «нажимаю на строку поиска, и у меня полностью
             весь сервис закрывается». Не удалять. */}
-        <Command>{children}</Command>
+        <Command shouldFilter={shouldFilter}>{children}</Command>
       </DialogContent>
     </Dialog>
   )

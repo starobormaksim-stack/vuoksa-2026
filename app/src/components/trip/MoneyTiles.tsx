@@ -73,7 +73,13 @@ export function MoneyTiles({ S, perms }: { S: State; perms: Perms }) {
     })
 
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-4">
+    /* ⛔ Колонок ДВЕ на любой ширине. Было `lg:grid-cols-4`, и после того как
+       карте отдали место (07.08.2026), колонка обложки на 1280 сузилась
+       с 616 до 416 px: четыре плитки получили по ~90 px, и «43 509 ₽»
+       ломалось пополам — «43» на одной строке, «509 ₽» на другой. Заказчик
+       08.08.2026 про левую сторону: «куча проблем с выравниванием».
+       Ширина колонки, а не ширина экрана, решает здесь всё. */
+    <div className="grid grid-cols-2 gap-x-4 gap-y-4">
       {TILES.map((t) => (
         <div key={t.key} className="row-span-2 grid min-w-0 grid-rows-subgrid gap-0">
           <div className="text-micro leading-tight text-muted">
@@ -100,7 +106,9 @@ export function MoneyTiles({ S, perms }: { S: State; perms: Perms }) {
             type="button"
             onClick={() => jumpToItem('road', 'sum-' + t.slot)}
             aria-label={`${labelOf(t)}: ${money(sums[t.key], S.doc)}. Показать расчёт`}
-            className="tnum flex min-h-11 w-full items-end self-end pt-1 text-left text-head font-bold text-ink transition-colors hover:text-accent-text lg:text-title"
+            /* `whitespace-nowrap`: сумма — одно число, а не фраза, и разрывать
+               её по неразрывному пробелу разрядов нельзя ни при какой ширине. */
+            className="tnum flex min-h-11 w-full items-end self-end pt-1 text-left text-head font-bold whitespace-nowrap text-ink transition-colors hover:text-accent-text lg:text-title"
           >
             {money(sums[t.key], S.doc)}
           </button>
