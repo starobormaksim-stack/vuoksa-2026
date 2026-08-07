@@ -73,7 +73,7 @@ const PLAIN: Record<string, string[]> = {
   transport: [
     'n', 'kind', 'kindT', 'fuel', 'rate', 'rateU', 'hours', 'litres',
     'carry', 'owner', 'payer', 'leg', 'kmAuto', 'km', 'kmSrc', 'kmLocal',
-    'kBack', 'tone', 'calcT', 'c', 'ord', 'by', 'as',
+    'kBack', 'tone', 'color', 'calcT', 'c', 'ord', 'by', 'as',
   ],
   rent: [
     'n', 'cat', 'price', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',

@@ -5,7 +5,6 @@ import type { State, Trip, TripPlace } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { countdown, daysUntil, fmtRange, plural } from '@/format'
 import { askMapLook, askPlaceMain } from '@/lib/mapfocus'
-import { humanAddr } from '@/lib/geocode'
 import { update } from '@/store'
 import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
 import { MoneyTiles } from './MoneyTiles'
@@ -82,10 +81,6 @@ export function TripCover({ S, perms, onEditDates }: Props) {
   /* Главное место — оно же точка приезда: от него и адрес, и единственная
      иконка карты в строке мест. */
   const mapPlace = places.find((p) => p.main) ?? places[0]
-  /* Показ, а не хранение: `addr` в документе часто приходит с Plus Code геокодера
-     («XVWW+WF Горы») — машинный код, который заказчик прочитал как «X5, WW, WF»
-     (разбор 06.08.2026). humanAddr режет его и служебные части только для экрана. */
-  const destAddr = humanAddr(mapPlace?.addr ?? '')
   const dates = datesLabel(trip)
   const days = daysUntil(trip.start)
   const start = new Date(trip.start)
@@ -311,17 +306,22 @@ export function TripCover({ S, perms, onEditDates }: Props) {
             </div>
           )}
 
-          {/* Адрес конечной точки словами. Пункт 6 разбора: «адрес места, точки
-              приезда — это и есть финальная точка, которая тоже везде автоматически
-              показывается». Заводится он один раз — геокодером, когда конечную точку
-              ставят на карте, — и правится там же, а здесь только читается: второго
-              места ввода одного и того же быть не должно (У-53). */}
-          {destAddr && (
-            <p className="flex items-start gap-2 text-note text-muted">
-              <TentTree size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
-              <span className="min-w-0 flex-1">{destAddr}</span>
-            </p>
-          )}
+          {/* ⛔ Здесь стояла строка адреса конечной точки — «Горы, Ленинградская
+              область». Убрана 07.08.2026 по прямому слову заказчика, в одном
+              перечне со строкой маршрута, «2026, юбилей, 10 лет» и «Вы — Макс,
+              владелец». Взамен он попросил «просто точку на геолокации указать
+              и подписать её, чтобы всё было поэтично и по-человечески» — это
+              строка выше: значок геолокации и название места («озеро Вуокса»),
+              которое он пишет сам.
+
+              Машинный адрес рядом с ним и был лишним: человек назвал место
+              по-своему, а следом стояла казённая расшифровка того же места
+              словами геокодера.
+
+              ⚠️ Убрано С ЭКРАНА, не из документа (постулат 4): `place.addr`
+              на месте, геокодер его по-прежнему заводит (`guessDestAddr`
+              в `map/TripMap.tsx`), слияние переносит. Он нужен выгрузке
+              и вернётся одной правкой, если заказчик передумает. */}
         </div>
 
         <MoneyTiles S={S} perms={perms} />

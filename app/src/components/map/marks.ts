@@ -146,11 +146,52 @@ export function toneAt(index: number): MapTone {
  * Так две ветки, которым человек выбрал один и тот же цвет, всё равно
  * различимы рисунком линии (WCAG 1.4.1, та же причина, по которой штрихи есть).
  */
-export function toneOf(t: { tone?: number }, index: number): MapTone {
+export function toneOf(t: { tone?: number; color?: string }, index: number): MapTone {
   const base = toneAt(index)
+  /* Свой цвет из палитры старше готового тона: человек выбрал его последним
+     действием, и подменять выбор списком нельзя (заказчик 07.08.2026). */
+  const own = normHex(t.color)
+  if (own) return { fill: own, text: inkOn(own), dash: base.dash }
   const pick = t.tone
   if (typeof pick !== 'number' || !MAP_TONES[pick]) return base
   return { fill: MAP_TONES[pick].fill, text: MAP_TONES[pick].text, dash: base.dash }
+}
+
+/**
+ * Привести цвет из палитры к `#rrggbb` или отказать.
+ *
+ * ⚠️ Строка приходит из документа, а документ правят четверо и правит слияние.
+ * Мусор в `style.backgroundColor` браузер проглотит молча, и ветка окажется
+ * прозрачной — то есть невидимой линией на карте. Поэтому чужое значение
+ * не показывается вовсе: тогда работает прежний тон, и линия остаётся.
+ */
+export function normHex(v: string | undefined): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(s)) return s
+  /* Короткая запись `#abc` — та же величина, разворачиваем. */
+  if (/^#[0-9a-f]{3}$/.test(s)) return '#' + s.slice(1).split('').map((c) => c + c).join('')
+  return null
+}
+
+/**
+ * Каким цветом писать номер точки внутри кружка выбранного цвета.
+ *
+ * Считается по яркости, а не назначается: человек волен выбрать и почти белый,
+ * и почти чёрный, а номер обязан читаться на обоих (WCAG 1.4.3, порог 4,5 : 1).
+ * Формула — относительная яркость sRGB из самой спецификации WCAG.
+ */
+export function inkOn(hex: string): string {
+  const ch = (i: number) => {
+    const v = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  }
+  const L = 0.2126 * ch(0) + 0.7152 * ch(1) + 0.0722 * ch(2)
+  /* Крем бренда (#F9F3D4, L ≈ 0,882) против графита (#262513, L ≈ 0,020):
+     сравниваем контраст с каждым и берём тот, что выше. */
+  const withCream = (0.882 + 0.05) / (L + 0.05)
+  const withInk = (L + 0.05) / (0.02 + 0.05)
+  return withCream >= withInk ? '#F9F3D4' : '#262513'
 }
 
 /** Тон точки: `tr` — id техники, `order` — порядок id из `S.transport`. */

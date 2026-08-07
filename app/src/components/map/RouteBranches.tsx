@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { Car, Check, Footprints, Plus, Repeat2, Sailboat, X, type LucideIcon } from 'lucide-react'
+import {
+  Car, Check, ChevronDown, Footprints, Palette, Plus, Repeat2, Sailboat, X,
+  type LucideIcon,
+} from 'lucide-react'
 import type { LegMode, State, Transport } from '@/lib/types'
 import { update, touch } from '@/store'
 import { kmOf, kBackOf } from '@/lib/calc'
@@ -7,7 +10,7 @@ import { dg, kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 import { InlineNum, InlineText } from '@/components/flops'
-import { MAP_TONES, TONE_NAMES, toneOf, type MapTone } from './marks'
+import { MAP_TONES, TONE_NAMES, inkOn, normHex, toneOf, type MapTone } from './marks'
 
 /**
  * Ветки маршрута — полоса над картой.
@@ -111,6 +114,21 @@ interface Props {
 export function RouteBranches({ S, canEdit, active, onActive }: Props) {
   /** открыт ли выбор вида техники под «плюсом» */
   const [adding, setAdding] = useState(false)
+  /**
+   * Раскрыты ли свойства активной ветки.
+   *
+   * ⛔ Свёрнуто ПО УМОЛЧАНИЮ. Заказчик 07.08.2026: «огромное количество проблем
+   * с правой стороны, по умолчанию свёрнута должна быть вся эта информация»,
+   * и в тот же разбор — «позорнейшее количество информации… почему-то такое
+   * количество элементов. Оно не нужно». Свойства ветки — восемь органов
+   * (название, расход, «×2», лишние километры, экипаж, цвет), и все они
+   * стояли раскрытыми под картой всё время, хотя трогают их раз в поездку.
+   *
+   * Развернуть — шеврон в самой строке ветки: своего ряда орган не занимает
+   * (постулат 7), а свёрнутое состояние оставляет видимый след, которым его
+   * вернут (постулат 5, урок У-124).
+   */
+  const [open, setOpen] = useState(false)
 
   const list = branchesOf(S)
   const order = S.transport.map((t) => t.i)
@@ -190,6 +208,11 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
               note={branchNote(t, S, own)}
               on={active === t.i}
               onClick={() => onActive(t.i)}
+              /* Шеврон есть только у активной ветки и только у того, кто
+                 вправе её править: свойства чужой ветки раскрывать нечем
+                 и незачем (постулат 6). */
+              open={active === t.i && canEdit ? open : undefined}
+              onToggle={() => setOpen((v) => !v)}
             />
           )
         })}
@@ -236,7 +259,7 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
       {/* ── Свойства активной ветки ──
           Всё, что заказчик просил «тут же сразу же»: удвоение маршрута,
           лишние километры, экипаж, цвет. */}
-      {activeT && canEdit && (
+      {activeT && canEdit && open && (
         <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
           {/* ── Название и расход ──
               Заказчик 06.08.2026, поздний вечер: «автотранспорт, названия
@@ -365,7 +388,10 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
                     className={cn(
                       'flex min-h-11 items-center rounded-lg border px-3 text-note transition-colors',
                       on
-                        ? 'border-accent bg-accent-fill font-semibold text-ink'
+                        /* Та же пара, что у строки ветки выше: подсветка
+                           `accent-soft`, текст прежний (замер 07.08.2026 —
+                           графит на `accent-fill` давал 2,60 : 1). */
+                        ? 'border-accent bg-accent-soft font-semibold text-ink'
                         : 'border-line text-muted hover:bg-zebra',
                     )}
                   >
@@ -376,14 +402,23 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
             </div>
           )}
 
-          {/* Цвет ветки. Только брендовые тона (постулат 10) — своих цветов
-              завести нельзя, и это правильно: чужой цвет на карте сливается
-              с подложкой. Рисунок линии при этом остаётся своим, поэтому две
-              ветки одного цвета всё равно различимы (WCAG 1.4.1). */}
+          {/* ── Цвет ветки: шесть ярких наготове плюс своя палитра ──
+              Заказчик 07.08.2026: «цвета маршрутов должны быть яркими, чтобы
+              их было легко рассмотреть на карте. Брендовые цвета здесь
+              не важны… чтобы ты предлагал яркие цвета для каждого маршрута…
+              При этом возможность выбора: я нажимаю это в палитре, выбираю
+              самостоятельно».
+              ⛔ Оговорка постулата 10 расширена ровно на нитки, кружки точек
+              и эти кружки выбора. Ни один орган интерфейса цвет отсюда
+              не берёт. Палитра — родная браузерная (`input type="color"`),
+              своего органа не выдумано (постулат 3) и шторки не заведено
+              (постулат 2): на телефоне её рисует сама система. */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-note text-muted">Цвет ветки</span>
             {MAP_TONES.map((tone, i) => {
-              const on = (activeT.tone ?? -1) === i
+              /* Свой цвет старше готового тона — тогда ни один кружок
+                 не отмечен, и это честно: выбран не они. */
+              const on = !normHex(activeT.color) && (activeT.tone ?? -1) === i
               return (
                 <button
                   key={tone.fill}
@@ -394,6 +429,10 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
                   onClick={() =>
                     patch(activeT.i, (t) => {
                       t.tone = on ? undefined : i
+                      /* Выбрали готовый — свой перестаёт действовать. Поле
+                         не удаляем: слияние переносит его как обычное значение,
+                         и пустая строка — законное «своего цвета нет». */
+                      t.color = ''
                     })
                   }
                   className="grid size-11 place-items-center rounded-md transition-colors hover:bg-zebra"
@@ -410,6 +449,64 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
                 </button>
               )
             })}
+
+            {/* Своя палитра. Подпись обязательна: цвет не остаётся безымянным
+                пятном (WCAG 1.4.1), а сам кружок показывает выбранное. */}
+            <label
+              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-note text-muted transition-colors hover:bg-zebra"
+              title="Выбрать свой цвет ветки"
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  'grid size-6 place-items-center rounded-full border-2',
+                  normHex(activeT.color) ? 'border-ink' : 'border-line-strong',
+                )}
+                style={
+                  normHex(activeT.color)
+                    ? { backgroundColor: normHex(activeT.color) as string, color: inkOn(normHex(activeT.color) as string) }
+                    : undefined
+                }
+              >
+                {normHex(activeT.color) ? (
+                  <Check size={14} strokeWidth={2.5} />
+                ) : (
+                  <Palette size={14} strokeWidth={1.75} className="text-muted" />
+                )}
+              </span>
+              Свой
+              <input
+                type="color"
+                value={normHex(activeT.color) ?? toneOf(activeT, order.indexOf(activeT.i)).fill}
+                aria-label="Свой цвет ветки маршрута"
+                onChange={(e) =>
+                  patch(activeT.i, (t) => {
+                    t.color = e.target.value
+                  })
+                }
+                /* Само поле не показываем: его вид задаёт система и он всюду
+                   разный. Видимая часть — кружок слева, а `<label>` отдаёт
+                   ему нажатие целиком, поэтому цель касания это вся строка. */
+                className="sr-only"
+              />
+            </label>
+
+            {/* Вернуть цвет по умолчанию. Кнопка появляется только когда
+                возвращать есть что (постулат 6). */}
+            {(normHex(activeT.color) || typeof activeT.tone === 'number') && (
+              <button
+                type="button"
+                onClick={() =>
+                  patch(activeT.i, (t) => {
+                    t.color = ''
+                    t.tone = undefined
+                  })
+                }
+                className="flex min-h-11 items-center rounded-md px-2 text-note text-muted transition-colors hover:bg-zebra hover:text-ink"
+              >
+                Сбросить
+              </button>
+            )}
           </div>
 
           {/* ⛔ Здесь стояла строка «Новые точки на карте попадают в „…“. Расход,
@@ -424,9 +521,16 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
   )
 }
 
-/** Одна ветка в ряду: цвет, значок, название и её километры. */
+/**
+ * Одна ветка в ряду: цвет, значок, название и её километры.
+ *
+ * ⚠️ Снаружи это `<div>`, а не `<button>`: у активной ветки внутри стоит второй
+ * орган — шеврон свойств, — а кнопка внутри кнопки разметкой запрещена и
+ * в Safari просто не нажимается. Рамку и заливку поэтому несёт обёртка,
+ * а нажатия — две кнопки внутри неё.
+ */
 function BranchChip({
-  tone, icon: Icon, name, note, on, onClick,
+  tone, icon: Icon, name, note, on, onClick, open, onToggle,
 }: {
   tone: MapTone
   icon?: LucideIcon
@@ -434,32 +538,64 @@ function BranchChip({
   note: string
   on: boolean
   onClick: () => void
+  /** `undefined` — шеврона нет вовсе; иначе раскрыты ли свойства ветки */
+  open?: boolean
+  onToggle?: () => void
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
+    <div
       className={cn(
         /* Ветка занимает строку целиком: `w-full`, а не `shrink-0` — полоса
            больше не едет вбок (заказчик 06.08.2026). */
-        'flex min-h-11 w-full items-center gap-2 rounded-lg border px-3 text-left transition-colors',
-        on ? 'border-accent bg-accent-fill' : 'border-line hover:bg-zebra',
+        'flex w-full items-center rounded-lg border transition-colors',
+        /* ⛔ `bg-accent-soft`, а не `bg-accent-fill`. Заливка `accent-fill`
+           (#A74612 в светлой, #DD9A4E в тёмной) во всём проекте идёт в паре
+           с `text-on-accent`; здесь под ней стоял `text-ink`, и замер 07.08.2026
+           дал 2,60 : 1 в светлой и 2,13 : 1 в тёмной при норме 4,5 : 1 —
+           название выбранной ветки читалось хуже невыбранных. `accent-soft` —
+           тот же приём, которым помечен активный раздел в `BottomNav`
+           и своя колонка в `BuyTable`: подсветка фоном, текст прежний. */
+        on ? 'border-accent bg-accent-soft' : 'border-line hover:bg-zebra',
       )}
     >
-      {/* Цвет не единственный признак: рядом всегда стоит название (WCAG 1.4.1). */}
-      <span
-        aria-hidden
-        className="size-3 shrink-0 rounded-full"
-        style={{ backgroundColor: tone.fill }}
-      />
-      {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />}
-      <span className="min-w-0">
-        <span className="block truncate text-note leading-tight font-semibold text-ink">
-          {name}
+      <button
+        type="button"
+        aria-pressed={on}
+        onClick={onClick}
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left"
+      >
+        {/* Цвет не единственный признак: рядом всегда стоит название (WCAG 1.4.1). */}
+        <span
+          aria-hidden
+          className="size-3 shrink-0 rounded-full"
+          style={{ backgroundColor: tone.fill }}
+        />
+        {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />}
+        <span className="min-w-0">
+          <span className="block truncate text-note leading-tight font-semibold text-ink">
+            {name}
+          </span>
+          <span className="tnum block text-micro leading-tight text-muted">{note}</span>
         </span>
-        <span className="tnum block text-micro leading-tight text-muted">{note}</span>
-      </span>
-    </button>
+      </button>
+
+      {open !== undefined && (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={open ? `Свернуть настройки «${name}»` : `Настроить «${name}»`}
+          title={open ? 'Свернуть настройки' : 'Настроить ветку'}
+          className="grid size-11 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:text-ink"
+        >
+          <ChevronDown
+            size={18}
+            strokeWidth={1.75}
+            aria-hidden
+            className={cn('transition-transform', open && 'rotate-180')}
+          />
+        </button>
+      )}
+    </div>
   )
 }

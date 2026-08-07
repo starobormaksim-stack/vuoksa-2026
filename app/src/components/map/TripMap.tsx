@@ -73,6 +73,16 @@ const AUTO_LEGS_MS = 1500
 const GEO_MS = 10_000
 
 /**
+ * Имя точки, которую ещё никто не назвал.
+ *
+ * ⚠️ Строка одна на весь файл намеренно: по ней же проверяется, можно ли
+ * подставить имя от геокодера. Две копии этого текста разошлись бы при первой
+ * же правке, и подстановка молча перестала бы работать — а заметить это
+ * нечем, точка просто осталась бы «Новой».
+ */
+const NEW_POINT = 'Новая точка'
+
+/**
  * Сети нет прямо сейчас — по метке браузера. Обратного она не гарантирует
  * (`onLine === true` бывает и при мёртвом канале), поэтому судим только по `false`.
  */
@@ -365,7 +375,7 @@ export function TripMap({ S, perms, className }: Props) {
    * обещание держится, но с оговоркой вслух.
    */
   const guessAddr = useCallback(
-    async (id: string, lat: number, lon: number) => {
+    async (id: string, lat: number, lon: number, nameIt = false) => {
       setAddrBusy(id)
       const g = await reversePlace(lat, lon)
       setAddrBusy((cur) => (cur === id ? null : cur))
@@ -376,6 +386,20 @@ export function TripMap({ S, perms, className }: Props) {
              и заказчик на них пожаловался прямо. Место при этом не теряется:
              его хранят координаты точки, а не строка. */
           p.addr = humanAddr(g.addr)
+          /* ── Имя точки по адресу с карты ──
+             Заказчик 07.08.2026, отвечая на вопрос «чем тогда называть точку,
+             раз карточка не всплывает»: «Остаётся просто. Если я захочу,
+             я на неё нажму и назову, как хочу, по умолчанию просто адрес
+             с карты».
+             ⛔ Чужое имя не трогаем НИКОГДА: подставляем только вместо
+             заводского «Новая точка» и вместо пустого. Человек назвал точку
+             «Первый костёр» — геокодер не имеет права заменить это улицей
+             (постулат 4). Геокодер промолчал — остаётся «Новая точка»,
+             и это тоже честно. */
+          if (nameIt && (!p.n.trim() || p.n === NEW_POINT)) {
+            const short = shortPlaceName(humanAddr(g.addr))
+            if (short) p.n = short
+          }
         })
         return
       }
@@ -433,7 +457,7 @@ export function TripMap({ S, perms, className }: Props) {
       const at = s.route.findIndex((p) => p.i === afterId)
       if (at < 0) return
       s.route.splice(at + 1, 0, {
-        i: id, n: 'Новая точка', time: '', c: '', done: false, lat, lon, addr: '',
+        i: id, n: NEW_POINT, time: '', c: '', done: false, lat, lon, addr: '',
         lab: '', labT: '', mode: branch?.leg || 'road', tr: branch?.i ?? '',
         leg: 0, legSrc: '',
         ord: 0, ua: Date.now(),
@@ -445,8 +469,10 @@ export function TripMap({ S, perms, className }: Props) {
         p.ord = (i + 1) * 10
       })
     })
-    openCard(id, true)
-    void guessAddr(id, lat, lon)
+    /* Карточку не открываем и здесь — по той же причине (см. `onAdd`).
+       Что произошло, сказано словами: точка встала в середину, а это
+       не видно само (постулат 5). */
+    void guessAddr(id, lat, lon, true)
     toast(`Точка встала между «${thread.points[k].n || 'точкой'}» и следующей`)
   }
 
@@ -512,15 +538,21 @@ export function TripMap({ S, perms, className }: Props) {
         p.lat = lat
         p.lon = lon
       })
-      openCard(id)
+      /* Карточка не всплывает и здесь: у точки, которую разметили мастером,
+         имя уже есть — она за ним и шла. */
       void guessAddr(id, lat, lon)
+      toast(`«${S.route.find((p) => p.i === id)?.n || 'Точка'}» на карте`)
       return
     }
     /* Ждали именно новую точку — ожидание кончилось, дальше обычный путь. */
     setPlacingNew(false)
-    const id = addPoint(lat, lon, 'Новая точка', '')
-    openCard(id, true)
-    void guessAddr(id, lat, lon)
+    const id = addPoint(lat, lon, NEW_POINT, '')
+    /* ⛔ Карточку здесь НЕ открываем. Заказчик 07.08.2026: «при фиксации каждой
+       новой точки не должно возникать вот эта менюшка, внутренняя, которая
+       мешает на карте». Расставляют точки подряд, десятками, — и каждая
+       перекрывала карту ровно там, куда ставят следующую. Имя точке даёт
+       геокодер (`nameIt`), а открыть карточку можно тапом по самой метке. */
+    void guessAddr(id, lat, lon, true)
   }
 
   /**
@@ -579,12 +611,14 @@ export function TripMap({ S, perms, className }: Props) {
         p.lon = hit.lon
         if (!p.addr) p.addr = humanAddr(hit.addr)
       })
-      openCard(id)
+      toast(`«${waiting?.n || 'Точка'}» на карте`)
       return
     }
     setPlacingNew(false)
-    const id = addPoint(hit.lat, hit.lon, shortPlaceName(humanAddr(hit.addr)), humanAddr(hit.addr))
-    openCard(id)
+    /* Находка поиска уже названа адресом — карточке тут нечего добавить. */
+    const n = shortPlaceName(humanAddr(hit.addr))
+    addPoint(hit.lat, hit.lon, n || NEW_POINT, humanAddr(hit.addr))
+    toast(`«${n || 'Точка'}» ${MDASH} точка ${intoWords}`)
   }
 
   /** Метку перетащили: координаты новые — значит и адрес новый, спрашиваем заново. */
@@ -884,19 +918,28 @@ export function TripMap({ S, perms, className }: Props) {
                 и число точек никуда не делись — они на месте, стоит свернуть.
                 Строка «какая карта и какая сборка» остаётся всегда: она нужна
                 ровно в тот момент, когда с картой что-то не так (У-30…У-32). */}
-            {S.trip.route && !full ? (
-              <p className="w-full text-note leading-snug text-muted">{S.trip.route}</p>
+            {/* ⛔ Здесь стояла строка `trip.route` — «Санкт-Петербург
+                (Дворцовая) → Приозерск → острова озера Вуокса · 5 дней /
+                4 ночи». Убрана 07.08.2026 по прямому слову заказчика: он
+                перечислил её первой среди того, что надо убрать с экрана,
+                вместе с «2026, юбилей, 10 лет», «Вы — Макс, владелец»
+                и адресом места.
+                ⚠️ Убрана С ЭКРАНА, а не из документа (постулат 4): поле
+                `trip.route` на месте, слияние переносит его как раньше,
+                и вернуть строку — одна правка. Тот же маршрут виден на карте
+                ниткой и точками, то есть показан лучше, чем словами. */}
+            {/* Число точек говорится только тогда, когда часть из них НЕ видна
+                на карте. Пока все точки на месте, эта строка повторяет то, что
+                и так нарисовано метками, — а лишнюю строку заказчик 07.08.2026
+                назвал «позорнейшим количеством информации». Точки без координат
+                метки не имеют вовсе, и молчать о них нельзя (постулат 5). */}
+            {unplaced.length > 0 && !full ? (
+              <p className="w-full text-micro text-muted">
+                Без места на карте <span className="tnum">{unplaced.length}</span>{' '}
+                {plural(unplaced.length, 'точка', 'точки', 'точек')} из{' '}
+                <span className="tnum">{S.route.length}</span>
+              </p>
             ) : null}
-            <p className={cn('w-full text-micro text-muted', full && 'hidden')}>
-              <span className="tnum">{S.route.length}</span>{' '}
-              {plural(S.route.length, 'точка', 'точки', 'точек')} в маршруте
-              {unplaced.length > 0 ? (
-                <>
-                  {', из них без места на карте '}
-                  <span className="tnum">{unplaced.length}</span>
-                </>
-              ) : null}
-            </p>
 
             {/* Почему линия прямая — словами, а не догадкой (постулат 5, У-32).
                 Молчаливый откат заказчик читает как «сервис сломан», и он прав:
