@@ -45,13 +45,14 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { State } from './lib/types.ts'
 import type { Auth, Perms } from './lib/perm.ts'
-import { checkAuth, makePerms, readKey } from './lib/perm.ts'
+import { authSave, checkAuth, makePerms, readKey } from './lib/perm.ts'
 import { clone, forget, mergeInto, mergeSeed, normalizeDoc } from './lib/merge.ts'
 import { fetchTripOwner, hasAuthCodeInUrl, initAuth, onAuthChange } from './lib/auth.ts'
 import type { Session, TripOwner } from './lib/auth.ts'
 import { Sync } from './lib/sync.ts'
 import type { NetState, Presence } from './lib/sync.ts'
 import { docKey, seedFor } from './lib/trips.ts'
+import { isOfflineCopy } from './lib/offline.ts'
 
 /**
  * Ключ документа в браузере. У поездки, которая была всегда, он прежний —
@@ -377,6 +378,33 @@ export function update(recipe: Recipe): void {
   persist()
   emit()
   sync?.schedulePush()
+}
+
+/**
+ * В офлайн-копии человек называет себя сам — ссылки с ключом у файла нет.
+ *
+ * Копию скачивает один, а открывают все («я им скидываю свою офлайн-версию,
+ * а у них она не работает, потому что они не зашли через себя», 08.08.2026).
+ * У файла адрес `file:` — ни `?u=`, ни запомненной личности сайта там нет,
+ * и открывший оставался тем, кем копию сохранили, с правами участника.
+ *
+ * Ключ берётся из карточки в самом документе: в копии владельца лежат ключи
+ * всей команды, в копии участника чужие вычищены (`withoutOthersKeys`) — тогда
+ * пустой ключ совпадёт с пустым в карточке, и роль всё равно достанется.
+ * Наружу это не ведёт: сеть копии закрыта загрузчиком `pine-boot` намертво,
+ * а хранилище `file:` до сайта не достаёт. Выбор запоминается (`authSave`),
+ * чтобы файл не спрашивал одно и то же при каждом открытии.
+ */
+export function becomeInCopy(personId: string): void {
+  if (!isOfflineCopy()) return
+  const p = doc.people.find((x) => x.id === personId)
+  if (!p) return
+  auth = { id: p.id, key: p.key || '' }
+  stale = false
+  authSave(auth)
+  update((s) => {
+    s.me = p.id
+  })
 }
 
 /** Убрать позицию из коллекции: с меткой удаления, иначе слияние её воскресит. */

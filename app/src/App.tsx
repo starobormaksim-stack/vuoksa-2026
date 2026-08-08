@@ -17,12 +17,14 @@ import { TripsScreen } from './components/trips/TripsScreen'
 import { TopNav } from './components/TopNav'
 import { MobileHeader } from './components/MobileHeader'
 import { NetNotice } from './components/NetNotice'
+import { OfflineWho } from './components/OfflineWho'
 import { PermNotice } from './components/PermNotice'
 import { BottomNav } from './components/BottomNav'
 import { Placeholder } from './components/Placeholder'
 import { SearchCommand } from './components/SearchCommand'
 import { TripSection } from './components/trip/TripSection'
 import { BuySection } from './components/buy/BuySection'
+import { Settlement } from './components/buy/Settlement'
 import { GearSection } from './components/gear/GearSection'
 import { RoadSection } from './components/road/RoadSection'
 import { CrewSection } from './components/crew/CrewSection'
@@ -186,6 +188,10 @@ function App() {
         {/* Все разделы на странице сразу, каждый — своя секция с якорем.
             `scroll-margin-top` уводит заголовок из-под прилипающей шапки. */}
         <div className="flex flex-col gap-10 lg:gap-14">
+          {/* Офлайн-копию открывают и те, кому её скинули: у файла нет ссылки
+              с ключом, и без вопроса «кто вы» человек оставался тем, кем копию
+              сохранили. Вне копии и после выбора карточка не рисуется. */}
+          {офлайн && <OfflineWho />}
           {SECTIONS.map((s) => (
             <section
               key={s.id}
@@ -213,6 +219,16 @@ function App() {
               )}
             </section>
           ))}
+
+          {/* Общий зачёт — САМЫМ ПОСЛЕДНИМ на листе, после всех разделов
+              с тратами. Заказчик 08.08.2026: «Почему у тебя взаиморасчёты
+              после еды, после закупки идут, а отдельно расчёты по логистике?
+              У тебя всё в конце должно считаться… Общее считается в конце,
+              грамотно прописано: кто кому что должен». До этого блок стоял
+              в конце «Закупки» — перед «Дорогой», то есть зачёт показывался
+              раньше половины трат, которые в нём же и посчитаны.
+              Экземпляр один (У-53), арифметика прежняя — lib/settle.ts. */}
+          <Settlement S={S} me={perms.me} />
         </div>
       </main>
 
