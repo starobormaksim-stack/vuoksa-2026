@@ -1,5 +1,6 @@
 import {
   Backpack,
+  BedDouble,
   House,
   Route,
   ShoppingCart,
@@ -21,6 +22,10 @@ export const SECTIONS: SectionDef[] = [
   { id: 'gear', title: 'Сборы', icon: Backpack },
   { id: 'buy', title: 'Закупка', icon: ShoppingCart },
   { id: 'road', title: 'Дорога', icon: Route },
+  /* Заказчик 08.08.2026, диктуя порядок разделов: «Отельные варианты или
+     какие-то camping места… он просто есть, существует». Пустой, но настоящий:
+     виден в меню, в панели и в оглавлении. Своё имя ляжет в `S.secTitles.stay`. */
+  { id: 'stay', title: 'Проживание', icon: BedDouble },
   { id: 'menu', title: 'Меню', icon: Utensils },
 ]
 

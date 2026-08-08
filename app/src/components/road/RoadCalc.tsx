@@ -5,7 +5,8 @@ import type { Rent, State, Transport } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { calcAll, commonKmUsed, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
-  AddRow, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions, useIsDesktop,
+  AddRow, ConfirmAction, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions,
+  useIsDesktop,
 } from '@/components/flops'
 import { touch, update } from '@/store'
 import { useFold, useUnfoldRequest } from '@/foldpref'
@@ -638,12 +639,13 @@ function Matrix({
               onClick={() => onSetup(t.i)}
             />
             {canDel(t) ? (
-              <RowAction
+              /* Техника удаляется СО СПРОСОМ (заказчик 08.08.2026: «вы уверены,
+                 что вы хотите удалить» — за строкой топливо и расчёт). */
+              <ConfirmAction
                 key="d"
                 icon={Trash2}
-                tone="danger"
                 label={`Убрать «${t.n}»`}
-                onClick={() => onDelTransport(t)}
+                onConfirm={() => onDelTransport(t)}
               />
             ) : null}
           </RowActions>

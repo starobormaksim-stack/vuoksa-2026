@@ -30,6 +30,7 @@ import { GearSection } from './components/gear/GearSection'
 import { RoadSection } from './components/road/RoadSection'
 import { CrewSection } from './components/crew/CrewSection'
 import { MenuSection } from './components/menu/MenuSection'
+import { StaySection } from './components/stay/StaySection'
 import { Toaster } from './components/ui/sonner'
 
 /**
@@ -215,6 +216,8 @@ function App() {
                 <CrewSection />
               ) : s.id === 'menu' ? (
                 <MenuSection />
+              ) : s.id === 'stay' ? (
+                <StaySection />
               ) : (
                 <Placeholder section={s} />
               )}

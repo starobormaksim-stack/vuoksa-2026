@@ -274,10 +274,19 @@ export function GearSection() {
             key={sec.i}
             data-block={sec.i}
             title={sec.t}
-            /* итог как в таблице заказчика: «собрано: 0 из 14» */
+            /* Итог как в таблице заказчика: «собрано: 0 из 14».
+               ⚠️ На 390 слово «собрано:» отнимает ~64 px и не оставляет места
+               органам шапки (разбор 08.08.2026). Решение заказчика 09.08.2026:
+               на телефоне коротко «0 из 14», полная фраза — на компьютере.
+               Голосом раздел читается одинаково на обеих ширинах: слово
+               остаётся в разметке для чтения с экрана. */
             badge={
               <span className="tnum shrink-0 text-note font-semibold text-muted">
-                собрано: {r.done} из {r.total}
+                <span className="sr-only">собрано: </span>
+                <span aria-hidden className="hidden sm:inline">
+                  собрано:{' '}
+                </span>
+                {r.done} из {r.total}
               </span>
             }
             open={fold.isOpen(sec.i)}

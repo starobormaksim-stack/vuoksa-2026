@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
 import { calcAll, commonKmUsed, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
-  AddRow, InlineNum, InlineText, numText, RowAction, RowActions, StripField, StripRow,
+  AddRow, ConfirmAction, InlineNum, InlineText, numText, RowAction, RowActions,
+  StripField, StripRow,
 } from '@/components/flops'
 import { touch, update } from '@/store'
 import { NBSP, plural } from '@/format'
@@ -466,11 +467,11 @@ export function RoadStrip({
           {canDel(t) ? (
             <div className="mt-2 flex justify-end border-t border-line/50 pt-2">
               <RowActions>
-                <RowAction
+                {/* Со спросом — как в таблице (заказчик 08.08.2026). */}
+                <ConfirmAction
                   icon={Trash2}
-                  tone="danger"
                   label={`Убрать «${t.n || 'без названия'}»`}
-                  onClick={() => onDelTransport(t)}
+                  onConfirm={() => onDelTransport(t)}
                 />
               </RowActions>
             </div>

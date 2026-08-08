@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ChevronDown, ChevronUp, Ellipsis } from 'lucide-react'
 import { splitForBottomNav, type SectionDef } from '../sections'
 
@@ -28,6 +29,14 @@ interface Props {
 export function BottomNav({ sections, active, onSelect, open, onToggle }: Props) {
   const { visible, overflow } = splitForBottomNav(sections)
   const overflowActive = overflow.some((s) => s.id === active)
+  /** раскрыт ли перечень остальных разделов над панелью */
+  const [more, setMore] = useState(false)
+
+  /** Уйти в раздел из перечня: перечень закрывается сам, как любое меню. */
+  const go = (id: string) => {
+    setMore(false)
+    onSelect(id)
+  }
 
   return (
     <nav
@@ -56,6 +65,32 @@ export function BottomNav({ sections, active, onSelect, open, onToggle }: Props)
         </button>
       </div>
 
+      {/* ── Остальные разделы: перечнем НАД панелью ──
+          Строками, а не сеткой: длинные названия («Проживание») в колонку
+          шириной 55 px не помещаются, а обрезанное название — не название. */}
+      {open && more && overflow.length > 0 && (
+        <div className="border-t border-line/70 bg-surface px-2 py-1">
+          {overflow.map((s) => {
+            const isActive = s.id === active
+            const Icon = s.icon
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => go(s.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left transition-colors active:scale-[0.99] ${
+                  isActive ? 'bg-accent-soft text-accent-text' : 'text-ink hover:bg-zebra'
+                }`}
+              >
+                <Icon size={20} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
+                <span className="text-note font-semibold">{s.title}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {open && (
         <div
           id="bottom-nav-list"
@@ -71,7 +106,7 @@ export function BottomNav({ sections, active, onSelect, open, onToggle }: Props)
               <button
                 key={s.id}
                 type="button"
-                onClick={() => onSelect(s.id)}
+                onClick={() => go(s.id)}
                 aria-current={isActive ? 'page' : undefined}
                 className={`flex min-h-14 min-w-11 flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 transition-colors active:scale-[0.98] ${
                   isActive ? 'text-accent-text' : 'text-muted'
@@ -92,14 +127,24 @@ export function BottomNav({ sections, active, onSelect, open, onToggle }: Props)
             <button
               type="button"
               aria-label="Остальные разделы"
-              /* Кнопка обязана что-то делать: молчаливых отказов не бывает.
-                 Пока разделов ровно шесть, эта ветка не рисуется вовсе. */
-              onClick={() => onSelect(overflow[0].id)}
+              aria-expanded={more}
+              /* ⛔ Здесь кнопка молча прыгала на ПЕРВЫЙ переполненный раздел,
+                 и остальные достать было нечем — молчаливый отказ (постулат 5).
+                 Пока разделов было шесть, ветка не рисовалась вовсе и дефект
+                 не проявлялся; седьмой раздел («Проживание», 09.08.2026) её
+                 включил. Теперь она раскрывает перечень НАД панелью — списком
+                 прямо здесь, а не шторкой (постулат 2), как выбор вида техники
+                 в полосе веток карты. */
+              onClick={() => setMore((v) => !v)}
               className={`flex min-h-14 min-w-11 flex-col items-center justify-center gap-0.5 pt-1.5 pb-1 transition-colors active:scale-[0.98] ${
-                overflowActive ? 'text-accent-text' : 'text-muted'
+                overflowActive || more ? 'text-accent-text' : 'text-muted'
               }`}
             >
-              <span className="grid h-7 w-12 place-items-center">
+              <span
+                className={`grid h-7 w-12 place-items-center rounded-full transition-colors ${
+                  overflowActive ? 'bg-accent-soft' : ''
+                }`}
+              >
                 <Ellipsis size={20} strokeWidth={1.75} aria-hidden />
               </span>
               <span className="text-micro font-semibold">Ещё</span>

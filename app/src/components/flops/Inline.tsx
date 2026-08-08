@@ -837,3 +837,48 @@ export function RowAction({
     </button>
   )
 }
+
+/**
+ * Действие строки, которое СПРАШИВАЕТ. Заказчик 08.08.2026 про технику:
+ * «нужно уведомлять человека: вы извините, мы удалим, вы уверены, что вы
+ * хотите удалить» — удаление техники тянет за собой топливо и расчёт.
+ * ⛔ `confirm()` и попапы запрещены (постулаты 2 и 9), поэтому вопрос — второй
+ * шаг ПРЯМО В СТРОКЕ, как у «Очистить» в полосе карты: первый тап превращает
+ * значок в «Удалить? · Отмена», второй — удаляет. Кнопка «Вернуть» в сообщении
+ * остаётся дополнительно, а не вместо спроса.
+ */
+export function ConfirmAction({
+  icon, label, onConfirm,
+}: {
+  icon: typeof Plus
+  label: string
+  onConfirm: () => void
+}) {
+  const [asking, setAsking] = useState(false)
+  if (!asking) {
+    return <RowAction icon={icon} tone="danger" label={label} onClick={() => setAsking(true)} />
+  }
+  return (
+    <span className="flex shrink-0 items-center">
+      <button
+        type="button"
+        onClick={() => {
+          setAsking(false)
+          onConfirm()
+        }}
+        aria-label={label}
+        className="flex min-h-11 items-center rounded-md px-2 text-note font-semibold text-accent-text transition-colors hover:bg-accent-soft active:scale-95"
+      >
+        Удалить?
+      </button>
+      <button
+        type="button"
+        onClick={() => setAsking(false)}
+        aria-label="Не удалять"
+        className="flex min-h-11 items-center rounded-md px-2 text-note text-muted transition-colors hover:bg-zebra/70 active:scale-95"
+      >
+        Отмена
+      </button>
+    </span>
+  )
+}

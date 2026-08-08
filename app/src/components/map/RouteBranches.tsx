@@ -10,7 +10,7 @@ import { kmOf, kBackOf } from '@/lib/calc'
 import { dg, kBackWord, kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
-import { InlineNum, InlineText, RowAction } from '@/components/flops'
+import { ConfirmAction, InlineNum, InlineText } from '@/components/flops'
 import { MAP_TONES, TONE_NAMES, inkOn, normHex, toneOf, type MapTone } from './marks'
 
 /**
@@ -93,16 +93,24 @@ function addOptions(S: State): AddOption[] {
  * (постулат 5), а не подсовываем чужую цифру.
  */
 function branchNote(t: Transport, S: State, own: number): string {
-  if (own === 0) return 'точек нет'
+  /* Вид топлива стоит первым: заказчик 08.08.2026 — «чего у тебя, кстати,
+     не указано наверху под картой гугловской, то есть какой вид топлива
+     используется». У «Пешком» и инструмента (`rateU === 'fix'`) топлива нет —
+     и слова о нём нет (постулат 6). */
+  const fuel = t.rateU !== 'fix' ? (S.fuelPrices.find((f) => f.i === t.fuel)?.n ?? '') : ''
+  const withFuel = (km: string) => (fuel ? `${fuel} · ${km}` : km)
+  if (own === 0) return withFuel('точек нет')
   if (t.kmSrc === 'auto' || t.kmSrc === 'manual') {
     /* Число в чипе — ИТОГ ветки, то есть уже с «×2». Молчать об этом нельзя:
        08.08.2026 заказчик прочитал в чипе 742 км там, где по точкам стояло
        371, и спросил «зачем это 742» (постулат 5). */
     const k = kBackOf(t, S)
-    return k === 1 ? kmLabel(kmOf(t, S)) : `${kmLabel(kmOf(t, S))} ${MDASH} ${kBackWord(k)}`
+    return withFuel(
+      k === 1 ? kmLabel(kmOf(t, S)) : `${kmLabel(kmOf(t, S))} ${MDASH} ${kBackWord(k)}`,
+    )
   }
-  if ((t.kmAuto ?? 0) > 0) return `${kmLabel(t.kmAuto as number)} по карте`
-  return 'пробег не посчитан'
+  if ((t.kmAuto ?? 0) > 0) return withFuel(`${kmLabel(t.kmAuto as number)} по карте`)
+  return withFuel('пробег не посчитан')
 }
 
 /** Ветками на карте становится техника, у которой есть способ передвижения. */
@@ -628,13 +636,13 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
               что видно (постулат 7: меньше деталей, а не больше). */}
 
           {/* Удаление — действие в самой строке (постулат 2), тем же органом,
-              что у строк «Дороги». */}
+              что у строк «Дороги», и тоже со спросом: ветка — это та же
+              техника (заказчик 08.08.2026: «вы уверены, что хотите удалить»). */}
           <div className="flex justify-end border-t border-line/50 pt-1">
-            <RowAction
+            <ConfirmAction
               icon={Trash2}
-              tone="danger"
               label={`Убрать ветку «${activeT.n || 'без названия'}»`}
-              onClick={() => dropBranch(activeT)}
+              onConfirm={() => dropBranch(activeT)}
             />
           </div>
         </div>
