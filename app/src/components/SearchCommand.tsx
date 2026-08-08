@@ -283,8 +283,12 @@ export function SearchCommand({
                         уведя человека в раздел. У полки это ровно то, чего он
                         просил не делать. */}
                     {h.bought !== undefined && (
+                      /* `-my-2` съедает вертикальные отступы строки целиком:
+                         цель касания галочки 44 px остаётся, а строка находки
+                         с галочкой становится той же высоты (44), что и без
+                         неё, — иначе список шёл ступеньками 52 / 44. */
                       <span
-                        className="-my-1 shrink-0"
+                        className="-my-2 shrink-0"
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                       >

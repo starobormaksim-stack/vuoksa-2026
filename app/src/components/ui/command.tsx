@@ -61,7 +61,14 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
+          /* ⛔ На телефоне окно прижато к ВЕРХУ (top-4), а не к трети высоты.
+             Центрированное окно на iPhone накрывается клавиатурой: поле ввода
+             стояло на y ≈ 281, клавиатура занимает нижнюю половину, Safari
+             дёргает вьюпорт к полю — и окно «съезжает» (слово заказчика,
+             08.08.2026). Наверху окну дёргаться некуда: поле видно всегда,
+             клавиатура срезает только хвост списка. На десктопе клавиатуры
+             нет — там прежняя треть высоты. */
+          "top-4 translate-y-0 overflow-hidden rounded-xl! p-0 sm:top-1/3",
           className
         )}
         showCloseButton={showCloseButton}
@@ -178,7 +185,11 @@ function CommandItem({
       {...props}
     >
       {children}
-      <CheckIcon className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      {/* ⛔ `hidden`, а не `opacity-0`: невидимый значок — это всё равно 16 px
+          плюс зазор, и правый столбец каждой находки стоял на 28 px левее края
+          окна. Отметок `data-checked` у поиска нет вовсе — место резервировалось
+          под то, что никогда не показывается (постулат 7: лишних пробелов нет). */}
+      <CheckIcon className="ml-auto hidden group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:inline-block" />
     </CommandPrimitive.Item>
   )
 }

@@ -3,6 +3,7 @@ import type { Perms } from '@/lib/perm'
 import { update } from '@/store'
 import { calcAll, money, type CalcResult } from '@/lib/calc'
 import { jumpToItem } from '@/lib/jump'
+import { requestUnfold } from '@/foldpref'
 import { InlineText } from '@/components/flops'
 
 /** Суммы-нули на случай сбоя расчётного ядра — плитки не должны ронять обложку. */
@@ -104,7 +105,12 @@ export function MoneyTiles({ S, perms }: { S: State; perms: Perms }) {
               месте — это ровно та беда, из-за которой «тап просто не работает». */}
           <button
             type="button"
-            onClick={() => jumpToItem('road', 'sum-' + t.slot)}
+            onClick={() => {
+              /* Группа «Итоги» по умолчанию свёрнута (foldpref.ts) —
+                 без заявки прыжок пришёл бы в пустоту. */
+              requestUnfold('road', 'sum-' + t.slot)
+              jumpToItem('road', 'sum-' + t.slot)
+            }}
             aria-label={`${labelOf(t)}: ${money(sums[t.key], S.doc)}. Показать расчёт`}
             /* `whitespace-nowrap`: сумма — одно число, а не фраза, и разрывать
                её по неразрывному пробелу разрядов нельзя ни при какой ширине. */

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
+import { ChevronsDownUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BuySection as BuySec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { orderedPeople } from '@/lib/people'
 import { visibleBlockId } from '@/lib/visible'
 import { askedHere, useAddRequest } from '@/lib/addnew'
+import { useFold, useUnfoldRequest } from '@/foldpref'
 import { jumpToItem } from '@/lib/jump'
 import {
   Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll, useIsDesktop,
@@ -13,7 +14,8 @@ import {
 import { BUY_LEGEND } from './legend'
 import { BuyTotals } from './BuyTotals'
 import { BuyTable } from './BuyTable'
-import { byOrd, type BuyItem } from './buylocal'
+import { byOrd, secSum, type BuyItem } from './buylocal'
+import { money } from '@/lib/calc'
 
 /**
  * Раздел «Закупка» — таблицей, как лист заказчика.
@@ -29,10 +31,11 @@ import { byOrd, type BuyItem } from './buylocal'
  */
 export function BuySection() {
   const { S, update, remove, perms } = useTrip()
-  /* ⛔ Раскрыты ВСЕ разделы (06.08.2026: «по умолчанию у тебя все списки должны
-     быть раскрыты»). Свёрнута только подробность позиции — спрошено отдельно.
-     Пустой объект = «всё раскрыто»; свёрнутые помечаются явным `true`. */
-  const [closed, setClosed] = useState<Record<string, boolean>>({})
+  /* ⛔ По умолчанию статьи СВЁРНУТЫ, раскрытое помнит браузер (заказчик
+     08.08.2026: «по умолчанию все должно быть скрыто, свернуто… при
+     перезагрузке остаются в том виде, в котором я их оставил»). Прежнее
+     «все списки раскрыты» (06.08.2026) отменено — см. `foldpref.ts`. */
+  const fold = useFold('buy')
   /** корень раздела — по нему липкий «плюс» находит блок, который сейчас читают */
   const list = useRef<HTMLDivElement | null>(null)
   /** id только что добавленной строки: подсвечена и сразу открыта на правку */
@@ -40,6 +43,16 @@ export function BuySection() {
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
+  /* Только что заведённая статья: окно названия открыто сразу, и закрытие
+     не проваливается в «Действия раздела» (см. «Сборы»). */
+  const [newSec, setNewSec] = useState(false)
+  const endRename = () => {
+    setRename(false)
+    if (newSec) {
+      setNewSec(false)
+      setMenu(null)
+    }
+  }
   /** блоки раздела прокручиваются вбок вместе: в бумажной таблице лист один */
   const scroll = useRef(newTableScroll())
 
@@ -107,11 +120,22 @@ export function BuySection() {
       ? visibleBlockId(list.current, sorted[0]?.i ?? '')
       : sorted[0]?.i ?? ''
     if (!sid) return
-    setClosed((o) => ({ ...o, [sid]: false }))
+    fold.show(sid)
     jumpToItem('buy', addItem(sid))
     /* Списки — из этого же рендера, на котором приехала заявка (см. «Сборы»). */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ask])
+
+  /* Прыжок из поиска в свёрнутую статью: сначала раскрыть её (foldpref.ts). */
+  const uf = useUnfoldRequest('buy')
+  const ufRef = useRef(uf.n)
+  useEffect(() => {
+    if (uf.n === ufRef.current) return
+    ufRef.current = uf.n
+    const p = (S.buy as BuyItem[]).find((x) => x.i === uf.item)
+    if (p) fold.show(p.sec)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uf])
 
   /** Правка названия новой строки закончилась. Ничего не ввели — строки и не было. */
   const endFresh = (id: string, saved: boolean) => {
@@ -145,6 +169,28 @@ export function BuySection() {
         sec.ua = Date.now()
       }
     })
+
+  /* Завести статью. Заказчик 08.08.2026: «я должен иметь возможность… создать
+     раздел, подраздел, строку» — создать статью было нечем (только
+     переименовать и удалить). Название сразу на правке тем же TextSheet,
+     что и «Переименовать» (постулат 3). */
+  const addSec = () => {
+    const id = 'bs' + Date.now().toString(36)
+    update((s) => {
+      s.buySections.push({
+        i: id,
+        t: 'Новый раздел',
+        personal: false,
+        ord: Math.max(0, ...s.buySections.map((x) => x.ord)) + 10,
+        by: perms.me || '',
+        ua: Date.now(),
+      })
+    })
+    fold.show(id)
+    setMenu(id)
+    setNewSec(true)
+    setRename(true)
+  }
 
   const delSec = (sec: BuySec) => {
     setMenu(null)
@@ -198,8 +244,20 @@ export function BuySection() {
               title={sec.t}
               done={rows.filter((p) => p.b).length}
               total={rows.length}
-              open={closed[sec.i] !== true}
-              onToggle={() => setClosed((o) => ({ ...o, [sec.i]: o[sec.i] !== true }))}
+              /* Свёрнутая статья обязана говорить свою сумму (шаг 1 разбора
+                 «единой таблицы расходов»): число то же, что «Сумма, факт»
+                 в подытоге блока (`secSum`), — из него складываются 26 005 ₽.
+                 Раскрытой статье числа в шапке не нужно: оно уже стоит
+                 в подытоге ниже, а одно число дважды на экране не живёт. */
+              badge={
+                !fold.isOpen(sec.i) && rows.length > 0 ? (
+                  <span className="tnum shrink-0 text-note font-semibold text-ink">
+                    {money(secSum(rows), S.doc)}
+                  </span>
+                ) : undefined
+              }
+              open={fold.isOpen(sec.i)}
+              onToggle={() => fold.toggle(sec.i)}
               onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
               /* Личный блок отличается пунктиром рамки; словами правило написано
                  в его подытоге — «в общий бюджет не входит». */
@@ -222,6 +280,19 @@ export function BuySection() {
             </Group>
           )
         })}
+
+      {/* Пунктирная строка — как «+ Транспорт» у веток карты (постулат 6:
+          без права раздела кнопки нет). */}
+      {perms.isEditor() && (
+        <button
+          type="button"
+          onClick={addSec}
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-strong px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra"
+        >
+          <Plus size={16} strokeWidth={1.75} aria-hidden />
+          Добавить раздел
+        </button>
+      )}
 
       {/* ⛔ Здесь стоял блок «Взаиморасчёты» (приехал из «Дороги» 05.08.2026).
           Убран 08.08.2026 по прямому слову заказчика: «Почему у тебя
@@ -251,7 +322,7 @@ export function BuySection() {
               tone="secondary"
               className="w-full justify-start"
               onClick={() => {
-                setClosed(Object.fromEntries(sorted.map((s) => [s.i, true])))
+                fold.shutAll()
                 setMenu(null)
               }}
             >
@@ -276,8 +347,8 @@ export function BuySection() {
       {menuSec && (
         <TextSheet
           open={rename}
-          onOpenChange={(v) => !v && setRename(false)}
-          onBack={() => setRename(false)}
+          onOpenChange={(v) => !v && endRename()}
+          onBack={endRename}
           title="Название раздела"
           subtitle="Закупка"
           value={menuSec.t}

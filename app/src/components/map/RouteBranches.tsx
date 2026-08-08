@@ -10,7 +10,7 @@ import { kmOf, kBackOf } from '@/lib/calc'
 import { dg, kBackWord, kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
-import { InlineNum, InlineText } from '@/components/flops'
+import { InlineNum, InlineText, RowAction } from '@/components/flops'
 import { MAP_TONES, TONE_NAMES, inkOn, normHex, toneOf, type MapTone } from './marks'
 
 /**
@@ -213,6 +213,31 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
 
   const activeT = list.find((t) => t.i === active) ?? null
 
+  /**
+   * Убрать ветку целиком — то же удаление техники, что в «Дороге» (одна
+   * строка `S.transport` и там и тут, постулат 3.5). Заказчик 08.08.2026:
+   * «у тебя нет возможности удалить тот или иной участок логистики» — на карте
+   * ветку было не убрать ничем, только её строку в «Дороге», о которой у карты
+   * не написано. Точки ветки при этом не пропадают: они становятся «Точками
+   * без транспорта», и их видно тем же списком. `confirm()` в проекте нет —
+   * дорога назад лежит в самом сообщении (постулат 9).
+   */
+  const dropBranch = (t: Transport) => {
+    remove('transport', t.i)
+    onActive('')
+    setOpen(false)
+    toast(`«${t.n || 'Ветка'}» убрана — и с карты, и из «Дороги»`, {
+      action: {
+        label: 'Отменить',
+        onClick: () =>
+          update((s) => {
+            if (s.del) delete s.del['transport:' + t.i]
+            if (!s.transport.some((x) => x.i === t.i)) s.transport.push({ ...t, ua: Date.now() })
+          }),
+      },
+    })
+  }
+
   return (
     /* Полоса стоит ПОД картой (см. TripMap.tsx) — отсюда `border-t`. */
     <div className="shrink-0 border-t border-line px-3 py-2">
@@ -233,8 +258,17 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
             note={`${common.length}`}
             on={active === ''}
             onClick={() => onActive('')}
-            open={active === '' && canEdit ? openCommon : undefined}
-            onToggle={() => setOpenCommon((v) => !v)}
+            /* Шеврон виден ВСЕГДА (заказчик 08.08.2026: «стрелочки должны быть
+               всегда видны, а сейчас пока я не нажму — не появляется»), а не
+               только у активной строки. Тап по шеврону неактивной строки сам
+               делает её активной и сразу раскрывает. */
+            open={canEdit ? active === '' && openCommon : undefined}
+            onToggle={() => {
+              if (active !== '') {
+                onActive('')
+                setOpenCommon(true)
+              } else setOpenCommon((v) => !v)
+            }}
           />
         )}
 
@@ -250,11 +284,20 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
               note={branchNote(t, S, own)}
               on={active === t.i}
               onClick={() => onActive(t.i)}
-              /* Шеврон есть только у активной ветки и только у того, кто
-                 вправе её править: свойства чужой ветки раскрывать нечем
-                 и незачем (постулат 6). */
-              open={active === t.i && canEdit ? open : undefined}
-              onToggle={() => setOpen((v) => !v)}
+              /* Шеврон стоит у КАЖДОЙ ветки, у кого есть право править
+                 (постулат 6 — без права органа нет). Заказчик 08.08.2026:
+                 «стрелочки должны быть всегда видны… я нажал один раз — она
+                 выпала, и обратно вернулась, если я свернул». Тап по шеврону
+                 неактивной ветки сам выбирает её и раскрывает свойства —
+                 двух нажатий не требуется. Раскрытым при этом остаётся ровно
+                 один блок: свойства рисуются только у активной ветки. */
+              open={canEdit ? active === t.i && open : undefined}
+              onToggle={() => {
+                if (active !== t.i) {
+                  onActive(t.i)
+                  setOpen(true)
+                } else setOpen((v) => !v)
+              }}
             />
           )
         })}
@@ -583,6 +626,17 @@ export function RouteBranches({ S, canEdit, active, onActive }: Props) {
               часть глупая, ненужная». Выбранная ветка и так подсвечена рамкой
               и стоит первой строкой над этим блоком — подсказка повторяла то,
               что видно (постулат 7: меньше деталей, а не больше). */}
+
+          {/* Удаление — действие в самой строке (постулат 2), тем же органом,
+              что у строк «Дороги». */}
+          <div className="flex justify-end border-t border-line/50 pt-1">
+            <RowAction
+              icon={Trash2}
+              tone="danger"
+              label={`Убрать ветку «${activeT.n || 'без названия'}»`}
+              onClick={() => dropBranch(activeT)}
+            />
+          </div>
         </div>
       )}
     </div>

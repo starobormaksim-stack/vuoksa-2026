@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
@@ -8,6 +8,7 @@ import {
   AddRow, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions, useIsDesktop,
 } from '@/components/flops'
 import { touch, update } from '@/store'
+import { useFold, useUnfoldRequest } from '@/foldpref'
 import { plural } from '@/format'
 import {
   DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, litresTotal, refuelLitres,
@@ -195,8 +196,11 @@ export function RoadCalc({
    Матрица — вид расчёта на широком экране
    ────────────────────────────────────────────────────────────────────────── */
 
-/** Какие группы расчёта свёрнуты, пока человек не сказал иначе. */
-const GROUP_SHUT = ['h-km', 'h-can']
+/* ⛔ Здесь стоял список GROUP_SHUT — какие группы свёрнуты по умолчанию.
+   Убран 08.08.2026: свёрнуты по умолчанию ВСЕ группы, а раскрытое помнит
+   браузер (`foldpref.ts`, слово заказчика «по умолчанию все должно быть
+   скрыто, свернуто»). Прыжки из поиска и с плиток сумм раскрывают свою
+   группу заявкой `requestUnfold` — в пустоту не приходят. */
 
 function Matrix({
   S, c, km, canEdit, canDel, onDelTransport, onDelRent, fresh, onFreshEnd, setupAt, onSetup,
@@ -224,17 +228,34 @@ function Matrix({
    *
    * ⛔ Заказчик 08.08.2026 про «Дорогу»: «парковка автомобиля тоже
    * не сворачивается, аренда лодки „Ладога“ тоже не сворачивается… всё должно
-   * сворачиваться в простоту». На телефоне расчёт давно лента полосок
-   * (`RoadStrip`), где каждая строка складывается; на широком экране он был
-   * плоской простынёй в четыре десятка строк без единого способа её укоротить.
-   *
-   * По умолчанию свёрнуто ровно то, что смотрят раз в поездку: числа пробега
-   * и канистры. «Топливо и техника», «Аренда и парковка» и «Итоги» открыты —
-   * туда ведут переход из поиска и плитки сумм с обложки, а свёрнутая группа
-   * не отрисована вовсе, и прыжок пришёл бы в пустоту.
+   * сворачиваться в простоту», и его же слово тем же днём: «по умолчанию все
+   * должно быть скрыто, свернуто… при перезагрузке остаются в том виде,
+   * в котором я их оставил». Поэтому свёрнуто ВСЁ, раскрытое помнит браузер
+   * (`foldpref.ts`), а каждый заголовок держит итог группы — свёрнутая строка
+   * главное число не прячет (постулат 5).
    */
-  const [shut, setShut] = useState<Record<string, boolean>>({})
-  const isShut = (key: string) => (key in shut ? shut[key] : GROUP_SHUT.includes(key))
+  const fold = useFold('road-calc')
+  const isShut = (key: string) => !fold.isOpen(key)
+
+  /* Прыжок из поиска или с плитки сумм — в свёрнутую группу: сначала её
+     раскрывает заявка (foldpref.ts), иначе `data-hit` не отрисован вовсе. */
+  const uf = useUnfoldRequest('road')
+  const ufRef = useRef(uf.n)
+  useEffect(() => {
+    if (uf.n === ufRef.current) return
+    ufRef.current = uf.n
+    /* Префикс — раньше поиска по документу: свежезаведённая строка могла ещё
+       не доехать до этого рендера, а раскрыть её группу нужно уже сейчас. */
+    const k = uf.item.startsWith('sum-')
+      ? 'h-sum'
+      : uf.item.startsWith('tr') || S.transport.some((t) => t.i === uf.item)
+        ? 'h-fuel'
+        : uf.item.startsWith('rn') || S.rent.some((r) => r.i === uf.item)
+          ? 'h-rent'
+          : ''
+    if (k) fold.show(k)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uf])
 
   /** Подпись числа пробега из документа: правим только своё поле. */
   const noteDist = (key: string, part: 't' | 'c', v: string) =>
@@ -1026,7 +1047,7 @@ function Matrix({
                      что у шеврона ветки в `map/RouteBranches`. */
                   <button
                     type="button"
-                    onClick={() => setShut((o) => ({ ...o, [l.key]: !isShut(l.key) }))}
+                    onClick={() => fold.toggle(l.key)}
                     aria-expanded={!isShut(l.key)}
                     className="-my-1 flex min-h-11 w-full items-center gap-2 rounded-md text-left transition-colors hover:bg-line/40"
                   >

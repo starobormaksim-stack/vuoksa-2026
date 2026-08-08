@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Backpack, ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
+import { Backpack, ChevronsDownUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Gear, GearSection as GearSec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
@@ -7,6 +7,7 @@ import { readyOfGroup } from '@/lib/gearx'
 import { orderedPeople } from '@/lib/people'
 import { visibleBlockId } from '@/lib/visible'
 import { askedHere, useAddRequest } from '@/lib/addnew'
+import { useFold, useUnfoldRequest } from '@/foldpref'
 import { jumpToItem } from '@/lib/jump'
 import {
   AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
@@ -39,16 +40,26 @@ export function GearSection() {
   /** корень раздела — по нему липкий «плюс» находит блок, который сейчас читают */
   const list = useRef<HTMLDivElement | null>(null)
   const desktop = useIsDesktop()
-  /* ⛔ Раскрыты ВСЕ разделы, а не один первый. Заказчик 06.08.2026: «по умолчанию
-     у тебя все списки должны быть раскрыты, название разделов должно быть крупно
-     написано… чтобы было очевидно». Свёрнутой остаётся подробность позиции —
-     это спрошено отдельно и подтверждено им же (У-44). Пустой объект здесь значит
-     «раскрыто»: свёрнутые помечаются явным `false`, поэтому новый раздел, заведённый
-     после загрузки, тоже открыт. */
-  const [closed, setClosed] = useState<Record<string, boolean>>({})
+  /* ⛔ По умолчанию группы СВЁРНУТЫ, раскрытое помнит браузер. Заказчик
+     08.08.2026: «по умолчанию все должно быть скрыто, свернуто… но если я их
+     раскрываю, то при перезагрузке страницы они остаются в том виде, в котором
+     я их оставил». Прежнее «все списки должны быть раскрыты» (06.08.2026)
+     отменено этим словом — подробнее в `foldpref.ts`. */
+  const fold = useFold('gear')
   /** открытая шторка действий раздела и её второй уровень «переименовать» */
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
+  /* Только что заведённый раздел: окно названия открыто сразу, и закрытие
+     не проваливается в «Действия раздела» — человек заводил раздел,
+     а не открывал меню. */
+  const [newSec, setNewSec] = useState(false)
+  const endRename = () => {
+    setRename(false)
+    if (newSec) {
+      setNewSec(false)
+      setMenu(null)
+    }
+  }
   /** только что заведённая строка — она открыта в правке, чтобы было видно, куда вводить */
   const [fresh, setFresh] = useState('')
 
@@ -142,12 +153,24 @@ export function GearSection() {
       ? visibleBlockId(list.current, sections[0]?.i ?? '')
       : sections[0]?.i ?? ''
     if (!sid) return
-    setClosed((o) => ({ ...o, [sid]: false }))
+    fold.show(sid)
     jumpToItem('gear', addAt(sid, (bySec[sid] ?? []).length))
     /* Списки берутся из ЭТОГО рендера — того самого, на котором приехала заявка,
        поэтому они свежие, и остальным зависимостям здесь делать нечего. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ask])
+
+  /* Прыжок из поиска: строка внутри свёрнутой группы не отрисована, поэтому
+     App перед прыжком просит раскрыть группу этой вещи (см. foldpref.ts). */
+  const uf = useUnfoldRequest('gear')
+  const ufRef = useRef(uf.n)
+  useEffect(() => {
+    if (uf.n === ufRef.current) return
+    ufRef.current = uf.n
+    const g = S.gear.find((x) => x.i === uf.item)
+    if (g) fold.show(g.sec)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uf])
 
   /* ─── действия над разделом (только редактору) ─── */
 
@@ -159,6 +182,28 @@ export function GearSection() {
         sec.ua = Date.now()
       }
     })
+
+  /* Завести раздел. Заказчик 08.08.2026: «я должен иметь возможность удалить
+     как раздел, как создать раздел, подраздел, строку» — до этого раздел
+     можно было только переименовать и удалить, а создать было нечем.
+     Название сразу открывается на правку тем же TextSheet, что
+     и «Переименовать»: своего органа не выдумано (постулат 3). */
+  const addSec = () => {
+    const id = 'gs' + Date.now().toString(36)
+    update((s) => {
+      s.gearSections.push({
+        i: id,
+        t: 'Новый раздел',
+        ord: Math.max(0, ...s.gearSections.map((x) => x.ord)) + 10,
+        by: perms.me || '',
+        ua: Date.now(),
+      })
+    })
+    fold.show(id)
+    setMenu(id)
+    setNewSec(true)
+    setRename(true)
+  }
 
   const delSec = (sec: GearSec) => {
     setMenu(null)
@@ -235,8 +280,8 @@ export function GearSection() {
                 собрано: {r.done} из {r.total}
               </span>
             }
-            open={closed[sec.i] !== true}
-            onToggle={() => setClosed((o) => ({ ...o, [sec.i]: o[sec.i] !== true }))}
+            open={fold.isOpen(sec.i)}
+            onToggle={() => fold.toggle(sec.i)}
             onMenu={perms.isEditor() ? () => setMenu(sec.i) : undefined}
           >
             {rows.length === 0 ? (
@@ -292,6 +337,20 @@ export function GearSection() {
         )
       })}
 
+      {/* Пунктирная строка — как «+ Транспорт» у веток карты: заведение нового
+          стоит там, где кончается существующее. Без права раздела кнопки нет
+          (постулат 6). */}
+      {perms.isEditor() && (
+        <button
+          type="button"
+          onClick={addSec}
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-strong px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra"
+        >
+          <Plus size={16} strokeWidth={1.75} aria-hidden />
+          Добавить раздел
+        </button>
+      )}
+
       {menuSec && (
         <ResponsiveSheet
           open={!rename}
@@ -313,7 +372,7 @@ export function GearSection() {
               tone="secondary"
               className="w-full justify-start"
               onClick={() => {
-                setClosed(Object.fromEntries(sections.map((s) => [s.i, true])))
+                fold.shutAll()
                 setMenu(null)
               }}
             >
@@ -338,8 +397,8 @@ export function GearSection() {
       {menuSec && (
         <TextSheet
           open={rename}
-          onOpenChange={(v) => !v && setRename(false)}
-          onBack={() => setRename(false)}
+          onOpenChange={(v) => !v && endRename()}
+          onBack={endRename}
           title="Название раздела"
           subtitle="Сборы"
           value={menuSec.t}

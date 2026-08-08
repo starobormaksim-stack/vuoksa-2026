@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { Idea, Rent, Transport } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { useAddRequest } from '@/lib/addnew'
+import { requestUnfold } from '@/foldpref'
 import { commonKmUsed } from '@/lib/calc'
 import { jumpToItem } from '@/lib/jump'
 import {
@@ -194,11 +195,17 @@ export function RoadSection() {
   useEffect(() => {
     if (askFuel !== askRef.current.fuel) {
       askRef.current.fuel = askFuel
-      jumpToItem('road', addTransport())
+      const id = addTransport()
+      /* Группа по умолчанию свёрнута (foldpref.ts) — новая строка без этого
+         просто не появилась бы на экране. */
+      requestUnfold('road', id)
+      jumpToItem('road', id)
     }
     if (askRent !== askRef.current.rent) {
       askRef.current.rent = askRent
-      jumpToItem('road', addRent())
+      const id = addRent()
+      requestUnfold('road', id)
+      jumpToItem('road', id)
     }
     /* Справочники видов и цен топлива берутся из этого же рендера. */
     // eslint-disable-next-line react-hooks/exhaustive-deps

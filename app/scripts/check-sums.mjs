@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { calcAll, money } from '../src/lib/calc.ts'
+import { counted, sumOf } from '../src/lib/buyx.ts'
 import { shares, wholeSettle } from '../src/lib/settle.ts'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -37,6 +38,16 @@ const показУплачено = w.rows.reduce((s, x) => s + x.paid, 0)
    «выложил минус доля», иначе на экране три числа спорят друг с другом. */
 const связныхСтрок = w.rows.filter((x) => x.balance === x.paid - x.share).length
 
+/* Подытоги статей закупки — те же числа, что стоят в свёрнутых шапках
+   и в «Сумма, факт» под каждым блоком (`secSum` в buy/buylocal.tsx, та же
+   арифметика `sumOf` + `counted`). Сумма по НЕличным статьям обязана
+   сходиться с общей закупкой: иначе шапки статей и плитка на обложке
+   рассказывают разные истории. */
+const подытогиСтатей = S.buySections
+  .filter((sec) => !sec.personal)
+  .map((sec) => S.buy.filter((p) => p.sec === sec.i && counted(p)).reduce((s, p) => s + sumOf(p), 0))
+const суммаСтатей = подытогиСтатей.reduce((s, x) => s + x, 0)
+
 /** Проверки: [название, ожидалось, получилось (с округлением до рубля)] */
 const checks = [
   ['Километраж, км', 330, Math.round(r.km)],
@@ -45,6 +56,7 @@ const checks = [
   ['Итого, ₽', 47390, Math.round(r.total)],
   ['С каждого, ₽', 11848, Math.round(r.perPerson)],
   ['Канистры АИ-92, шт.', 2, ai92 ? ai92.cans : NaN],
+  ['Σ подытогов статей = закупка, ₽', 26005, Math.round(суммаСтатей)],
   /* ── Взаиморасчёты (settle.ts). Шесть строк выше не трогаются. ── */
   ['Σ уплачено = итого, ₽', 47390, Math.round(st.paid)],
   ['Σ доля = итого, ₽', 47390, Math.round(st.share)],

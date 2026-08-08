@@ -8,6 +8,7 @@ import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
 import { personalizeManifest } from './lib/homescreen'
 import { jumpToItem, setSectionNav } from './lib/jump'
+import { requestUnfold } from './foldpref'
 import { askMapPoint } from './lib/mapfocus'
 import { closeTripsList, firstStepPerson } from './lib/trips'
 import { ClosedList } from './components/auth/ClosedList'
@@ -249,7 +250,13 @@ function App() {
         onOpenChange={setSearch}
         onJump={(section, itemId) => {
           if (section === 'trip' && S.route.some((p) => p.i === itemId)) askMapPoint(itemId)
-          else jumpToItem(section, itemId)
+          else {
+            /* Группы по умолчанию свёрнуты (foldpref.ts), а строка внутри
+               свёрнутой группы не отрисована — сначала просим раздел
+               раскрыть её, иначе прыжок пришёл бы в пустоту (постулат 5). */
+            requestUnfold(section, itemId)
+            jumpToItem(section, itemId)
+          }
         }}
       />
       <NetNotice />
