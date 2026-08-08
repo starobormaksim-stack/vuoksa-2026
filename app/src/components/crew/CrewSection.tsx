@@ -1,14 +1,17 @@
-import { useState } from 'react'
-import { Link2, UserPlus, Users } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, Link2, Plus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Person } from '@/lib/types'
 import { linkFor, permName } from '@/lib/perm'
 import { readyOf } from '@/lib/gearx'
 import { orderedPeople, toneOf, type PersonTone } from '@/lib/people'
 import { useTrip, touch } from '@/store'
-import { Btn, EmptyState, PersonMark, SectionHead, TextSheet } from '@/components/flops'
+import { EmptyState, PersonMark, SectionHead, TextSheet } from '@/components/flops'
 import { NBSP } from '@/format'
 import { Progress } from '@/components/ui/progress'
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { PersonSheet } from './PersonSheet'
 import { initialOf, newKey, slugify } from './ids'
 import { cn } from '@/lib/utils'
@@ -121,18 +124,13 @@ export function CrewSection() {
           />
         </div>
       ) : (
-        <>
-          {/* На телефоне карточка идёт ВО ВСЮ ШИРИНУ — заказчик просил это трижды
-              и уточнил 05.08.2026, что речь именно о «Команде» (урок У-44).
-              Две колонки давали фотографию ≈ 170 px, он называл их «узенькими».
-              Вторая колонка возвращается с 640 px, четыре — с 1024 px. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
-            {/* Порядок только на экране: сам себя читатель видит первым, S.people не переставляем.
-                Метка же считается от исходного S.people — иначе она переезжала бы с человека
-                на человека при смене читателя (lib/people.ts). */}
-            {orderedPeople(S.people, perms.me).map((p) => (
+        <CrewRail canAdd={perms.isEditor()} onAdd={() => setAdding(true)}>
+          {/* Порядок только на экране: сам себя читатель видит первым, S.people не переставляем.
+              Метка же считается от исходного S.people — иначе она переезжала бы с человека
+              на человека при смене читателя (lib/people.ts). */}
+          {orderedPeople(S.people, perms.me).map((p) => (
+            <div key={p.id} className={CARD_W}>
               <CrewCard
-                key={p.id}
                 person={p}
                 me={perms.me}
                 here={isHere(p.id)}
@@ -141,20 +139,9 @@ export function CrewSection() {
                 onOpen={() => setSheet(p.id)}
                 onCopyLink={perms.isChief() ? () => void copyLink(p) : undefined}
               />
-            ))}
-          </div>
-
-          {/* Кнопка вынесена из сетки (правка 04.08.2026): пустой карточкой в полный
-              портрет она отнимала место у людей — «пускай будет маленькой, не во весь
-              портрет». Обычная кнопка `md` — это 44 px высоты, цель касания соблюдена;
-              `self-start` не даёт ей растянуться на ширину раздела. */}
-          {perms.isEditor() && (
-            <Btn tone="secondary" className="self-start" onClick={() => setAdding(true)}>
-              <UserPlus size={18} strokeWidth={1.75} aria-hidden />
-              Добавить участника
-            </Btn>
-          )}
-        </>
+            </div>
+          ))}
+        </CrewRail>
       )}
 
       {current && (
@@ -195,6 +182,147 @@ export function CrewSection() {
       if (!s.people.some((x) => x.id === p.id)) s.people.push({ ...p, ua: Date.now() })
     })
   }
+}
+
+/**
+ * Ширина одной карточки. Ровно та же раскладка, что давала сетка до 08.08.2026:
+ * одна колонка на телефоне (У-44 — «во всю ширину», он просил трижды), две
+ * с 640 px, четыре с 1024 px.
+ *
+ * ⛔ На десктопе из ширины вычтен САМ «плюс»: `(100% − 8rem) / 4`, где 8 rem =
+ * 64 px квадрата плюс четыре зазора по 16. Стояло `25% − 0.75rem` — доля минус
+ * доля зазора, как в обычной сетке, — и лента переполнялась на 80 px ровно
+ * при ЧЕТЫРЁХ участниках, то есть на боевых данных. Замер 08.08.2026, 1280:
+ * `scrollWidth − clientWidth = 80`, плюс стоял на x = 1272 при экране 1280
+ * (то есть срезан), `elementFromPoint` в его середину до него не доходил,
+ * и рядом зажигалась стрелка «Показать следующих», которой было некуда вести.
+ * Плюс стоит в одной строке с людьми — значит и место занимает в той же строке.
+ *
+ * На 640…1023 px лента переносится по строкам (`flex-wrap`), плюс уезжает
+ * на следующую строку сам, и вычитать его из ширины там не из чего.
+ */
+const CARD_W = 'w-full shrink-0 sm:w-[calc(50%-0.375rem)] lg:w-[calc((100%-8rem)/4)]'
+
+/** На сколько уезжает лента за одно нажатие стрелки: почти экран, но с нахлёстом. */
+const STEP = 0.8
+
+/**
+ * Лента команды: карточки людей, «плюс» сразу за последним и стрелки на десктопе.
+ *
+ * ─── Откуда взялось (заказчик, 08.08.2026) ───
+ * Дословно: «у тебя есть „добавить участника“ — плюсик у тебя должен быть справа
+ * от последнего участника… просто плюсик, и он даёт этот тултип „добавить нового
+ * участника“». И там же: «на десктопе они должны каруселью: стрелочка влево
+ * и вправо; если их будет больше, чем в контейнер помещается, то стрелочки».
+ *
+ * До этого «Добавить участника» было отдельной кнопкой ПОД сеткой — то есть
+ * действие стояло не там, где его ищут, а строкой ниже всех людей.
+ *
+ * ⛔ Полным портретом «плюс» не рисуется. Заказчик 04.08.2026: «пускай будет
+ * маленькой, не во весь портрет» — пустая карточка в рост человека отнимала
+ * место у людей. Отсюда квадрат 64 px у верхнего края.
+ *
+ * ⚠️ Стрелки живут ТОЛЬКО с 1024 px и только когда ленте и правда тесно.
+ * На телефоне карточки переносятся по строкам (`flex-wrap`), прокручивать
+ * там нечего, и стрелка была бы органом без работы.
+ */
+function CrewRail({
+  canAdd, onAdd, children,
+}: {
+  canAdd: boolean
+  onAdd: () => void
+  children: ReactNode
+}) {
+  const rail = useRef<HTMLDivElement>(null)
+  /* Сколько ленте осталось влево и вправо. Ноль в обе стороны — стрелок нет вовсе. */
+  const [edge, setEdge] = useState({ left: false, right: false })
+
+  const measure = useCallback(() => {
+    const el = rail.current
+    if (!el) return
+    /* 1 px допуска: дробная ширина колонок даёт остаток вроде 0,5 px,
+       и без него правая стрелка не гаснет никогда. */
+    const max = el.scrollWidth - el.clientWidth
+    setEdge({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 })
+  }, [])
+
+  useEffect(() => {
+    measure()
+    const el = rail.current
+    if (!el) return
+    el.addEventListener('scroll', measure, { passive: true })
+    /* Перенос строк меняет `scrollWidth` без всякой прокрутки: ленту надо
+       перемерить и когда меняется ширина окна, и когда людей стало больше. */
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    for (const kid of Array.from(el.children)) ro.observe(kid)
+    return () => {
+      el.removeEventListener('scroll', measure)
+      ro.disconnect()
+    }
+  }, [measure, children])
+
+  const go = (dir: -1 | 1) => {
+    const el = rail.current
+    if (!el) return
+    el.scrollBy({ left: dir * el.clientWidth * STEP, behavior: 'smooth' })
+    /* ⚠️ Событие прокрутки в этой среде может не дойти (.claude/rules/environment.md),
+       да и плавный ход докатывается позже — меряем сами, не дожидаясь его. */
+    measure()
+    window.setTimeout(measure, 400)
+  }
+
+  return (
+    <div className="relative">
+      <div
+        ref={rail}
+        className="flex flex-wrap gap-3 lg:flex-nowrap lg:gap-4 lg:overflow-x-auto lg:scroll-smooth"
+      >
+        {children}
+        {canAdd && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onAdd}
+                  aria-label="Добавить участника"
+                  className="grid size-16 shrink-0 self-start place-items-center rounded-2xl border border-dashed border-line-strong text-muted transition-colors hover:bg-zebra hover:text-ink"
+                >
+                  <Plus size={24} strokeWidth={1.75} aria-hidden />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Добавить участника</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+
+      {/* Стрелки лежат ПОВЕРХ ленты по её краям, высоты блоку не добавляя.
+          Не положено — органа нет (постулат 6): некуда ехать — стрелки нет. */}
+      {edge.left && <RailArrow side="left" onClick={() => go(-1)} />}
+      {edge.right && <RailArrow side="right" onClick={() => go(1)} />}
+    </div>
+  )
+}
+
+/** Одна стрелка карусели. Видна с 1024 px — на телефоне лента не прокручивается. */
+function RailArrow({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
+  const Icon = side === 'left' ? ChevronLeft : ChevronRight
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={side === 'left' ? 'Показать предыдущих' : 'Показать следующих'}
+      className={cn(
+        'absolute top-1/2 z-10 hidden size-11 -translate-y-1/2 place-items-center rounded-full',
+        'border border-line bg-surface text-ink shadow-md transition-colors hover:bg-zebra lg:grid',
+        side === 'left' ? 'left-1' : 'right-1',
+      )}
+    >
+      <Icon size={20} strokeWidth={1.75} aria-hidden />
+    </button>
+  )
 }
 
 /**

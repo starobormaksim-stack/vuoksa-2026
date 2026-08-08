@@ -15,10 +15,16 @@ import { ST_NAME } from '@/lib/gearx'
  * часть ищется…») в строку не помещаются и полосу раздела не украсят. Полное
  * название состояния читает скринридер у самого кружка в ячейке (`StatusDial`).
  */
+/**
+ * ⚠️ Порядок здесь — порядок ОБХОДА (`RING` в lib/gearx.ts), а не порядок
+ * чисел: «упаковано» стоит перед «в процессе», потому что именно так их
+ * перебирает тап с 08.08.2026. Легенда, которая читается не в том порядке,
+ * в каком нажимается, объясняет неверно.
+ */
 export const GEAR_LEGEND: LegendItem[] = [
   { mark: <StatusDial value={0} size={32} />, label: ST_NAME[0] },
-  { mark: <StatusDial value={1} size={32} />, label: ST_NAME[1] },
   { mark: <StatusDial value={2} size={32} />, label: ST_NAME[2] },
+  { mark: <StatusDial value={1} size={32} />, label: ST_NAME[1] },
   { mark: <StatusDial value={3} size={32} />, label: ST_NAME[3] },
   { mark: <StatusDial value={0} cant size={32} />, label: 'не могу взять' },
 ]

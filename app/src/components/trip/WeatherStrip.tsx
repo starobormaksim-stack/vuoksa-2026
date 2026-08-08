@@ -29,26 +29,38 @@ interface WeatherDay {
   prec: string
   wind: string
   means: string
+  /** ниже — только из Open-Meteo, в документе таких полей нет */
+  sunrise?: string
+  sunset?: string
+  light?: string
 }
-interface DaylightRow { t: string; v: string; c?: string }
 interface WeatherData {
   updated?: string
   days: WeatherDay[]
-  daylight: DaylightRow[]
-  concl: string[]
-  src?: string
 }
 
-/** Прогноз из документа в разобранном виде. Нет данных — пустые списки, а не падение. */
+/**
+ * Прогноз из документа в разобранном виде. Нет данных — пустые списки, а не падение.
+ *
+ * ⛔ `S.weather.daylight`, `S.weather.concl` и `S.weather.src` больше НЕ читаются.
+ * Заказчик 08.08.2026 про блок «Световой день и выводы»: «оставишь там только
+ * техническую информацию, которая автоматически должна подтягиваться с Open-Meteo…
+ * не задействуя тебя как разработчика, который там пишет мне: „нужна информация
+ * термобельё и нормальный спальник“. Написать „купаться можно“ не нужно —
+ * это не та информация, которая техническая».
+ *
+ * Всё, что там лежало, было написано человеком один раз и не менялось: пять
+ * советов про термобельё, сапоги и гермомешок, оценка температуры воды «по
+ * типичному августу, не замер» и приписка «Сумерки долгие». Восход и закат
+ * стояли одной парой чисел на всю поездку, хотя за пять дней рассвет уезжает
+ * на десять минут.
+ *
+ * ⚠️ Убрано С ЭКРАНА, не из документа (постулат 4): поля на месте, слияние
+ * их переносит, выгрузка берёт. Вернутся одной правкой, если он передумает.
+ */
 function weatherOf(S: State): WeatherData {
   const w = S.weather as Partial<WeatherData> | undefined
-  return {
-    updated: w?.updated,
-    days: w?.days ?? [],
-    daylight: w?.daylight ?? [],
-    concl: w?.concl ?? [],
-    src: w?.src,
-  }
+  return { updated: w?.updated, days: w?.days ?? [] }
 }
 
 /** Что вернул живой прогноз: сами числа и то, удалось ли за ними сходить. */
@@ -166,7 +178,18 @@ function withLive(w: WeatherData, live: LiveWeather | null): WeatherData {
     updated: live.updated,
     days: w.days.map((d) => {
       const x = by.get(d.d)
-      return x ? { ...d, wd: x.wd || d.wd, day: x.day, night: x.night, prec: x.prec, wind: x.wind } : d
+      if (!x) return d
+      return {
+        ...d,
+        wd: x.wd || d.wd,
+        day: x.day,
+        night: x.night,
+        prec: x.prec,
+        wind: x.wind,
+        sunrise: x.sunrise,
+        sunset: x.sunset,
+        light: x.light,
+      }
     }),
   }
 }
@@ -233,9 +256,23 @@ export function WeatherRow({
   )
 }
 
+/** Одна техническая величина дня: подпись сверху, число снизу. */
+function Cell({ t, v }: { t: string; v: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-micro text-muted">{t}</div>
+      <div className="tnum text-note font-semibold text-ink">{v}</div>
+    </div>
+  )
+}
+
 /**
- * Подробности под фотографией: раскрытый день и складная строка «Световой день
- * и выводы». Пустых заглушек не рисуем — нет данных, нет и блока.
+ * Подробности под фотографией: раскрытый день и складная строка «Световой день».
+ * Пустых заглушек не рисуем — нет данных, нет и блока.
+ *
+ * ⛔ «и выводы» из названия убраны вместе с самими выводами (см. `weatherOf`).
+ * Внутри теперь ровно то, что считает Open-Meteo, и по КАЖДОМУ дню, а не одной
+ * строкой на всю поездку: восход, закат, сколько между ними светло.
  */
 export function WeatherDetail({
   S, open, live,
@@ -247,7 +284,11 @@ export function WeatherDetail({
   const [more, setMore] = useState(false)
   const w = withLive(weatherOf(S), live.data)
   const day = open ? w.days.find((d) => d.i === open) : undefined
-  const hasMore = w.daylight.length > 0 || w.concl.length > 0 || !!w.src || !!w.updated
+  /* Складную строку показываем только тогда, когда живой прогноз и правда
+     принёс световой день: пустая строка «Световой день» без чисел — это
+     обещание, которого блок не выполняет. */
+  const sun = w.days.filter((d) => d.sunrise && d.sunset)
+  const hasMore = sun.length > 0
   if (!day && !hasMore) return null
 
   return (
@@ -279,7 +320,7 @@ export function WeatherDetail({
             aria-expanded={more}
             className="flex min-h-12 w-full items-center gap-2 border-t border-line px-4 text-left text-body font-semibold text-ink transition-colors hover:bg-zebra lg:px-6"
           >
-            <span className="flex-1">Световой день и выводы</span>
+            <span className="flex-1">Световой день</span>
             <ChevronDown
               size={20}
               strokeWidth={1.75}
@@ -289,43 +330,35 @@ export function WeatherDetail({
           </button>
 
           {more && (
-            <div className="border-t border-line px-4 py-3 lg:px-6">
+            <div className="border-t border-line px-4 py-2 lg:px-6">
+              {/* Одна строка на день. Колонки те же самые у всех дней, поэтому
+                  сетка, а не перенос: числа встают друг под друга и разницу
+                  между 10-м и 14-м видно глазом, без вычитания в уме. */}
+              {sun.map((d) => (
+                <div
+                  key={d.i}
+                  className="grid grid-cols-[auto_1fr_1fr_1fr] items-baseline gap-x-3 border-b border-line/60 py-2 last:border-b-0"
+                >
+                  <div className="tnum text-note font-semibold text-ink">{d.d}</div>
+                  <Cell t="Восход" v={d.sunrise as string} />
+                  <Cell t="Закат" v={d.sunset as string} />
+                  <Cell t="Светло" v={d.light || ''} />
+                </div>
+              ))}
+
               {w.updated ? (
-                <p className="text-note text-muted">
-                  Прогноз обновлён <span className="tnum">{w.updated}</span>
-                  {live.data ? ' — сам, каждые полчаса' : null}
+                <p className="mt-2 text-micro text-muted">
+                  Open-Meteo, обновлено <span className="tnum">{w.updated}</span>
+                  {live.data ? ` ${MDASH} сам, каждые полчаса` : null}
                 </p>
               ) : null}
               {/* Отказ говорится словами: молчание человек читает как «сервис
                   сломан», и он прав (постулат 5). */}
               {live.failed ? (
-                <p className="text-note text-muted">
+                <p className="mt-1 text-micro text-muted">
                   Свежий прогноз получить не удалось{live.data ? '' : ' — показан сохранённый'}
                 </p>
               ) : null}
-
-              {w.daylight.map((r) => (
-                <div key={r.t} className="border-b border-line/60 py-2 last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <span className="min-w-0 flex-1 text-note text-muted">{r.t}</span>
-                    <span className="tnum shrink-0 text-note font-semibold text-ink">{r.v}</span>
-                  </div>
-                  {r.c ? <p className="mt-0.5 text-note leading-snug text-muted">{r.c}</p> : null}
-                </div>
-              ))}
-
-              {w.concl.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {w.concl.map((c) => (
-                    <li key={c} className="flex gap-2 text-note leading-snug text-ink">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-                      <span className="text-pretty">{c}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {w.src ? <p className="mt-3 text-micro leading-snug text-muted">{w.src}</p> : null}
             </div>
           )}
         </>

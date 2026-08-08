@@ -185,6 +185,40 @@ export function TripCover({ S, perms, onEditDates }: Props) {
       aria-label="Обложка поездки"
       className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-md"
     >
+      {/* ── Полоса с названием поездки ──
+          ⛔ Разметка и размеры взяты у строки поиска над картой (`map/MapSearch.tsx`,
+          обёртка `shrink-0 border-b border-line` и ряд `flex min-h-13 items-center
+          gap-2 px-3 py-2`) — и расходиться с ней им нельзя.
+          Заказчик 08.08.2026: «было бы неплохо, чтобы у тебя единообразие в части
+          оформления присутствовало… с правой стороны карты эта строка „найти адрес
+          или место“ — с левой стороны такую же по ширине, по высоте блока, именно
+          над картой… Сначала написано название… они должны стилистически, я веду
+          по высоте, схематически выглядеть одинаково».
+          До этого название лежало ПОД фотографией кеглем 24/32, и два блока
+          начинались по-разному: справа полоса, слева сразу снимок. */}
+      <div className="shrink-0 border-b border-line">
+        <div className="flex min-h-13 items-center gap-2 px-3 py-2">
+          <TentTree size={18} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
+          {/* `break-words`: название придумывает человек, и «ВУОКСА · ЮБИЛЕЙНАЯ»
+              одним куском не должно распирать блок. */}
+          {/* ⚠️ `min-h-11` здесь не для касания, а ради высоты полосы: у строки
+              поиска внутри стоит поле `h-11`, и вместе с `py-2` обёртки это даёт
+              ровно 61 px. Без него полоса названия выходила 53 px — замер
+              08.08.2026 на 1280. Заказчик просил их «схематически одинаково
+              по высоте», а 8 px разницы на соседних блоках видны глазом. */}
+          <h1 className="flex min-h-11 min-w-0 flex-1 items-center text-head leading-tight font-bold text-ink break-words">
+            <InlineText
+              value={trip.title}
+              onSave={(v) => update((s) => { s.trip.title = v })}
+              can={canEdit}
+              label="Название поездки"
+              required
+              placeholder="Название поездки"
+            />
+          </h1>
+        </div>
+      </div>
+
       {/* ── Фотография ──
           Соотношение то же, что у карты справа (COVER_MEDIA в TripMapCard.tsx):
           два блока обязаны выглядеть одинаково. Снимок лежит целиком
@@ -253,32 +287,34 @@ export function TripCover({ S, perms, onEditDates }: Props) {
           задавало 420 px при экране 390, и правый край уезжал за экран
           (замерено 04.08.2026). Горизонтальной прокрутки при этом не появлялось —
           её гасит `body { overflow-x: hidden }`, — так что беда была молчаливой. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 lg:p-5">
-        <div className="min-w-0">
-          {/* `break-words`: название придумывает человек, и «ВУОКСА · ЮБИЛЕЙНАЯ»
-              одним куском не должно распирать блок. */}
-          <h1 className="text-title leading-tight font-bold text-ink text-balance break-words lg:text-hero">
-            <InlineText
-              value={trip.title}
-              onSave={(v) => update((s) => { s.trip.title = v })}
-              can={canEdit}
-              label="Название поездки"
-              required
-              placeholder="Название поездки"
-            />
-          </h1>
+      {/* ── Панель под фотографией ──
+          ⚠️ Порядок задан заказчиком 08.08.2026 дословно: «сначала название,
+          потом фотография с указанием „до выезда два дня“, добавить фотографию,
+          а затем под ней описание, которое добавляется, и всё. Потом идут даты…
+          а потом уже идёт информация: общий бюджет, транспорт и так далее.
+          Погода». Название уехало в полосу наверх, здесь остались четыре
+          ступени: описание → даты и место → суммы → прогноз.
 
-          <p className="mt-0.5 text-note text-muted">
+          ⚠️ Зазор между ступенями срезан с 16 px до 8 (`gap-4` → `gap-2`).
+          Заказчик там же: «посмотри на межстрочный интервал — везде у тебя
+          какой-то огромный». Строки внутри при этом остались 44 px высотой:
+          это цель касания, и жать её нельзя (постулат 8). */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 p-4 lg:p-5">
+        {/* Описание показывается, только когда оно есть, — или когда его есть
+            кому вписать. Пустая серая строка «Подзаголовок» у участника была
+            обещанием поля, которого у него нет (постулат 6). */}
+        {(trip.sub || canEdit) && (
+          <p className="min-w-0 text-note leading-snug text-muted">
             <InlineText
               value={trip.sub}
               onSave={(v) => update((s) => { s.trip.sub = v })}
               can={canEdit}
-              label="Подзаголовок поездки"
-              placeholder="Подзаголовок"
+              label="Описание поездки"
+              placeholder="Описание"
               className="text-muted"
             />
           </p>
-        </div>
+        )}
 
         <div className="flex min-w-0 flex-col">
           {/* Значок внутри кнопки: так вся строка дат — одна зона нажатия 44 px,

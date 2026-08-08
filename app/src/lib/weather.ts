@@ -14,16 +14,32 @@
  * молча не включать»). Свежие числа живут в памяти вкладки и в `localStorage`,
  * а на экран кладутся ПОВЕРХ сохранённых.
  *
- * ⛔ Авторский текст «что это значит для нас» (`means`), световой день, выводы
- * и источник берутся из документа как есть: их писал человек, и никакой API
- * их не заменит. Живой прогноз обновляет ровно четыре величины дня —
- * температуру днём и ночью, осадки и ветер.
+ * ⛔ Авторский текст «что это значит для нас» (`means`) берётся из документа
+ * как есть: его писал человек, и никакой API его не заменит.
+ *
+ * ─── 08.08.2026: световой день тоже считает Open-Meteo ───
+ * Дословно: «оставишь там только техническую информацию, которая автоматически
+ * должна подтягиваться с Open-Meteo… информация должна строго оттуда
+ * подтягиваться автоматически, не задействуя тебя как разработчика, который
+ * там пишет мне: „нужна информация термобельё и нормальный спальник“».
+ * До этого восход, закат и длина дня лежали в документе одной строкой на всю
+ * поездку и не менялись вовсе. Теперь это семь величин КАЖДОГО дня, и все семь
+ * приходят из ответа Open-Meteo: температура днём и ночью, осадки, ветер,
+ * восход, закат, длина дня.
+ *
+ * ⛔ Температуры воды здесь нет и завести её неоткуда: морская модель
+ * Open-Meteo на координатах Вуоксы отдаёт `null` — это озеро, а не море
+ * (проверено 08.08.2026, `sea_surface_temperature_max` = null на все пять дней).
+ * Стоявшая в документе строка «+17…+19 °C» была оценкой человека, а не замером,
+ * и в техническую сводку она не идёт.
  *
  * Источник тот же, что уже указан в документе, — Open-Meteo: открытый, без ключа
  * и без регистрации (в чужие кабинеты заказчик не ходит, урок У-45).
  */
 
-/** День живого прогноза — те же четыре величины, что показывает лента. */
+import { NBSP } from '../format.ts'
+
+/** День живого прогноза — всё, что показывают лента и разбор дня. */
 export interface LiveDay {
   /** «10.08» — по нему живой день сходится с днём документа */
   d: string
@@ -32,6 +48,12 @@ export interface LiveDay {
   night: number
   prec: string
   wind: string
+  /** «04:56» — восход по московскому времени */
+  sunrise: string
+  /** «21:13» */
+  sunset: string
+  /** «16 ч 17 мин» — сколько между ними */
+  light: string
 }
 
 export interface LiveWeather {
@@ -119,6 +141,23 @@ function precWords(code: number, chance: number, mm: number): string {
   return what
 }
 
+/** «2026-08-10T04:56» → «04:56». Кривое значение — пустая строка, а не падение. */
+function clock(v: string | undefined): string {
+  if (!v) return ''
+  const m = v.match(/T(\d{2}:\d{2})/)
+  return m ? m[1] : ''
+}
+
+/** 58 646 секунд → «16 ч 17 мин». Ноль и мусор — пустая строка. */
+function span(sec: number | undefined): string {
+  if (!sec || sec <= 0) return ''
+  const total = Math.round(sec / 60)
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (!m) return `${h}${NBSP}ч`
+  return `${h}${NBSP}ч ${m}${NBSP}мин`
+}
+
 interface DailyBag {
   time?: string[]
   weather_code?: number[]
@@ -127,6 +166,9 @@ interface DailyBag {
   precipitation_sum?: number[]
   precipitation_probability_max?: number[]
   wind_speed_10m_max?: number[]
+  sunrise?: string[]
+  sunset?: string[]
+  daylight_duration?: number[]
 }
 
 /** Разобрать ответ Open-Meteo. Кривой ответ — пустой список, а не падение. */
@@ -152,6 +194,9 @@ export function parseDaily(daily: DailyBag | undefined, at: number, key: string)
       ),
       /* Open-Meteo отдаёт км/ч, а в документе стоят метры в секунду. */
       wind: `${Math.round((wind * 1000) / 3600)} м/с`,
+      sunrise: clock(daily?.sunrise?.[n]),
+      sunset: clock(daily?.sunset?.[n]),
+      light: span(daily?.daylight_duration?.[n]),
     })
   }
   return { days, updated: stamp(at), at, key }
@@ -200,7 +245,7 @@ export async function fetchWeather(
     'https://api.open-meteo.com/v1/forecast'
     + `?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`
     + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,'
-    + 'precipitation_probability_max,wind_speed_10m_max'
+    + 'precipitation_probability_max,wind_speed_10m_max,sunrise,sunset,daylight_duration'
     + `&timezone=Europe%2FMoscow&start_date=${from}&end_date=${to}`
   try {
     const r = await fetch(url, { signal })
