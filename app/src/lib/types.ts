@@ -365,6 +365,8 @@ export interface BuySection {
   ord: number
   by: string
   ua: number
+  /** Вид строк раздела в единой таблице денег; отсутствие читается как 'goods'. */
+  kind?: 'goods' | 'fuel' | 'rent' | 'transport' | 'thing'
 }
 
 /** Просьба изменить количество / отказ («не могу взять»). */

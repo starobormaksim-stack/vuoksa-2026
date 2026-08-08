@@ -81,7 +81,7 @@ const PLAIN: Record<string, string[]> = {
   ],
   fuelPrices: ['n', 'price', 'u', 'c', 'ord'],
   gearSections: ['t', 'ord'],
-  buySections: ['t', 'personal', 'ord'],
+  buySections: ['t', 'personal', 'ord', 'kind'],
   units: ['t', 'full', 'ord'],
   kinds: ['t', 'rateU', 'icon', 'ord'],
   rentCats: ['t', 'ord'],

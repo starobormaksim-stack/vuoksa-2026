@@ -50,6 +50,17 @@ interface Props {
   title: ReactNode
   /** вторая строка полоски: примечание одной фразой */
   sub?: ReactNode
+  /**
+   * Третья строка полоски: лица тех, кого позиция касается, — кто покупает
+   * у товара. Заказчик 08.08.2026: «в мобильной версии должно быть написано,
+   * кто покупает». Отдельным слотом, а не внутри `sub`: там стоит
+   * `line-clamp-2`, и лица считались бы текстом и обрезались.
+   *
+   * ⛔ Слот живёт ВНУТРИ кнопки раскрытия — интерактивных органов сюда
+   * класть нельзя, кнопка в кнопке недопустима. Отмечают покупателя
+   * в развороте, здесь его только видно.
+   */
+  marks?: ReactNode
   /** главное число справа: цена у покупки, общее количество у вещи, итог у расчёта */
   right?: ReactNode
   /** подпись под числом: единица измерения или «план» / «факт» */
@@ -77,7 +88,7 @@ interface Props {
 }
 
 export function StripRow({
-  lead, title, sub, right, rightHint, open, onToggle, zebra, alarm, done, dataHit,
+  lead, title, sub, marks, right, rightHint, open, onToggle, zebra, alarm, done, dataHit,
   disclose = true, children,
 }: Props) {
   const seen = useRef(open)
@@ -105,6 +116,7 @@ export function StripRow({
             {sub}
           </span>
         ) : null}
+        {marks ? <span className="mt-1 flex items-center gap-1">{marks}</span> : null}
       </span>
 
       {right != null ? (
