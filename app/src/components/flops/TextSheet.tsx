@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ResponsiveSheet } from './ResponsiveSheet'
+import { ResponsiveSheet, useIsDesktop } from './ResponsiveSheet'
 import { Btn } from './Btn'
 
 /**
@@ -41,6 +41,23 @@ export function TextSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  /*
+   * ⛔ На телефоне поле НЕ фокусируется атрибутом autoFocus. Шторка vaul при
+   * фокусе в поле сама подвозит себя над клавиатурой (repositionInputs), и если
+   * фокус случается ВО ВРЕМЯ входной анимации, расчёт сдвига на iOS ломается —
+   * шторку уносит за верх экрана целиком (заказчик 08.08.2026: «вверх улетает
+   * весь попап, и я ничего не вижу» при добавлении участника). Поэтому фокус
+   * приходит после того, как шторка доехала (анимация vaul — полсекунды).
+   * На десктопе окно не движется и клавиатуры нет — там фокус сразу.
+   */
+  const desktop = useIsDesktop()
+  const box = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!open || desktop) return
+    const t = window.setTimeout(() => box.current?.focus(), 550)
+    return () => window.clearTimeout(t)
+  }, [open, desktop])
+
   const save = () => {
     const next = draft.trim()
     onOpenChange(false)
@@ -71,7 +88,8 @@ export function TextSheet({
     >
       {multiline ? (
         <textarea
-          autoFocus
+          autoFocus={desktop}
+          ref={(el) => { box.current = el }}
           rows={4}
           value={draft}
           placeholder={placeholder}
@@ -81,7 +99,8 @@ export function TextSheet({
         />
       ) : (
         <input
-          autoFocus
+          autoFocus={desktop}
+          ref={(el) => { box.current = el }}
           value={draft}
           placeholder={placeholder}
           aria-label={title}

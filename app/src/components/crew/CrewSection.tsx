@@ -220,7 +220,10 @@ const STEP = 0.8
  *
  * ⛔ Полным портретом «плюс» не рисуется. Заказчик 04.08.2026: «пускай будет
  * маленькой, не во весь портрет» — пустая карточка в рост человека отнимала
- * место у людей. Отсюда квадрат 64 px у верхнего края.
+ * место у людей. Квадрат 64 px стоит ПО ЦЕНТРУ ряда: у верхнего края он был
+ * «не выровнен по-человечески по остальным карточкам» (заказчик 08.08.2026) —
+ * на телефоне, где карточки во всю ширину, плюс к тому же прижимался к левому
+ * краю, поэтому там он ещё и по центру строки.
  *
  * ⚠️ Стрелки живут ТОЛЬКО с 1024 px и только когда ленте и правда тесно.
  * На телефоне карточки переносятся по строкам (`flex-wrap`), прокручивать
@@ -287,7 +290,7 @@ function CrewRail({
                   type="button"
                   onClick={onAdd}
                   aria-label="Добавить участника"
-                  className="grid size-16 shrink-0 self-start place-items-center rounded-2xl border border-dashed border-line-strong text-muted transition-colors hover:bg-zebra hover:text-ink"
+                  className="mx-auto grid size-16 shrink-0 place-items-center self-center rounded-2xl border border-dashed border-line-strong text-muted transition-colors hover:bg-zebra hover:text-ink sm:mx-0"
                 >
                   <Plus size={24} strokeWidth={1.75} aria-hidden />
                 </button>
