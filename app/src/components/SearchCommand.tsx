@@ -9,7 +9,11 @@ import {
 } from '@/components/ui/command'
 import type { State } from '@/lib/types'
 import type { MenuDay } from '@/lib/types'
-import { MDASH } from '@/format'
+import { fmtNum, MDASH, NBSP } from '@/format'
+import { planSumOf, sumOf, unitOf } from '@/lib/buyx'
+import { money } from '@/lib/calc'
+import { BuyBox } from '@/components/flops'
+import { update, useTrip } from '@/store'
 
 /**
  * Поиск по всему листу (docs/v2-ux-redesign.md, 14).
@@ -45,6 +49,24 @@ export interface Hit {
   title: string
   note: string
   itemId: string
+  /**
+   * ─── Только у позиций «Закупки» ───
+   * Заказчик 08.08.2026: «когда я вбиваю в поиск какой-либо товар… мне даже
+   * не обязательно смотреть на статью, где находится этот товар. Там указано
+   * количество или вес, единица измерения — 1 упаковка или 3,5 кг. Можно
+   * галочкой тоже отметить уже прям в поиске… В первую очередь количество
+   * должно быть понятно: сколько чего брать? Я бы фиксировал то, что я хочу,
+   * потому что сейчас в магазин сходить и попробовать это сделать».
+   *
+   * То есть находка в «Закупке» — это не ссылка на строку, а сама строка:
+   * человек стоит у полки и отмечает купленное, не выходя из поиска.
+   */
+  /** «3 упаковки», «3,5 кг» — сколько брать и в чём меряем */
+  qty?: string
+  /** «270 ₽» — стоимость всего количества, а не за единицу */
+  cost?: string
+  /** отмечено ли «куплено»; `undefined` — галочки у находки нет вовсе */
+  bought?: boolean
 }
 
 /* ─────────── отбор находок ───────────
@@ -140,11 +162,19 @@ export function buildHits(S: State): Hit[] {
       key: 'gear:' + g.i, section: 'gear', sectionTitle: 'Сборы · ' + (gsec.get(g.sec) ?? ''),
       title: g.n, note: g.c, itemId: g.i,
     })
-  for (const p of S.buy)
+  for (const p of S.buy) {
+    /* Стоимость показываем ту же, что и свёрнутая строка «Закупки»: факт, если
+       он вписан, иначе план (`buy/BuyStrip.tsx`). Двух разных чисел для одной
+       позиции на экране быть не должно. */
+    const cost = p.prf > 0 ? sumOf(p) : planSumOf(p)
     out.push({
       key: 'buy:' + p.i, section: 'buy', sectionTitle: 'Закупка · ' + (bsec.get(p.sec) ?? ''),
       title: p.n, note: p.c, itemId: p.i,
+      qty: `${fmtNum(p.q)}${NBSP}${unitOf(p, S)}`,
+      cost: money(cost, S.doc),
+      bought: !!p.b,
     })
+  }
   /* ⚠️ Точка маршрута ведёт в «Поездку», на карту, а не в «Дорогу»: ленты точек
      там больше нет (06.08.2026), прыгать не к чему. Показывает точку карта —
      открывает её карточку, а точку без координат отправляет в мастер
@@ -196,6 +226,10 @@ export function SearchCommand({
 }) {
   const hits = useMemo(() => buildHits(S), [S])
   const [q, setQ] = useState('')
+  /* Право отмечать «куплено» — то же самое, что в самом разделе «Закупка».
+     Нет права — галочка рисуется значком без кнопки (постулат 6, `BuyBox`). */
+  const { perms } = useTrip()
+  const canEdit = perms.isEditor()
 
   /* Закрыли окно — запрос забыт. Иначе следующее открытие показывает прошлую
      находку, а человек читает это как «поиск застрял». */
@@ -243,11 +277,45 @@ export function SearchCommand({
                       onOpenChange(false)
                     }}
                   >
+                    {/* ⛔ Галочка отмечает КУПЛЕНО, не выходя из поиска, поэтому
+                        нажатие по ней не должно доходить до самой находки:
+                        иначе один и тот же тап и отметит товар, и закроет окно,
+                        уведя человека в раздел. У полки это ровно то, чего он
+                        просил не делать. */}
+                    {h.bought !== undefined && (
+                      <span
+                        className="-my-1 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <BuyBox
+                          on={h.bought}
+                          can={canEdit}
+                          label={`${h.title || 'Позиция'}: ${h.bought ? 'куплено' : 'ещё не куплено'}`}
+                          onToggle={() => update((s) => {
+                            const p = s.buy.find((x) => x.i === h.itemId)
+                            if (p) p.b = !p.b
+                          })}
+                        />
+                      </span>
+                    )}
                     {/* Одна строка на находку: название и где оно лежит.
                         Примечание отсюда убрано — оно длиннее самой находки
                         и превращало список в простыню. */}
                     <span className="min-w-0 flex-1 truncate text-body text-ink">{h.title}</span>
-                    <span className="shrink-0 text-micro text-muted">{h.sectionTitle}</span>
+                    {/* ⛔ У позиции «Закупки» вместо раздела стоят количество
+                        и стоимость: «мне даже не обязательно смотреть на статью,
+                        где находится этот товар… в первую очередь количество
+                        должно быть понятно: сколько чего брать». Раздел там —
+                        сведение, которое у полки не нужно, а место занимает. */}
+                    {h.qty ? (
+                      <>
+                        <span className="tnum shrink-0 text-note text-muted">{h.qty}</span>
+                        <span className="tnum shrink-0 text-note font-semibold text-ink">{h.cost}</span>
+                      </>
+                    ) : (
+                      <span className="shrink-0 text-micro text-muted">{h.sectionTitle}</span>
+                    )}
                   </CommandItem>
                 ))}
               </CommandGroup>

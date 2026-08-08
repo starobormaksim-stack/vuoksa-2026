@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Check, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import type { Person, State } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { counted, planSumOf, sumOf, unitOf } from '@/lib/buyx'
@@ -9,6 +9,10 @@ import {
   InlineNum, InlineText, PersonHead, ProductLink, RowAction, RowActions,
   StripField, StripRow,
 } from '@/components/flops'
+/* Галочка «куплено» — общий орган: обе копии были слово в слово, а 08.08.2026
+   понадобилась третья, в поиске. Имя оставлено прежним, чтобы разметка ниже
+   не менялась ни в одном месте. */
+import { BuyBox as Box } from '@/components/flops'
 import { safeUrl, saveNameOrUrl } from '@/lib/producturl'
 import { applyCard, clearGrab, grabProduct } from '@/lib/product'
 import { SpendShareEdit, SpendSplitLine } from '@/components/road/SpendShare'
@@ -343,45 +347,3 @@ export function BuyStrip({
   )
 }
 
-/**
- * Галочка. Права нет — рисуется только состояние, без кнопки и без серого
- * заглушечного вида (постулат 6). Копия из `BuyRow`: два экрана одного раздела
- * обязаны показывать галочку одинаково.
- */
-function Box({
-  on, can, label, onToggle,
-}: {
-  on: boolean
-  can: boolean
-  label: string
-  onToggle: () => void
-}) {
-  const mark = (
-    <span
-      className={cn(
-        'grid size-6 place-items-center rounded-sm border-[1.5px]',
-        on ? 'border-accent bg-accent text-on-accent' : 'border-line-strong',
-      )}
-    >
-      {on && <Check size={18} strokeWidth={1.75} aria-hidden />}
-    </span>
-  )
-  if (!can) {
-    return (
-      <span role="img" aria-label={label} className="grid size-11 shrink-0 place-items-center">
-        {mark}
-      </span>
-    )
-  }
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={on}
-      aria-label={label}
-      className="grid size-11 shrink-0 place-items-center rounded-md transition-colors hover:bg-zebra/70 active:scale-[0.98]"
-    >
-      {mark}
-    </button>
-  )
-}
