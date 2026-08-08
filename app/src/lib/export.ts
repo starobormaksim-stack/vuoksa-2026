@@ -19,7 +19,7 @@
 
 import type { Gear, Notes, State } from './types.ts'
 import { buildXlsx, firstHeadRow, type Cell, type Row, type Sheet } from './xlsx.ts'
-import { calcAll, fuelPriceFor, litres, rentSum } from './calc.ts'
+import { calcAll, fuelPriceFor, litres, rentPrice, rentSum } from './calc.ts'
 import { cantOf, isReady, qtyAskOf, statusOf } from './gearx.ts'
 import { statusName, unitOf } from './buyx.ts'
 import { permName } from './perm.ts'
@@ -96,7 +96,7 @@ function sheetSummary(S: State): Sheet {
     headRow('Наименование', 'Значение', 'Ед.', 'Комментарий'),
     ['Дорога всего', qty(c.km), 'км', 'Туда и обратно плюс местные разъезды'],
     ['Топливо', rub(c.fuel), '₽', 'Считается по расходу техники и цене литра'],
-    ['Аренда и парковка', rub(c.rent), '₽', ''],
+    ['Аренда', rub(c.rent), '₽', 'Сутки, часы, места, парковка'],
     ['Транспорт, лодка, парковка', rub(c.transport), '₽', 'Топливо плюс аренда'],
     ['Закупка', rub(c.buy), '₽', '«Купить» попадает в сумму, остальное — нет'],
     [total('Всего'), rubTotal(c.total), total('₽'), total('')],
@@ -269,7 +269,9 @@ function sheetRoad(S: State): Sheet {
       r.calcT || r.n,
       qty(r.qty),
       '—',
-      rub(r.price),
+      /* Цена, по которой строка и посчитана: факт, если он вписан. Иначе
+         колонка «Цена» и колонка «Сумма» в файле спорили бы друг с другом. */
+      rub(rentPrice(r)),
       rub(rentSum(r)),
       [
         r.count > 1 ? `${r.count} шт. × ${r.qty} ${r.unit || ''}`.trim() : '',

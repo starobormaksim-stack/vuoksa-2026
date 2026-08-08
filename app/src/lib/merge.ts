@@ -78,8 +78,10 @@ const PLAIN: Record<string, string[]> = {
     'carry', 'owner', 'payer', 'leg', 'kmAuto', 'km', 'kmSrc', 'kmLocal',
     'kBack', 'tone', 'color', 'calcT', 'c', 'ord', 'by', 'as',
   ],
+  /* ⚠️ `priceF` — цена аренды по факту. Как и у покупки, это ДЕНЬГИ: правка
+     на одном телефоне обязана доехать до остальных, иначе итоги разойдутся. */
   rent: [
-    'n', 'cat', 'price', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',
+    'n', 'cat', 'price', 'priceF', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',
     'ord', 'by', 'as',
   ],
   fuelPrices: ['n', 'price', 'u', 'c', 'ord'],

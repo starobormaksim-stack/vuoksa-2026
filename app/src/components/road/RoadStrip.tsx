@@ -3,7 +3,7 @@ import { Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
 import {
-  calcAll, commonKmUsed, fuelCost, fuelPriceFor, kmOf, litres, money, rentSum, routeKm,
+  calcAll, commonKmUsed, fuelCost, fuelPriceFor, kmOf, litres, money, rentPrice, rentSum, routeKm,
 } from '@/lib/calc'
 import {
   AddRow, ConfirmAction, InlineNum, InlineText, numText, RowAction, RowActions,
@@ -547,7 +547,7 @@ export function RoadStrip({
           )
         }
         right={money(rentSum(r), S.doc)}
-        rightHint={`${money(r.price, S.doc)} ${rentPer(r)}`}
+        rightHint={`${money(rentPrice(r), S.doc)} ${rentPer(r)}`}
       >
         <StripField label="Название" wide>
           <Title
@@ -633,6 +633,33 @@ export function RoadStrip({
                 })
               }
               className="text-body font-semibold text-ink"
+            />
+          </StripField>
+
+          {/* Цена по факту — та же форма, что у покупки (заказчик 09.08.2026:
+              «да, план и факт»). Пусто — в сумму идёт прикидка слева. */}
+          <StripField label="Цена по факту">
+            <InlineNum
+              value={r.priceF ?? 0}
+              digits={dg(r.priceF ?? 0)}
+              kind="plain"
+              unit={r.nt?.price?.u || '₽'}
+          label={
+                r.priceF && r.priceF > 0
+                  ? `Цена по факту: ${r.n}`
+                  : `Цена по факту: ${r.n}. Пока не вписана, в сумму идёт прикидка`
+              }
+              can={canEdit}
+              onSave={(v) =>
+                patchRent(r.i, (x) => {
+                  x.priceF = v
+                })
+              }
+              className={
+                r.priceF && r.priceF > 0
+                  ? 'text-body font-semibold text-ink'
+                  : 'text-body font-semibold text-muted'
+              }
             />
           </StripField>
         </SetupGroup>
@@ -902,8 +929,8 @@ export function RoadStrip({
         </div>
       )}
 
-      <Caption>Аренда и парковка</Caption>
-      <div role="list" aria-label="Аренда и парковка">
+      <Caption>Аренда</Caption>
+      <div role="list" aria-label="Аренда">
         {rentRows}
       </div>
       {canEdit && (

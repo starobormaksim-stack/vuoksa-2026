@@ -147,9 +147,14 @@ export function fuelTotal(S: State): number {
   return S.transport.reduce((sum, t) => sum + fuelCost(t, S), 0)
 }
 
-/** Сумма строки аренды: price × qty × count. */
+/** Цена единицы аренды: по факту, если он вписан, иначе прикидка (как у покупки). */
+export function rentPrice(r: Rent): number {
+  return r.priceF && r.priceF > 0 ? r.priceF : r.price
+}
+
+/** Сумма строки аренды: цена × qty × count. */
 export function rentSum(r: Rent): number {
-  return r.price * r.qty * r.count
+  return rentPrice(r) * r.qty * r.count
 }
 
 /** Аренда всего, ₽. На сиде 15 000. */
