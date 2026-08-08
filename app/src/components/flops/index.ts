@@ -24,7 +24,7 @@ export { ProductLink } from './ProductLink'
 /* Правка на месте — фундамент переделки 04.08.2026 (шторки заказчик отменил). */
 export {
   InlineText, InlineNum, InlinePick, numText, PersonHead, RowActions, RowAction,
-  ConfirmAction,
+  ConfirmAction, ConfirmButton,
 } from './Inline'
 export type { InlinePickOption, InlineHit, InlineSuggest } from './Inline'
 export { DataTable, DataRow, DataCell, DataHead, newTableScroll } from './DataTable'

@@ -4,6 +4,7 @@ import {
 } from 'react'
 import { ChevronDown, Minus, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Btn } from './Btn'
 
 /**
  * Правка НА МЕСТЕ — фундамент второй версии интерфейса.
@@ -880,5 +881,62 @@ export function ConfirmAction({
         Отмена
       </button>
     </span>
+  )
+}
+
+/**
+ * Широкое действие, которое СПРАШИВАЕТ, — брат `ConfirmAction` для шторок
+ * и полос, где действие нарисовано кнопкой во всю ширину, а не значком в строке.
+ *
+ * ─── Зачем ───
+ * Удаление подраздела было запрещено, пока внутри есть хоть одна позиция:
+ * вместо кнопки стояла фраза «Раздел удаляется, когда в нём не осталось ни одной
+ * позиции». Заказчик 09.08.2026: «я захотел удалить раздел логистики, или
+ * я захотел по какому-нибудь подразделу удалить, там не знаю, напитки горячие.
+ * Я этого не могу сделать: есть переименовать и свернуть всё, а я вообще-то
+ * удалить хочу». Объяснение вместо действия — тот же молчаливый отказ
+ * (постулаты 5 и 6): человек хочет удалить, а сервис читает ему правило.
+ *
+ * ⛔ `confirm()` и попапы запрещены (постулаты 2 и 9). Поэтому вопрос — второй
+ * шаг на месте, ровно как у `ConfirmAction` (урок У-158): первое нажатие
+ * превращает кнопку в вопрос со счётом того, что уйдёт вместе с ней, второе
+ * удаляет. «Вернуть» в сообщении остаётся дополнительно, а не вместо спроса.
+ */
+export function ConfirmButton({
+  icon: Icon, label, ask, onConfirm,
+}: {
+  icon: typeof Plus
+  /** подпись в покое: «Удалить раздел» */
+  label: string
+  /** вопрос со счётом: «Удалить вместе с 7 позициями?» */
+  ask: string
+  onConfirm: () => void
+}) {
+  const [asking, setAsking] = useState(false)
+  if (!asking) {
+    return (
+      <Btn tone="danger" className="w-full justify-start" onClick={() => setAsking(true)}>
+        <Icon size={20} strokeWidth={1.75} aria-hidden />
+        {label}
+      </Btn>
+    )
+  }
+  return (
+    <div className="flex gap-2">
+      <Btn
+        tone="danger"
+        className="flex-1 justify-start"
+        onClick={() => {
+          setAsking(false)
+          onConfirm()
+        }}
+      >
+        <Icon size={20} strokeWidth={1.75} aria-hidden />
+        {ask}
+      </Btn>
+      <Btn tone="secondary" onClick={() => setAsking(false)}>
+        Отмена
+      </Btn>
+    </div>
   )
 }

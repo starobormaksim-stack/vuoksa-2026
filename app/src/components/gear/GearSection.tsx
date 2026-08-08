@@ -10,9 +10,10 @@ import { askedHere, useAddRequest } from '@/lib/addnew'
 import { useFold, useUnfoldRequest } from '@/foldpref'
 import { jumpToItem } from '@/lib/jump'
 import {
-  AddRow, Btn, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
+  AddRow, Btn, ConfirmButton, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
   newTableScroll, useIsDesktop, type TableScroll,
 } from '@/components/flops'
+import { plural } from '@/format'
 import { GEAR_LEGEND } from './legend'
 import { GearMatrix } from './GearMatrix'
 import { GearStrip } from './GearStrip'
@@ -205,17 +206,34 @@ export function GearSection() {
     setRename(true)
   }
 
+  /**
+   * Убрать подраздел вместе с тем, что в нём лежит. Прежде удалялся только
+   * ПУСТОЙ, а занятому сервис отвечал правилом вместо действия — см. тот же
+   * разбор в `buy/BuySection.tsx` (заказчик 09.08.2026: «а я вообще-то удалить
+   * хочу»). Вещи уходят со подразделом и возвращаются вместе с ним: остаться
+   * в документе со ссылкой на несуществующий подраздел — значит пропасть
+   * с экрана, не пропав из данных.
+   */
   const delSec = (sec: GearSec) => {
     setMenu(null)
+    const items = bySec[sec.i] ?? []
+    items.forEach((g) => remove('gear', g.i))
     remove('gearSections', sec.i)
-    toast(`Раздел «${sec.t}» удалён`, {
+    const хвост = items.length
+      ? ` — вместе с ${items.length} ${plural(items.length, 'вещью', 'вещами', 'вещами')}`
+      : ''
+    toast(`Убрали раздел «${sec.t}»${хвост}`, {
       action: {
-        label: 'Отменить',
+        label: 'Вернуть',
         onClick: () =>
           update((s) => {
             if (s.del) delete s.del['gearSections:' + sec.i]
             if (!s.gearSections.some((x) => x.i === sec.i))
               s.gearSections.push({ ...sec, ua: Date.now() })
+            for (const g of items) {
+              if (s.del) delete s.del['gear:' + g.i]
+              if (!s.gear.some((x) => x.i === g.i)) s.gear.push({ ...g, ua: Date.now() })
+            }
           }),
       },
     })
@@ -388,17 +406,22 @@ export function GearSection() {
               <ChevronsDownUp size={20} strokeWidth={1.75} aria-hidden />
               Свернуть все
             </Btn>
-            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем */}
-            {(bySec[menuSec.i] ?? []).length === 0 ? (
-              <Btn tone="danger" className="w-full justify-start" onClick={() => delSec(menuSec)}>
-                <Trash2 size={20} strokeWidth={1.75} aria-hidden />
-                Удалить раздел
-              </Btn>
-            ) : (
-              <p className="mt-1 text-note leading-snug text-muted">
-                Раздел удаляется, когда в нём не осталось ни одной вещи.
-              </p>
-            )}
+            {/* Спрашивает вторым шагом на месте: попапов нет (У-158, `ConfirmButton`). */}
+            <ConfirmButton
+              icon={Trash2}
+              label="Удалить раздел"
+              ask={
+                (bySec[menuSec.i] ?? []).length
+                  ? `Удалить вместе с ${(bySec[menuSec.i] ?? []).length} ${plural(
+                      (bySec[menuSec.i] ?? []).length,
+                      'вещью',
+                      'вещами',
+                      'вещами',
+                    )}?`
+                  : 'Удалить раздел?'
+              }
+              onConfirm={() => delSec(menuSec)}
+            />
           </div>
         </ResponsiveSheet>
       )}

@@ -9,13 +9,15 @@ import { askedHere, useAddRequest } from '@/lib/addnew'
 import { useFold, useUnfoldRequest } from '@/foldpref'
 import { jumpToItem } from '@/lib/jump'
 import {
-  Btn, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll, useIsDesktop,
+  Btn, ConfirmButton, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll,
+  useIsDesktop,
 } from '@/components/flops'
 import { BUY_LEGEND } from './legend'
 import { BuyTotals } from './BuyTotals'
 import { BuyTable } from './BuyTable'
 import { byOrd, secSum, type BuyItem } from './buylocal'
 import { money } from '@/lib/calc'
+import { plural } from '@/format'
 
 /**
  * Раздел «Закупка» — таблицей, как лист заказчика.
@@ -192,17 +194,40 @@ export function BuySection() {
     setRename(true)
   }
 
+  /**
+   * Убрать статью вместе с тем, что в ней лежит.
+   *
+   * Прежде удалялась только ПУСТАЯ, а занятой сервис отвечал строкой
+   * «Раздел удаляется, когда в нём не осталось ни одной позиции». Заказчик
+   * 09.08.2026: «я захотел по какому-нибудь подразделу удалить, там не знаю,
+   * напитки горячие. Я этого не могу сделать: есть переименовать и свернуть
+   * всё, а я вообще-то удалить хочу». Объяснение вместо действия — молчаливый
+   * отказ (постулаты 5 и 6).
+   *
+   * ⛔ Позиции уходят вместе со статьёй, иначе они остались бы в документе
+   * с ссылкой на несуществующую статью — то есть пропали бы с экрана,
+   * оставаясь в данных. Возврат поднимает и статью, и все её позиции разом.
+   */
   const delSec = (sec: BuySec) => {
     setMenu(null)
+    const items = bySec[sec.i] ?? []
+    items.forEach((p) => remove('buy', p.i))
     remove('buySections', sec.i)
-    toast(`Раздел «${sec.t}» удалён`, {
+    const хвост = items.length
+      ? ` — вместе с ${items.length} ${plural(items.length, 'позицией', 'позициями', 'позициями')}`
+      : ''
+    toast(`Убрали раздел «${sec.t}»${хвост}`, {
       action: {
-        label: 'Отменить',
+        label: 'Вернуть',
         onClick: () =>
           update((s) => {
             if (s.del) delete s.del['buySections:' + sec.i]
             if (!s.buySections.some((x) => x.i === sec.i))
               s.buySections.push({ ...sec, ua: Date.now() })
+            for (const p of items) {
+              if (s.del) delete s.del['buy:' + p.i]
+              if (!s.buy.some((x) => x.i === p.i)) s.buy.push({ ...p, ua: Date.now() })
+            }
           }),
       },
     })
@@ -335,17 +360,23 @@ export function BuySection() {
               <ChevronsDownUp size={20} strokeWidth={1.75} aria-hidden />
               Свернуть все
             </Btn>
-            {/* Удаление живой строкой только у пустого раздела: занятый удалять нечем */}
-            {(bySec[menuSec.i] ?? []).length === 0 ? (
-              <Btn tone="danger" className="w-full justify-start" onClick={() => delSec(menuSec)}>
-                <Trash2 size={20} strokeWidth={1.75} aria-hidden />
-                Удалить раздел
-              </Btn>
-            ) : (
-              <p className="mt-1 text-note leading-snug text-muted">
-                Раздел удаляется, когда в нём не осталось ни одной позиции.
-              </p>
-            )}
+            {/* Спрашивает вторым шагом на месте: попапов нет (У-158, `ConfirmButton`).
+                Счёт того, что уйдёт вместе со статьёй, стоит прямо в вопросе. */}
+            <ConfirmButton
+              icon={Trash2}
+              label="Удалить раздел"
+              ask={
+                (bySec[menuSec.i] ?? []).length
+                  ? `Удалить вместе с ${(bySec[menuSec.i] ?? []).length} ${plural(
+                      (bySec[menuSec.i] ?? []).length,
+                      'позицией',
+                      'позициями',
+                      'позициями',
+                    )}?`
+                  : 'Удалить раздел?'
+              }
+              onConfirm={() => delSec(menuSec)}
+            />
           </div>
         </ResponsiveSheet>
       )}

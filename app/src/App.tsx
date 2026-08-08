@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
-import { SECTIONS, anchorOf, scrollToSection, type SectionDef } from './sections'
+import {
+  LAST_MONEY_SECTION, SECTIONS, anchorOf, scrollToSection, type SectionDef,
+} from './sections'
 import { useTrip } from './store'
 import { useTheme } from './theme'
 import { useBottomNav } from './navpref'
@@ -195,8 +197,8 @@ function App() {
               сохранили. Вне копии и после выбора карточка не рисуется. */}
           {офлайн && <OfflineWho />}
           {SECTIONS.map((s) => (
+            <Fragment key={s.id}>
             <section
-              key={s.id}
               id={anchorOf(s.id)}
               aria-label={s.title}
               /* Отступ ровно в высоту шапки — то же число, на котором стоит липкая
@@ -221,18 +223,21 @@ function App() {
               ) : (
                 <Placeholder section={s} />
               )}
-            </section>
-          ))}
+              {/* Общий зачёт — сразу за последним разделом, где тратятся деньги
+                  (`LAST_MONEY_SECTION`), а не в самом низу листа.
 
-          {/* Общий зачёт — САМЫМ ПОСЛЕДНИМ на листе, после всех разделов
-              с тратами. Заказчик 08.08.2026: «Почему у тебя взаиморасчёты
-              после еды, после закупки идут, а отдельно расчёты по логистике?
-              У тебя всё в конце должно считаться… Общее считается в конце,
-              грамотно прописано: кто кому что должен». До этого блок стоял
-              в конце «Закупки» — перед «Дорогой», то есть зачёт показывался
-              раньше половины трат, которые в нём же и посчитаны.
-              Экземпляр один (У-53), арифметика прежняя — lib/settle.ts. */}
-          <Settlement S={S} me={perms.me} />
+                  Заказчик 08.08.2026 велел унести его из конца «Закупки»: там
+                  он показывался раньше трат «Дороги» (урок У-143). Унесли за
+                  всё — и 09.08.2026 он поправил снова: «уже по итогу всех этих
+                  подразделов, по итогу всего раздела расходов там будет условно
+                  как раз этот расчёт», «а вот меню идёт отдельно». За «Меню»
+                  зачёт висел хвостом, не относящимся к еде.
+
+                  Экземпляр один (У-53), арифметика прежняя — lib/settle.ts. */}
+            </section>
+            {s.id === LAST_MONEY_SECTION && <Settlement S={S} me={perms.me} />}
+            </Fragment>
+          ))}
         </div>
       </main>
 
