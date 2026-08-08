@@ -24,6 +24,6 @@ export { ProductLink } from './ProductLink'
 export {
   InlineText, InlineNum, InlinePick, numText, PersonHead, RowActions, RowAction,
 } from './Inline'
-export type { InlinePickOption } from './Inline'
+export type { InlinePickOption, InlineHit, InlineSuggest } from './Inline'
 export { DataTable, DataRow, DataCell, DataHead, newTableScroll } from './DataTable'
 export type { TableScroll } from './DataTable'

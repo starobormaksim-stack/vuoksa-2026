@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import type { LegMode, RoutePoint, State, Transport } from '@/lib/types'
 import { update, touch, remove } from '@/store'
 import { kmOf, kBackOf } from '@/lib/calc'
-import { dg, kmLabel } from '@/components/road/roadx'
+import { dg, kBackWord, kmLabel } from '@/components/road/roadx'
 import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 import { InlineNum, InlineText } from '@/components/flops'
@@ -94,7 +94,13 @@ function addOptions(S: State): AddOption[] {
  */
 function branchNote(t: Transport, S: State, own: number): string {
   if (own === 0) return 'точек нет'
-  if (t.kmSrc === 'auto' || t.kmSrc === 'manual') return kmLabel(kmOf(t, S))
+  if (t.kmSrc === 'auto' || t.kmSrc === 'manual') {
+    /* Число в чипе — ИТОГ ветки, то есть уже с «×2». Молчать об этом нельзя:
+       08.08.2026 заказчик прочитал в чипе 742 км там, где по точкам стояло
+       371, и спросил «зачем это 742» (постулат 5). */
+    const k = kBackOf(t, S)
+    return k === 1 ? kmLabel(kmOf(t, S)) : `${kmLabel(kmOf(t, S))} ${MDASH} ${kBackWord(k)}`
+  }
   if ((t.kmAuto ?? 0) > 0) return `${kmLabel(t.kmAuto as number)} по карте`
   return 'пробег не посчитан'
 }

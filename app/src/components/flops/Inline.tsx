@@ -51,6 +51,50 @@ export interface InlineSecond {
   note?: string
 }
 
+/** Одна подсказка под полем правки. */
+export interface InlineHit {
+  /** чем отличать находки друг от друга в списке */
+  id: string
+  /** что человек читает крупно */
+  title: string
+  /** уточнение мельче: полный адрес, район, «примерно» */
+  note?: string
+}
+
+/**
+ * Подсказки прямо под полем правки — «выпадающий список», как при поиске города.
+ *
+ * ─── Откуда ───
+ * Заказчик 08.08.2026 про место поездки и погоду: «Там, где прописывается
+ * „впишите локацию“, должен быть выпадающий список… Когда ты ищешь город
+ * или что-то такое, допустим, Приозерск». До этого место было простой строкой
+ * текста: человек писал «оз. Вуокса», координат у записи не появлялось,
+ * и прогноз погоды не за что было зацепить.
+ *
+ * ⛔ Не всплывает: список встаёт ПОД полем и толкает содержимое вниз, как
+ * `InlinePick` (постулат 2 — попапов нет). Ничего не подставляется молча:
+ * человек видит находки и выбирает сам, ровно как в строке поиска над картой
+ * (`map/MapSearch.tsx`), откуда взяты и состояния «ищем», «не нашлось»,
+ * «спросить было некого».
+ */
+export interface InlineSuggest {
+  /**
+   * Спросить подсказки по набранному.
+   * `null` — спросить было некого (нет сети, служба не ответила);
+   * пустой список — честно не нашлось.
+   */
+  ask: (q: string) => Promise<InlineHit[] | null>
+  /** человек выбрал находку; правка после этого закрывается */
+  onPick: (hit: InlineHit) => void
+  /** строка-правило над списком: что случится с выбранным */
+  hint?: string
+}
+
+/** Пауза перед запросом подсказок: столько человек «допечатывает» слово. */
+const SUGGEST_DELAY = 500
+/** Короче трёх букв спрашивать нечего. */
+const SUGGEST_MIN = 3
+
 interface InlineTextProps {
   value: string
   /** сохранить; вызывается только когда значение действительно изменилось */
@@ -79,6 +123,8 @@ interface InlineTextProps {
   onPhoto?: boolean
   /** второе поле, видимое только в правке (подпись раздела) */
   second?: InlineSecond
+  /** подсказки под полем правки: место на карте, город (см. `InlineSuggest`) */
+  suggest?: InlineSuggest
 }
 
 /** Подсветка наведения: на странице — поверхность чередования, на снимке — крем. */
@@ -90,7 +136,7 @@ function hoverSkin(onPhoto?: boolean) {
 
 export function InlineText({
   value, onSave, can, label, multiline, required, placeholder, className,
-  autoEdit, onEditEnd, onPhoto, second,
+  autoEdit, onEditEnd, onPhoto, second, suggest,
 }: InlineTextProps) {
   const [edit, setEdit] = useState(!!autoEdit && can)
   const [draft, setDraft] = useState(value)
@@ -121,9 +167,52 @@ export function InlineText({
     el.select()
   }, [edit])
 
+  /* ─── подсказки под полем (место на карте) ───
+     Состояния взяты у строки поиска над картой (`map/MapSearch.tsx`): «ищем»,
+     «вот что нашлось», «не нашлось», «спросить было некого» — последнее
+     отдельно, иначе без сети поле врало бы «ничего не нашлось» (постулат 5). */
+  const [hits, setHits] = useState<InlineHit[] | null>(null)
+  const [asking, setAsking] = useState(false)
+  const [noAsk, setNoAsk] = useState(false)
+  /* Ответы приходят не в том порядке, в котором ушли запросы: поздний ответ
+     на старую строку затирал бы свежий список. Считаем запросы номерами. */
+  const seq = useRef(0)
+  /* Объект подсказок приходит новым на каждой отрисовке — держим его ссылкой,
+     иначе запрос уходил бы по кругу. */
+  const ask = useRef(suggest?.ask)
+  ask.current = suggest?.ask
+
+  const wantHints = !!suggest && edit
+  useEffect(() => {
+    if (!wantHints) return
+    const q = draft.trim()
+    if (q.length < SUGGEST_MIN) {
+      seq.current++
+      setHits(null)
+      setAsking(false)
+      setNoAsk(false)
+      return
+    }
+    const t = window.setTimeout(() => {
+      const my = ++seq.current
+      setAsking(true)
+      void ask.current?.(q).then((list) => {
+        if (my !== seq.current) return
+        setAsking(false)
+        setNoAsk(list === null)
+        setHits(list ?? [])
+      })
+    }, SUGGEST_DELAY)
+    return () => window.clearTimeout(t)
+  }, [draft, wantHints])
+
   const close = () => {
     setEdit(false)
     setWhy('')
+    seq.current++
+    setHits(null)
+    setAsking(false)
+    setNoAsk(false)
     onEditEnd?.()
   }
 
@@ -224,6 +313,54 @@ export function InlineText({
             />
             {second.note ? (
               <span className="mt-1 block text-micro text-muted">{second.note}</span>
+            ) : null}
+          </span>
+        ) : null}
+        {/* ── Подсказки: список ПОД полем, содержимое толкается вниз ── */}
+        {suggest && (asking || hits !== null) ? (
+          <span className="mt-1 block">
+            {asking && hits === null ? (
+              <span className="block text-micro text-muted">Ищем на карте…</span>
+            ) : null}
+            {noAsk ? (
+              <span className="block text-micro text-muted">
+                Спросить было некого: нет сети или служба поиска не ответила. Название
+                сохранится как есть.
+              </span>
+            ) : null}
+            {!noAsk && hits !== null && hits.length === 0 && !asking ? (
+              <span className="block text-micro text-muted">
+                Ничего не нашлось. Напишите иначе — или оставьте своё название.
+              </span>
+            ) : null}
+            {hits !== null && hits.length > 0 ? (
+              <span className="block">
+                {suggest.hint ? (
+                  <span className="mb-1 block text-micro font-semibold text-muted">
+                    {suggest.hint}
+                  </span>
+                ) : null}
+                <span className="block max-h-56 overflow-y-auto rounded-md border border-line">
+                  {hits.map((hit) => (
+                    <button
+                      key={hit.id}
+                      type="button"
+                      onClick={() => {
+                        suggest.onPick(hit)
+                        close()
+                      }}
+                      className="flex min-h-11 w-full flex-col justify-center gap-0.5 border-b border-line/60 px-2 py-1.5 text-left transition-colors last:border-b-0 hover:bg-zebra"
+                    >
+                      <span className="block text-field leading-tight font-semibold text-ink">
+                        {hit.title}
+                      </span>
+                      {hit.note ? (
+                        <span className="block text-micro leading-snug text-muted">{hit.note}</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </span>
+              </span>
             ) : null}
           </span>
         ) : null}

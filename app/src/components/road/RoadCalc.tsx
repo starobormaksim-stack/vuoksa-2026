@@ -3,7 +3,7 @@ import { ChevronDown, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { calcAll, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
+import { calcAll, commonKmUsed, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
   AddRow, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions, useIsDesktop,
 } from '@/components/flops'
@@ -132,6 +132,10 @@ export function RoadCalc({
 
   const c = calcAll(S)
   const km = routeKm(S)
+  /* Общий пробег в подписи раздела стоит ровно до тех пор, пока по нему
+     кто-то едет. Когда у всей техники свой — это лишнее число, и заказчик
+     08.08.2026 назвал его дублем. Пробег каждой единицы стоит в её строке. */
+  const showKm = commonKmUsed(S)
 
   return (
     /* `overflow-clip`, а не `hidden`: `hidden` делает блок прокручиваемым,
@@ -140,7 +144,7 @@ export function RoadCalc({
       <div className="border-b border-line px-4 py-3">
         <h3 className="text-head font-[650] text-ink">Расчёт дороги</h3>
         <p className="tnum mt-0.5 text-note text-muted">
-          {`Пробег ${kmLabel(km)} · ${litresLabel(litresTotal(S))} топлива · ${money(c.transport, S.doc)}`}
+          {`${showKm ? `Пробег ${kmLabel(km)} · ` : ''}${litresLabel(litresTotal(S))} топлива · ${money(c.transport, S.doc)}`}
         </p>
       </div>
 
@@ -244,11 +248,19 @@ function Matrix({
 
   const lines: Line[] = []
 
-  /* ── Пробег ── */
+  /* ── Пробег ──
+     ⛔ Вся группа показывается, только пока по общему числу кто-то едет
+     (`commonKmUsed`). У каждой ветки есть свои `kmSrc`, `kBack` и `kmLocal`,
+     и когда они проставлены у всех, эти три строки ни на что не влияют —
+     заказчик 08.08.2026 назвал их дублями. Из документа `trip.dist`
+     не девается: заведут технику без своего пробега — группа вернётся. */
+  const pushKm = (l: Line) => {
+    if (commonKmUsed(S)) lines.push(l)
+  }
 
   /* У каждого заголовка — итог его группы (`sum`): свёрнутая группа обязана
      говорить главное число, иначе сворачивание прячет смысл (постулат 5). */
-  lines.push({
+  pushKm({
     key: 'h-km',
     head: true,
     title: 'Пробег',
@@ -256,7 +268,7 @@ function Matrix({
     cells: ['Сколько', '', '', '', 'Итого'],
   })
 
-  lines.push({
+  pushKm({
     key: 'd-manual',
     title: (
       <Title
@@ -293,7 +305,7 @@ function Matrix({
     ],
   })
 
-  lines.push({
+  pushKm({
     key: 'd-kback',
     title: (
       <Title
@@ -327,7 +339,7 @@ function Matrix({
     ],
   })
 
-  lines.push({
+  pushKm({
     key: 'd-local',
     title: (
       <Title
@@ -360,7 +372,7 @@ function Matrix({
     ],
   })
 
-  lines.push({
+  pushKm({
     key: 'd-total',
     total: true,
     title: (

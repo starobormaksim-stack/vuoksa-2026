@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, CloudSun, Droplets, Wind } from 'lucide-react'
 import type { State } from '@/lib/types'
-import { NBSP } from '@/format'
+import { MDASH, NBSP } from '@/format'
 import { cn } from '@/lib/utils'
 import {
   askKey, fetchWeather, FRESH_MS, isoDay, readCache, type LiveWeather,
@@ -67,6 +67,20 @@ export interface Live {
  *
  * ⛔ Документ этой функцией не правится — см. `lib/weather.ts`.
  */
+/**
+ * Для какого места прогноз — словами.
+ *
+ * Место одно и то же, что берёт `useLiveWeather`: главное место поездки.
+ * Двух источников быть не может — иначе подпись однажды разойдётся с числами.
+ */
+export function weatherWhere(S: State): string {
+  const place = S.trip.places?.find((p) => p.main) ?? S.trip.places?.[0]
+  const has = place && typeof place.lat === 'number' && typeof place.lon === 'number'
+  if (has && place.n) return `Погода на дни поездки${NBSP}${MDASH} ${place.n}`
+  if (has) return 'Погода на дни поездки'
+  return 'Погода на дни поездки. Выберите место поездки из списка — прогноз пойдёт за ним'
+}
+
 export function useLiveWeather(S: State): Live {
   const place = S.trip.places?.find((p) => p.main) ?? S.trip.places?.[0]
   const lat = place?.lat
@@ -181,9 +195,15 @@ export function WeatherRow({
 
   return (
     <div>
+      {/* ⛔ Место названо прямо здесь. Заказчик 08.08.2026: «Я не знаю, чего
+          сейчас она отталкивается… она должна отталкиваться от точки, которую
+          отметит человек». Прогноз и правда считается от координат главного
+          места (`useLiveWeather`), но об этом нигде не было сказано —
+          вычисленное, о котором молчат, читается как выдумка (постулат 5).
+          Координат у места нет — говорим и это, вместе с тем, что делать. */}
       <div className="flex items-center gap-1.5 text-micro text-muted">
         <CloudSun size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
-        <span>Погода на дни поездки</span>
+        <span>{weatherWhere(S)}</span>
       </div>
       <div className="-mx-1 mt-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
         {days.map((d) => {

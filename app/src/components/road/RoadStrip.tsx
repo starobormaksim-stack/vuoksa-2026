@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
-import { calcAll, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
+import { calcAll, commonKmUsed, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
 import {
   AddRow, InlineNum, InlineText, numText, RowAction, RowActions, StripField, StripRow,
 } from '@/components/flops'
@@ -877,9 +877,15 @@ export function RoadStrip({
 
   return (
     <div>
-      <div role="list" aria-label="Пробег">
-        {kmRow}
-      </div>
+      {/* ⛔ Полоска общего пробега стоит, только пока по ней кто-то едет:
+          у каждой ветки свои `kmSrc`, `kBack` и `kmLocal`, и когда они
+          проставлены у всех, три общих числа — дубль (заказчик 08.08.2026).
+          Правило одно на оба вида, оно в `commonKmUsed` (lib/calc.ts). */}
+      {commonKmUsed(S) && (
+        <div role="list" aria-label="Пробег">
+          {kmRow}
+        </div>
+      )}
 
       <Caption>Топливо и техника</Caption>
       <div role="list" aria-label="Топливо и техника">

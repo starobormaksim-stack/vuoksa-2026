@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CalendarDays, Camera, MapPin, TentTree } from 'lucide-react'
 import { toast } from 'sonner'
 import type { State, Trip, TripPlace } from '@/lib/types'
@@ -6,6 +6,9 @@ import type { Perms } from '@/lib/perm'
 import { countdown, daysUntil, fmtRange, plural } from '@/format'
 import { askMapLook, askPlaceMain } from '@/lib/mapfocus'
 import { update } from '@/store'
+import { humanAddr, searchPlaces, shortPlaceName, type PlaceFound } from '@/lib/geocode'
+import { mapCenter } from '@/components/road/roadx'
+import type { InlineHit } from '@/components/flops'
 import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
 import { MoneyTiles } from './MoneyTiles'
 import { useLiveWeather, WeatherDetail, WeatherRow } from './WeatherStrip'
@@ -98,6 +101,8 @@ export function TripCover({ S, perms, onEditDates }: Props) {
 
   /** какой день прогноза раскрыт под фотографией */
   const [wDay, setWDay] = useState<string | null>(null)
+  /** последние находки геокодера: из них берутся координаты выбранного места */
+  const found = useRef<PlaceFound[]>([])
   /* Прогноз обновляется сам (08.08.2026). Снимается здесь один раз и раздаётся
      обоим блокам — ленте и подробностям: два вызова означали бы два похода
      в сеть за одним и тем же. Документ при этом не правится (`lib/weather.ts`). */
@@ -126,6 +131,54 @@ export function TripCover({ S, perms, onEditDates }: Props) {
     patchPlaces((list) => {
       list.push({ i: 'pl' + Date.now().toString(36), n, main: list.length === 0 })
     })
+
+  /* ─── Место поездки ищется по названию, как город в поисковой строке ───
+     Заказчик 08.08.2026: «Там, где прописывается „впишите локацию“, должен
+     быть выпадающий список… Когда ты ищешь город, допустим, Приозерск».
+     Он же про погоду: «она должна отталкиваться от точки, которую отметит
+     человек… я выбрал конкретную точку, конкретный адрес — и он пишет погоду».
+     Прогноз и берётся от координат ГЛАВНОГО места (`useLiveWeather`), поэтому
+     выбранная находка кладёт в место не только имя, но и `lat`/`lon`/`addr` —
+     после этого погода едет за ним сама, документ трогать больше нечем.
+     ⛔ Молча ничего не подставляется: человек выбирает из списка сам. Своё
+     название при этом не пропадает — оно остаётся тем, что человек написал,
+     если он ничего не выбрал (постулат 4). */
+  const askPlaces = async (q: string): Promise<InlineHit[] | null> => {
+    const r = await searchPlaces(q, mapCenter(S))
+    if (!r.ok) return null
+    found.current = r.list
+    return r.list.map((hit, idx) => ({
+      id: String(idx),
+      title: shortPlaceName(humanAddr(hit.addr)),
+      note: `${hit.precise ? '' : 'Примерно: '}${humanAddr(hit.addr)}`,
+    }))
+  }
+
+  /** Записать выбранную находку в место: имя, координаты и адрес разом. */
+  const setPlaceFromHit = (id: string, hit: InlineHit, existing?: string) => {
+    const f = found.current[Number(id)]
+    if (!f) return
+    const n = shortPlaceName(humanAddr(f.addr)) || hit.title
+    patchPlaces((list) => {
+      const p = existing ? list.find((x) => x.i === existing) : null
+      if (p) {
+        p.n = n
+        p.lat = f.lat
+        p.lon = f.lon
+        p.addr = f.addr
+        return
+      }
+      list.push({
+        i: 'pl' + Date.now().toString(36),
+        n,
+        lat: f.lat,
+        lon: f.lon,
+        addr: f.addr,
+        main: list.length === 0,
+      })
+    })
+    toast(`Место поездки — «${n}». Прогноз погоды теперь считается для него`)
+  }
 
   return (
     <section
@@ -310,6 +363,11 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                       can={canEdit}
                       label="Место поездки"
                       required
+                      suggest={{
+                        ask: askPlaces,
+                        onPick: (hit) => setPlaceFromHit(hit.id, hit, p.i),
+                        hint: 'Выберите место — по нему считается погода',
+                      }}
                       className="truncate font-semibold text-ink"
                     />
                   </span>
@@ -325,6 +383,11 @@ export function TripCover({ S, perms, onEditDates }: Props) {
                       can
                       label="Место поездки"
                       placeholder="Место поездки"
+                      suggest={{
+                        ask: askPlaces,
+                        onPick: (hit) => setPlaceFromHit(hit.id, hit),
+                        hint: 'Выберите место — по нему считается погода',
+                      }}
                       className="truncate"
                     />
                   </span>

@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import type { LegMode, RateUnitId, Rent, State, Transport } from '@/lib/types'
-import { kmOf, litres, routeKm } from '@/lib/calc'
+import { kBackOf, kmOf, litres, routeKm } from '@/lib/calc'
 import { Btn, InlineNum, InlinePick, InlineText, StripField } from '@/components/flops'
 import { Switch } from '@/components/ui/switch'
 import { fmtNum, MDASH, NBSP } from '@/format'
-import { fuelName, litresLabel, NO_FUEL, RATE_HINTS, RATE_TITLES } from './roadx'
+import { fuelName, kBackWord, litresLabel, NO_FUEL, RATE_HINTS, RATE_TITLES } from './roadx'
 import { patchRent, patchTransport } from './roadedit'
 
 /**
@@ -319,7 +319,6 @@ export function TransportKm({
   S: State
   canEdit: boolean
 }) {
-  const dist = S.trip.dist
   const own = item.kmSrc === 'auto' || item.kmSrc === 'manual'
   const auto = item.kmAuto ?? 0
   const hand = item.km ?? 0
@@ -432,7 +431,12 @@ export function TransportKm({
         </span>
         <p className="mt-0.5 text-note leading-snug text-muted">
           {own
-            ? `${fmtNum(base, 0)}${NBSP}км ${MDASH} ${dist.kBack === 1 ? 'только туда' : `${dist.kBack} конца пути`}${local > 0 ? `, плюс ${fmtNum(local, 0)}${NBSP}км на месте` : ''}`
+            ? /* ⛔ Множитель берётся у САМОЙ ветки (`kBackOf`), а не из общего
+                 `trip.dist.kBack`. 08.08.2026 у «Chevrolet Aveo» стояло
+                 «×2» у ветки при общем «×1», и подпись честно писала
+                 «только туда» под удвоенным числом: 371 км в строке выше,
+                 742 км в итоге. Заказчик: «Я не знаю, зачем это 742». */
+              `${fmtNum(base, 0)}${NBSP}км ${MDASH} ${kBackWord(kBackOf(item, S))}${local > 0 ? `, плюс ${fmtNum(local, 0)}${NBSP}км на месте` : ''}`
             : 'Общий пробег поездки: своей цифры у этой техники ещё нет'}
           {item.rateU === 'lh' ? '. В топливо идут моточасы, не километры' : ''}
         </p>

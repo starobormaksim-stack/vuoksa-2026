@@ -401,7 +401,13 @@ export function TripMap({ S, perms, className }: Props) {
         i: id, n, time: '', c: '', done: false, lat, lon, addr,
         lab: '', labT: '', mode: branch?.leg || 'road', tr: branch?.i ?? '',
         leg: 0, legSrc: '',
-        ord: (s.route.length + 1) * 10, ua: Date.now(),
+        /* ⛔ `ord` — это порядок точек в маршруте (`threads()` строит нитку
+           по нему, `lib/export.ts` — выгрузку). Новая точка обязана встать
+           В КОНЕЦ, поэтому берётся МАКСИМУМ плюс шаг, а не длина массива:
+           после удаления шести точек 08.08.2026 длина стала 20, а `ord`
+           у последней — 260, и следующая точка получила бы 210, то есть
+           влезла бы в середину чужой ветки. */
+        ord: s.route.reduce((m, p) => Math.max(m, p.ord || 0), 0) + 10, ua: Date.now(),
       })
     })
     return id
@@ -432,17 +438,22 @@ export function TripMap({ S, perms, className }: Props) {
     update((s) => {
       const at = s.route.findIndex((p) => p.i === afterId)
       if (at < 0) return
+      /* Порядок точек держит `ord` (`threads()` в map/marks.ts, выгрузка
+         в lib/export.ts). Новой точке даём число МЕЖДУ соседями по `ord`,
+         а не перенумеровываем весь маршрут: перенумерация меняла `ord`
+         у двух десятков чужих точек без свежего `ua`, и до других телефонов
+         эти числа всё равно не доезжали (слияние берёт поле только у того,
+         чья метка времени свежее). Дробное число порядку не мешает. */
+      const after = s.route[at].ord || 0
+      const next = s.route
+        .filter((p) => (p.ord || 0) > after)
+        .reduce((m, p) => Math.min(m, p.ord || 0), Infinity)
+      const ord = Number.isFinite(next) ? (after + next) / 2 : after + 10
       s.route.splice(at + 1, 0, {
         i: id, n: NEW_POINT, time: '', c: '', done: false, lat, lon, addr: '',
         lab: '', labT: '', mode: branch?.leg || 'road', tr: branch?.i ?? '',
         leg: 0, legSrc: '',
-        ord: 0, ua: Date.now(),
-      })
-      /* `ord` задаёт порядок в выгрузке (`lib/export.ts`, `byOrd`). Вставка
-         в середину сбила бы его, поэтому перенумеровываем весь маршрут:
-         поле остаётся тем же, меняются только числа в нём. */
-      s.route.forEach((p, i) => {
-        p.ord = (i + 1) * 10
+        ord, ua: Date.now(),
       })
     })
     /* Карточку не открываем и здесь — по той же причине (см. `onAdd`).

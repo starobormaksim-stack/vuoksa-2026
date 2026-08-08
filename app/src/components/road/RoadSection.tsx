@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { Idea, Rent, Transport } from '@/lib/types'
 import { useTrip, touch } from '@/store'
 import { useAddRequest } from '@/lib/addnew'
+import { commonKmUsed } from '@/lib/calc'
 import { jumpToItem } from '@/lib/jump'
 import {
   AddRow, Btn, DataCell, DataRow, DataTable, EmptyState, Group, InlineText,
@@ -268,7 +269,11 @@ export function RoadSection() {
             <MapPinned size={18} strokeWidth={1.75} aria-hidden />
             {mapBusy ? 'Считаем по карте…' : 'Посчитать по карте'}
           </Btn>
-          {dist.auto > 0 &&
+          {/* ⛔ Переключатель источника ОБЩЕГО пробега стоит, только пока
+              по нему кто-то едет: у каждой ветки свой (`commonKmUsed`).
+              Иначе кнопка предлагала бы переключить число, от которого
+              в расчёте не зависит ни рубля (заказчик 08.08.2026 — дубли). */}
+          {commonKmUsed(S) && dist.auto > 0 &&
             (dist.src === 'auto' ? (
               <Btn tone="ghost" onClick={useManual}>
                 Вернуть своё число
@@ -311,11 +316,13 @@ export function RoadSection() {
           05.08.2026 — «гигантское количество текста… это лишнее». Какое
           число идёт в расчёт — критическая деталь, она остаётся. */}
       <p className={cn('text-note leading-snug text-muted', canEdit && 'mt-2')}>
-        {dist.src === 'auto'
-          ? `В расчёте карта · ${kmLabel(dist.auto)}. Своё — ${kmLabel(dist.manual)}`
-          : dist.auto > 0
-            ? `В расчёте своё число. По карте — ${kmLabel(dist.auto)}`
-            : 'Считается по дорогам между точками маршрута'}
+        {!commonKmUsed(S)
+          ? 'У каждой техники свой пробег — по её точкам на карте. Он в её строке'
+          : dist.src === 'auto'
+            ? `В расчёте карта · ${kmLabel(dist.auto)}. Своё — ${kmLabel(dist.manual)}`
+            : dist.auto > 0
+              ? `В расчёте своё число. По карте — ${kmLabel(dist.auto)}`
+              : 'Считается по дорогам между точками маршрута'}
       </p>
     </div>
   )
