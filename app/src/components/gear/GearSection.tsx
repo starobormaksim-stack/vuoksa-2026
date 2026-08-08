@@ -234,7 +234,7 @@ export function GearSection() {
   return (
     <div className="flex flex-col gap-4" ref={list}>
       <SectionHead
-        title="Сборы"
+        title="Взять с собой"
         secId="gear"
         hint="Цифра — сколько штук везёт человек. «Всего» считается само"
         legend={GEAR_LEGEND}
@@ -409,7 +409,7 @@ export function GearSection() {
           onOpenChange={(v) => !v && endRename()}
           onBack={endRename}
           title="Название раздела"
-          subtitle="Сборы"
+          subtitle="Взять с собой"
           value={menuSec.t}
           placeholder="Например, Общее снаряжение"
           onDone={(v) => v && renameSec(menuSec.i, v)}

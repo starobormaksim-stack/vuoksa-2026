@@ -54,14 +54,14 @@ export const ADD_KINDS: AddKindDef[] = [
     kind: 'gear',
     label: 'Вещь',
     section: 'gear',
-    aria: 'Добавить вещь в «Сборы»',
+    aria: 'Добавить вещь во «Взять с собой»',
     editorOnly: false,
   },
   {
     kind: 'buy',
     label: 'Покупка',
     section: 'buy',
-    aria: 'Добавить покупку в «Закупку»',
+    aria: 'Добавить покупку в «Расходы»',
     editorOnly: false,
   },
   {

@@ -88,7 +88,7 @@ export function BuyTable({
     <>
       <DataTable
         cols={colsFor(people.length)}
-        label={`Закупка · ${sec.t}`}
+        label={`Расходы · ${sec.t}`}
         sync={scroll}
       >
         <DataHead>

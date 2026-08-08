@@ -320,7 +320,7 @@ function sheetRoad(S: State): Sheet {
 
 function sheetBuy(S: State): Sheet {
   const rows: Row[] = [
-    [title(titleOf(S, 'buy', 'Закупка'))],
+    [title(titleOf(S, 'buy', 'Расходы'))],
     [note('«Купить» попадает в общую сумму. «Есть у …», «Под вопросом» и «Не берём» — нет.')],
   ]
 
@@ -533,7 +533,7 @@ export function tripSheets(S: State): Sheet[] {
       S,
       'Снаряжение',
       rest,
-      titleOf(S, 'gear', 'Снаряжение'),
+      titleOf(S, 'gear', 'Взять с собой'),
       'Цифра — сколько штук везёт этот человек. «Всего» — сумма по строке.',
     ),
     gearSheet(

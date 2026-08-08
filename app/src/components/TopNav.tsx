@@ -48,7 +48,17 @@ export function TopNav({
           <Logo height={28} />
         </button>
 
-        <nav aria-label="Разделы" className="flex h-full min-w-0 flex-1 items-stretch justify-center gap-0.5">
+        {/* ⚠️ Подписи разделов обрезались многоточием — «Поездк…», «Расхо…», даже
+            «Ме…»: семь разделов сжимались флексом до нечитаемых огрызков (замер
+            09.08.2026 на 1280: сумма кнопок 873 px при 832 доступных). Полоса
+            с обрезанными названиями — это поле, которое видно и не читается.
+            Поэтому кнопки больше не сжимаются, а ряд при нехватке места едет
+            вбок внутри своей полосы (постулат 8 — у страницы прокрутки нет,
+            внутри блока можно). Внутренний ряд обёрнут отдельным узлом: у флекса
+            с `justify-center` при переполнении левый край становится недоступен,
+            а вложенный блок центрируется целиком и прокручивается изнутри. */}
+        <nav aria-label="Разделы" className="flex h-full min-w-0 flex-1 items-stretch justify-center">
+          <div className="flex max-w-full items-stretch overflow-x-auto">
           {sections.map((s) => {
             const isActive = s.id === active
             const Icon = s.icon
@@ -63,12 +73,12 @@ export function TopNav({
                    оттенка текста под курсором — ровно то, что заказчик назвал
                    «неадекватно подсвечиваются кнопки». Активный раздел отмечен
                    плотностью текста и полосой под ним, а не подсветкой. */
-                className={`relative flex min-w-0 items-center gap-2 px-2.5 text-body font-semibold whitespace-nowrap transition-colors hover:bg-zebra/70 xl:px-3 ${
+                className={`relative flex shrink-0 items-center gap-2 px-2 text-body font-semibold whitespace-nowrap transition-colors hover:bg-zebra/70 ${
                   isActive ? 'text-ink' : 'text-muted'
                 }`}
               >
                 <Icon size={20} strokeWidth={1.75} aria-hidden className="shrink-0" />
-                <span className="truncate">{s.title}</span>
+                <span>{s.title}</span>
                 {isActive && (
                   <motion.span
                     layoutId="nav-underline"
@@ -81,6 +91,7 @@ export function TopNav({
               </button>
             )
           })}
+          </div>
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">

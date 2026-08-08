@@ -213,7 +213,7 @@ export function BuySection() {
   return (
     <div className="flex flex-col gap-4" ref={list}>
       <SectionHead
-        title="Закупка"
+        title="Расходы"
         secId="buy"
         hint="Галочка слева — куплено. Без галочки «Берём» позиция в сумму не идёт"
         legend={BUY_LEGEND}
@@ -356,7 +356,7 @@ export function BuySection() {
           onOpenChange={(v) => !v && endRename()}
           onBack={endRename}
           title="Название раздела"
-          subtitle="Закупка"
+          subtitle="Расходы"
           value={menuSec.t}
           placeholder="Например, Продукты"
           onDone={(v) => v && renameSec(menuSec.i, v)}

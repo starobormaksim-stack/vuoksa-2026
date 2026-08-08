@@ -36,10 +36,44 @@ interface TitlePair {
   sub?: string
 }
 
+/**
+ * Заводские названия ПЕРВОЙ версии — те, что она сама записала в документ.
+ *
+ * ⚠️ Это не авторские правки. Первая версия при каждом открытии выполняла
+ * `secTitles[s.id] = S.secTitles[s.id] || {h: s.h, sub: s.sub}` (`v1/index.html`),
+ * то есть заносила в документ СВОЙ заводской список. В боевых данных лежат
+ * ровно эти строки — и они перебивали бы любое новое заводское название.
+ * Заказчик 08.08.2026 переименовал «Сборы» во «Взять с собой», а «Закупку»
+ * в «Расходы» — и не увидел бы ни того, ни другого: документ отдавал старое.
+ *
+ * Поэтому значение, в точности совпавшее с отпечатком первой версии, своим
+ * не считается. Настоящая правка человека от него отличается — так «Экипаж»,
+ * переименованный заказчиком в «Команду», остаётся «Командой».
+ *
+ * ⛔ Документ при этом не трогается вовсе (постулат 4): меняется только показ.
+ * Как только человек переименует раздел сам, его слово ляжет в `secTitles`
+ * и перебьёт заводское — как и было задумано.
+ *
+ * ⛔ Здесь ровно те два раздела, которые заказчик велел переименовать, и ни одним
+ * больше. «Логистику» он оставил себе намеренно («не логистика, а транспорт…
+ * ну да, логистика нормально… ладно, оставляешь», 08.08.2026) — впиши сюда `log`,
+ * и на экране вместо неё встала бы заводская «Дорога». Замер это и показал.
+ *
+ * Ключи здесь — те же, что в хранении (`KEY_OF`): «Дорога» это `log`.
+ */
+const LEGACY_V1: Record<string, TitlePair> = {
+  gear: { h: 'Сборы', sub: 'Общая база вещей и личные списки' },
+  buy: { h: 'Закупка', sub: 'Продукты, расходники и деньги' },
+}
+
+function keyOf(secId: string): string {
+  return KEY_OF[secId] ?? secId
+}
+
 function pairOf(S: State, secId: string): TitlePair | null {
   const bag = S.secTitles as unknown as Record<string, unknown> | undefined
   if (!bag) return null
-  const raw = bag[KEY_OF[secId] ?? secId]
+  const raw = bag[keyOf(secId)]
   if (typeof raw === 'string') return { h: raw }
   if (raw && typeof raw === 'object') return raw as TitlePair
   return null
@@ -47,7 +81,9 @@ function pairOf(S: State, secId: string): TitlePair | null {
 
 /** Название раздела: своё, если задано, иначе заводское. */
 export function titleOf(S: State, secId: string, fallback: string): string {
-  return pairOf(S, secId)?.h?.trim() || fallback
+  const свой = pairOf(S, secId)?.h?.trim()
+  if (!свой || свой === LEGACY_V1[keyOf(secId)]?.h) return fallback
+  return свой
 }
 
 /**
@@ -57,7 +93,9 @@ export function titleOf(S: State, secId: string, fallback: string): string {
 export function hintOf(S: State, secId: string, fallback?: string): string | undefined {
   const p = pairOf(S, secId)
   if (!p || p.sub === undefined) return fallback
-  return p.sub.trim() || undefined
+  const свой = p.sub.trim()
+  if (свой && свой === LEGACY_V1[keyOf(secId)]?.sub) return fallback
+  return свой || undefined
 }
 
 /** Записать своё название и подпись, сохранив форму, которая уже в документе. */
