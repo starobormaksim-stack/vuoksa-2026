@@ -31,7 +31,12 @@ export function BuyTotals({ S }: { S: State }) {
   return (
     <section className="rounded-xl border border-line bg-surface p-4 shadow-sm">
       <div className="flex items-end gap-3">
-        <h3 className="min-w-0 flex-1 text-body font-[650] text-ink">Общий счёт</h3>
+        {/* ⚠️ Было «Общий счёт». С 09.08.2026 «Расходы» — раздел с подразделами,
+            и над этим блоком стоят ещё «Аренда», «Логистика» и «Проживание».
+            Слово «общий» читалось бы как итог всего раздела, а здесь только
+            закупка: число обязано называть себя (постулат 5). Итог всего
+            раздела — ниже, в «Итогах поездки». */}
+        <h3 className="min-w-0 flex-1 text-body font-[650] text-ink">Итог по закупке</h3>
         <span className="tnum shrink-0 text-title leading-none font-bold text-ink">
           {money(b.total, S.doc)}
         </span>

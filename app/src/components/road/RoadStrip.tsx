@@ -21,6 +21,7 @@ import { DocNotes } from './DocNotes'
 import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
 import { spendSplit } from '@/lib/settle'
 import { SpendShareEdit, SpendSplitLine } from './SpendShare'
+import type { CalcPart } from './RoadCalc'
 
 /**
  * «Расчёт дороги» лентой — вид на телефоне.
@@ -46,21 +47,31 @@ import { SpendShareEdit, SpendSplitLine } from './SpendShare'
 
 interface Props {
   S: State
+  /** что рисуем — см. `CalcPart` в `RoadCalc.tsx` */
+  parts: CalcPart[]
+  /** часть одна: имя группы уже сказано заголовком подраздела, повторять его нечем */
+  solo: boolean
   canEdit: boolean
   /** можно ли убрать эту позицию: редактор — любую, автор — свою */
   canDel: (item: { by?: string }) => boolean
-  onAddTransport: () => void
-  onAddRent: () => void
-  onDelTransport: (t: Transport) => void
-  onDelRent: (r: Rent) => void
+  onAddTransport?: () => void
+  onAddRent?: () => void
+  onDelTransport?: (t: Transport) => void
+  onDelRent?: (r: Rent) => void
+  /** какие строки аренды показывает этот подраздел (`lib/spend.ts`) */
+  rentList?: Rent[]
+  rentEmpty?: { title: string; text: string }
+  addRentLabel?: string
   /** id только что добавленной строки — она раскрыта и открыта на правке названия */
   fresh: string | null
   onFreshEnd: () => void
 }
 
 export function RoadStrip({
-  S, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent, fresh, onFreshEnd,
+  S, parts, solo, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent,
+  rentList, rentEmpty, addRentLabel, fresh, onFreshEnd,
 }: Props) {
+  const want = (p: CalcPart) => parts.includes(p)
   /** раскрытая позиция; открыта всегда одна — лента остаётся лентой */
   const [openId, setOpenId] = useState('')
 
@@ -204,7 +215,9 @@ export function RoadStrip({
   const fuels = [...S.fuelPrices].sort((a, b) => a.ord - b.ord)
   /* Топливо без цены и без техники не рисуем: строка «Дизель — 0 ₽» ничего
      не сообщает. Из документа оно при этом никуда не девается. */
-  const shownFuels = fuels.filter((f) => f.price > 0 || S.transport.some((t) => t.fuel === f.i))
+  const shownFuels = want('fuel')
+    ? fuels.filter((f) => f.price > 0 || S.transport.some((t) => t.fuel === f.i))
+    : []
 
   const fuelRows: ReactNode[] = []
 
@@ -468,7 +481,7 @@ export function RoadStrip({
             }
           />
 
-          {canDel(t) ? (
+          {canDel(t) && onDelTransport ? (
             <div className="mt-2 flex justify-end border-t border-line/50 pt-2">
               <RowActions>
                 {/* Со спросом — как в таблице (заказчик 08.08.2026). */}
@@ -487,10 +500,12 @@ export function RoadStrip({
 
   /* ─────────── аренда и парковка ─────────── */
 
-  const rent = [...S.rent].sort((a, b) => a.ord - b.ord)
+  /* Какие строки показывает ЭТОТ подраздел, решает проекция (`lib/spend.ts`):
+     «Аренда» — всё, кроме ночёвок, «Проживание» — только ночёвки. */
+  const rent = want('rent') ? (rentList ?? [...S.rent].sort((a, b) => a.ord - b.ord)) : []
   const rentRows: ReactNode[] = []
 
-  if (rent.length === 0) {
+  if (want('rent') && rent.length === 0) {
     rentRows.push(
       <StripRow
         key="r-none"
@@ -498,8 +513,8 @@ export function RoadStrip({
         disclose={false}
         open={false}
         onToggle={() => {}}
-        title="Ничего не арендуем"
-        sub="Ни лодки, ни парковки, ни домика"
+        title={rentEmpty?.title ?? 'Ничего не арендуем'}
+        sub={rentEmpty?.text ?? 'Ни лодки, ни парковки, ни домика'}
       >
         {null}
       </StripRow>,
@@ -698,7 +713,7 @@ export function RoadStrip({
           }
         />
 
-        {canDel(r) ? (
+        {canDel(r) && onDelRent ? (
           <div className="mt-2 flex justify-end border-t border-line/50 pt-2">
             <RowActions>
               <RowAction
@@ -718,12 +733,14 @@ export function RoadStrip({
 
   /* Строки блока — из документа (canRows), плюс топливо, которое везут с собой,
      а строки для него в документе ещё нет. */
-  const canFuels = [
-    ...new Set([
-      ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
-      ...c.cans.map((x) => x.fuel),
-    ]),
-  ]
+  const canFuels = want('can')
+    ? [
+        ...new Set([
+          ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
+          ...c.cans.map((x) => x.fuel),
+        ]),
+      ]
+    : []
 
   const canRows = canFuels.map((fuelId) => {
     const row = S.canRows.find((r) => r.fuel === fuelId)
@@ -849,7 +866,7 @@ export function RoadStrip({
     },
   ]
 
-  const sumRows = totals.map((t) => {
+  const sumRows = (want('sum') ? totals : []).map((t) => {
     const shown = S.tileLabels?.[t.slot]?.trim() || t.label
     /* Сюда приходит тап по плитке с обложки: там та же сумма без объяснения,
        здесь — с разбором, откуда она взялась (`trip/MoneyTiles.tsx`, У-98). */
@@ -907,65 +924,82 @@ export function RoadStrip({
 
   /* ─────────── показ ─────────── */
 
+  /* Имя группы над лентой нужно ровно тогда, когда групп в подразделе больше
+     одной. У «Аренды» и «Проживания» она одна, и своё имя они уже говорят
+     заголовком подраздела — вторая такая же надпись подряд была бы шумом. */
+  const cap = (t: string) => (solo ? null : <Caption>{t}</Caption>)
+
   return (
     <div>
       {/* ⛔ Полоска общего пробега стоит, только пока по ней кто-то едет:
           у каждой ветки свои `kmSrc`, `kBack` и `kmLocal`, и когда они
           проставлены у всех, три общих числа — дубль (заказчик 08.08.2026).
           Правило одно на оба вида, оно в `commonKmUsed` (lib/calc.ts). */}
-      {commonKmUsed(S) && (
+      {want('km') && commonKmUsed(S) && (
         <div role="list" aria-label="Пробег">
           {kmRow}
         </div>
       )}
 
-      <Caption>Топливо и техника</Caption>
-      <div role="list" aria-label="Топливо и техника">
-        {fuelRows}
-      </div>
-      {canEdit && (
-        <div className="border-t border-line">
-          <AddRow label="Добавить технику" onClick={onAddTransport} />
-        </div>
+      {want('fuel') && (
+        <>
+          {cap('Топливо и техника')}
+          <div role="list" aria-label="Топливо и техника">
+            {fuelRows}
+          </div>
+          {canEdit && onAddTransport && (
+            <div className="border-t border-line">
+              <AddRow label="Добавить технику" onClick={onAddTransport} />
+            </div>
+          )}
+        </>
       )}
 
-      <Caption>Аренда</Caption>
-      <div role="list" aria-label="Аренда">
-        {rentRows}
-      </div>
-      {canEdit && (
-        <div className="border-t border-line">
-          <AddRow label="Добавить аренду" onClick={onAddRent} />
-        </div>
+      {want('rent') && (
+        <>
+          {cap('Аренда')}
+          <div role="list" aria-label="Аренда">
+            {rentRows}
+          </div>
+          {canEdit && onAddRent && (
+            <div className="border-t border-line">
+              <AddRow label={addRentLabel ?? 'Добавить аренду'} onClick={onAddRent} />
+            </div>
+          )}
+        </>
       )}
 
       {canRows.length > 0 && (
         <>
-          <Caption>Канистры</Caption>
+          {cap('Канистры')}
           <div role="list" aria-label="Канистры">
             {canRows}
           </div>
         </>
       )}
 
-      <Caption>Итоги поездки</Caption>
-      <div role="list" aria-label="Итоги поездки">
-        {sumRows}
-        {c.personal > 0 ? (
-          <StripRow
-            key="sum-personal"
-            zebra={stripe()}
-            disclose={false}
-            open={false}
-            onToggle={() => {}}
-            title="Личное"
-            sub="Свои покупки, в общий делёж не входят"
-            right={money(c.personal, S.doc)}
-          >
-            {null}
-          </StripRow>
-        ) : null}
-      </div>
+      {want('sum') && (
+        <>
+          {cap('Итоги поездки')}
+          <div role="list" aria-label="Итоги поездки">
+            {sumRows}
+            {c.personal > 0 ? (
+              <StripRow
+                key="sum-personal"
+                zebra={stripe()}
+                disclose={false}
+                open={false}
+                onToggle={() => {}}
+                title="Личное"
+                sub="Свои покупки, в общий делёж не входят"
+                right={money(c.personal, S.doc)}
+              >
+                {null}
+              </StripRow>
+            ) : null}
+          </div>
+        </>
+      )}
     </div>
   )
 }

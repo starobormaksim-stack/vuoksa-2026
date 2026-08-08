@@ -12,6 +12,7 @@ import {
   Btn, ConfirmButton, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll,
   useIsDesktop,
 } from '@/components/flops'
+import { SpendRoad, SpendTotals } from '@/components/road/SpendRoad'
 import { BUY_LEGEND } from './legend'
 import { BuyTotals } from './BuyTotals'
 import { BuyTable } from './BuyTable'
@@ -20,7 +21,27 @@ import { money } from '@/lib/calc'
 import { plural } from '@/format'
 
 /**
- * Раздел «Закупка» — таблицей, как лист заказчика.
+ * Раздел «Расходы» — всё, что касается денег поездки.
+ *
+ * ─── Подразделы (заказчик, 09.08.2026) ───
+ * «Логистика должна быть одним из подразделов внутри расходов, но ты этого
+ * не сделал… я тебе говорил, вот, и не доделал до сих пор»; «ты проживание
+ * фиксируешь тоже как подраздел внутри расходов, потому что это расходы
+ * в том числе»; «а вот меню идёт отдельно»; «уже по итогу всех этих
+ * подразделов, по итогу всего раздела расходов там будет условно как раз
+ * этот расчёт и фиксироваться».
+ *
+ * Отсюда порядок: статьи закупки · «Аренда» · «Логистика» · «Проживание» ·
+ * итог по закупке · итоги поездки · взаиморасчёты (последние — сразу за
+ * разделом, `LAST_MONEY_SECTION` в `sections.ts`). Форма у всех подразделов
+ * одна: заголовок с суммой, тап складывает, внутри липкая колонка названий
+ * и свои колонки (постулат 3.5).
+ *
+ * ⛔ Свёртка у ВСЕХ подразделов — одна память (`useFold('buy')`), и `fold`
+ * уезжает в `SpendRoad` пропом. Второй экземпляр на том же ключе затирал бы
+ * раскрытое (`foldpref.ts` читает хранилище один раз и пишет карту целиком).
+ *
+ * ─── Таблица закупки ───
  *
  * Переделка 04.08.2026. Прежняя карточка позиции и «режим магазина» убраны целиком:
  * «мне не нужен поп-ап, в котором всё написано… это прямо вот здесь, в этой таблице
@@ -46,7 +67,7 @@ export function BuySection() {
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
   /* Только что заведённая статья: окно названия открыто сразу, и закрытие
-     не проваливается в «Действия раздела» (см. «Сборы»). */
+     не проваливается в «Действия подраздела» (см. «Сборы»). */
   const [newSec, setNewSec] = useState(false)
   const endRename = () => {
     setRename(false)
@@ -181,7 +202,7 @@ export function BuySection() {
     update((s) => {
       s.buySections.push({
         i: id,
-        t: 'Новый раздел',
+        t: 'Новый подраздел',
         personal: false,
         ord: Math.max(0, ...s.buySections.map((x) => x.ord)) + 10,
         by: perms.me || '',
@@ -216,7 +237,7 @@ export function BuySection() {
     const хвост = items.length
       ? ` — вместе с ${items.length} ${plural(items.length, 'позицией', 'позициями', 'позициями')}`
       : ''
-    toast(`Убрали раздел «${sec.t}»${хвост}`, {
+    toast(`Убрали подраздел «${sec.t}»${хвост}`, {
       action: {
         label: 'Вернуть',
         onClick: () =>
@@ -317,26 +338,31 @@ export function BuySection() {
           className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-strong px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra"
         >
           <Plus size={16} strokeWidth={1.75} aria-hidden />
-          Добавить раздел
+          Добавить подраздел
         </button>
       )}
 
-      {/* «Общий счёт» — в самом конце раздела: сначала список, потом разблюдовка
-          (заказчик, 08.08.2026). */}
+      {/* «Аренда» · «Логистика» · «Проживание» — той же формой, что статьи
+          закупки. Строки лежат в своих коллекциях, экран их только показывает
+          (`lib/spend.ts`, постулат 4). */}
+      <SpendRoad fold={fold} />
+
+      {/* Разблюдовка — в конце, после всех списков: «сначала список, потом
+          в конце уже разблюдовка» (заказчик, 08.08.2026). */}
       <BuyTotals S={S} />
+      <SpendTotals fold={fold} />
 
       {/* ⛔ Здесь стоял блок «Взаиморасчёты» (приехал из «Дороги» 05.08.2026).
-          Убран 08.08.2026 по прямому слову заказчика: «Почему у тебя
-          взаиморасчёты после еды, после закупки идут, а отдельно расчёты
-          по логистике? У тебя всё в конце должно считаться». Теперь блок стоит
-          ПОСЛЕ всех разделов — последним на листе (App.tsx). Экземпляр
-          по-прежнему один (У-53). */}
+          Он и сейчас не здесь, а сразу ЗА разделом (`LAST_MONEY_SECTION`
+          в `sections.ts`, рисует App.tsx): «уже по итогу всех этих подразделов,
+          по итогу всего раздела расходов там будет условно как раз этот расчёт»
+          (09.08.2026). Экземпляр по-прежнему один (У-53). */}
 
       {menuSec && (
         <ResponsiveSheet
           open={!rename}
           onOpenChange={(v) => !v && setMenu(null)}
-          title="Действия раздела"
+          title="Действия подраздела"
           subtitle={menuSec.t}
           footer={
             <Btn scale="lg" className="w-full" onClick={() => setMenu(null)}>
@@ -364,7 +390,7 @@ export function BuySection() {
                 Счёт того, что уйдёт вместе со статьёй, стоит прямо в вопросе. */}
             <ConfirmButton
               icon={Trash2}
-              label="Удалить раздел"
+              label="Удалить подраздел"
               ask={
                 (bySec[menuSec.i] ?? []).length
                   ? `Удалить вместе с ${(bySec[menuSec.i] ?? []).length} ${plural(
@@ -373,7 +399,7 @@ export function BuySection() {
                       'позициями',
                       'позициями',
                     )}?`
-                  : 'Удалить раздел?'
+                  : 'Удалить подраздел?'
               }
               onConfirm={() => delSec(menuSec)}
             />
@@ -386,7 +412,7 @@ export function BuySection() {
           open={rename}
           onOpenChange={(v) => !v && endRename()}
           onBack={endRename}
-          title="Название раздела"
+          title="Название подраздела"
           subtitle="Расходы"
           value={menuSec.t}
           placeholder="Например, Продукты"

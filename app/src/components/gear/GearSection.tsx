@@ -51,7 +51,7 @@ export function GearSection() {
   const [menu, setMenu] = useState<string | null>(null)
   const [rename, setRename] = useState(false)
   /* Только что заведённый раздел: окно названия открыто сразу, и закрытие
-     не проваливается в «Действия раздела» — человек заводил раздел,
+     не проваливается в «Действия подраздела» — человек заводил раздел,
      а не открывал меню. */
   const [newSec, setNewSec] = useState(false)
   const endRename = () => {
@@ -194,7 +194,7 @@ export function GearSection() {
     update((s) => {
       s.gearSections.push({
         i: id,
-        t: 'Новый раздел',
+        t: 'Новый подраздел',
         ord: Math.max(0, ...s.gearSections.map((x) => x.ord)) + 10,
         by: perms.me || '',
         ua: Date.now(),
@@ -222,7 +222,7 @@ export function GearSection() {
     const хвост = items.length
       ? ` — вместе с ${items.length} ${plural(items.length, 'вещью', 'вещами', 'вещами')}`
       : ''
-    toast(`Убрали раздел «${sec.t}»${хвост}`, {
+    toast(`Убрали подраздел «${sec.t}»${хвост}`, {
       action: {
         label: 'Вернуть',
         onClick: () =>
@@ -374,7 +374,7 @@ export function GearSection() {
           className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-strong px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra"
         >
           <Plus size={16} strokeWidth={1.75} aria-hidden />
-          Добавить раздел
+          Добавить подраздел
         </button>
       )}
 
@@ -382,7 +382,7 @@ export function GearSection() {
         <ResponsiveSheet
           open={!rename}
           onOpenChange={(v) => !v && setMenu(null)}
-          title="Действия раздела"
+          title="Действия подраздела"
           subtitle={menuSec.t}
           footer={
             <Btn scale="lg" className="w-full" onClick={() => setMenu(null)}>
@@ -409,7 +409,7 @@ export function GearSection() {
             {/* Спрашивает вторым шагом на месте: попапов нет (У-158, `ConfirmButton`). */}
             <ConfirmButton
               icon={Trash2}
-              label="Удалить раздел"
+              label="Удалить подраздел"
               ask={
                 (bySec[menuSec.i] ?? []).length
                   ? `Удалить вместе с ${(bySec[menuSec.i] ?? []).length} ${plural(
@@ -418,7 +418,7 @@ export function GearSection() {
                       'вещами',
                       'вещами',
                     )}?`
-                  : 'Удалить раздел?'
+                  : 'Удалить подраздел?'
               }
               onConfirm={() => delSec(menuSec)}
             />
@@ -431,7 +431,7 @@ export function GearSection() {
           open={rename}
           onOpenChange={(v) => !v && endRename()}
           onBack={endRename}
-          title="Название раздела"
+          title="Название подраздела"
           subtitle="Взять с собой"
           value={menuSec.t}
           placeholder="Например, Общее снаряжение"

@@ -29,10 +29,9 @@ import { TripSection } from './components/trip/TripSection'
 import { BuySection } from './components/buy/BuySection'
 import { Settlement } from './components/buy/Settlement'
 import { GearSection } from './components/gear/GearSection'
-import { RoadSection } from './components/road/RoadSection'
+import { IdeasSection } from './components/ideas/IdeasSection'
 import { CrewSection } from './components/crew/CrewSection'
 import { MenuSection } from './components/menu/MenuSection'
-import { StaySection } from './components/stay/StaySection'
 import { Toaster } from './components/ui/sonner'
 
 /**
@@ -212,14 +211,12 @@ function App() {
                 <GearSection />
               ) : s.id === 'buy' ? (
                 <BuySection />
-              ) : s.id === 'road' ? (
-                <RoadSection />
               ) : s.id === 'crew' ? (
                 <CrewSection />
               ) : s.id === 'menu' ? (
                 <MenuSection />
-              ) : s.id === 'stay' ? (
-                <StaySection />
+              ) : s.id === 'ideas' ? (
+                <IdeasSection />
               ) : (
                 <Placeholder section={s} />
               )}

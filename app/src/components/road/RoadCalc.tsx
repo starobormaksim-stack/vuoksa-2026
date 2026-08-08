@@ -14,7 +14,7 @@ import { touch, update } from '@/store'
 import { useFold, useUnfoldRequest } from '@/foldpref'
 import { plural } from '@/format'
 import {
-  DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, litresTotal, refuelLitres,
+  DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, refuelLitres,
 } from './roadx'
 import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
 import { Calc, Result, Static, Title } from './cells'
@@ -25,7 +25,15 @@ import { spendSplit } from '@/lib/settle'
 import { SpendShareEdit, SpendSplitLine } from './SpendShare'
 
 /**
- * «Расчёт дороги» — ОДНА таблица на весь лист «Логистика» заказчика.
+ * Расчёт денег дороги — таблица подраздела «Расходов».
+ *
+ * ─── Где это теперь стоит ───
+ * До 09.08.2026 таблица была разделом «Дорога» и стояла ПОСЛЕ «Расходов».
+ * Заказчик: «Логистика должна быть одним из подразделов внутри расходов,
+ * но ты этого не сделал… я тебе говорил, вот, и не доделал до сих пор».
+ * Теперь та же таблица рисуется по частям (`parts`) внутри подразделов
+ * «Логистика», «Аренда» и «Проживание» — а собирает их `lib/spend.ts`.
+ * Арифметика при этом не сдвинулась ни на рубль: считает `lib/calc.ts`.
  *
  * Прежде их было три: «Исходные данные», «Расчёт» и «Канистры», и одно и то же
  * число стояло в двух из них сразу. Заказчик 04.08.2026: «очень сложно, очень
@@ -110,25 +118,54 @@ interface Line {
   panel?: ReactNode
 }
 
+/**
+ * Части расчёта. Подраздел «Расходов» берёт ровно те, которые ему принадлежат:
+ * «Логистика» — пробег, топливо с техникой и канистры; «Аренда» и «Проживание» —
+ * строки аренды; замыкающий блок — итоги поездки.
+ */
+export type CalcPart = 'km' | 'fuel' | 'rent' | 'can' | 'sum'
+
 interface Props {
   S: State
+  /** что рисуем; порядок частей задан самой таблицей, а не этим списком */
+  parts: CalcPart[]
   canEdit: boolean
   /** можно ли убрать эту позицию: редактор — любую, автор — свою */
   canDel: (item: { by?: string }) => boolean
-  onAddTransport: () => void
-  onAddRent: () => void
-  onDelTransport: (t: Transport) => void
-  onDelRent: (r: Rent) => void
+  onAddTransport?: () => void
+  onAddRent?: () => void
+  onDelTransport?: (t: Transport) => void
+  onDelRent?: (r: Rent) => void
+  /**
+   * Какие строки аренды показывать. «Аренда» отдаёт всё, кроме ночёвок,
+   * «Проживание» — только ночёвки (`lib/spend.ts`). Коллекция при этом одна
+   * и та же — `S.rent`, делится только показ.
+   */
+  rentList?: Rent[]
+  /** что написать, когда строк аренды в этом подразделе нет ни одной */
+  rentEmpty?: { title: string; text: string }
+  /** подпись кнопки «добавить» у строк аренды */
+  addRentLabel?: string
   /** id только что добавленной строки — она открывается сразу в правке названия */
   fresh: string | null
   onFreshEnd: () => void
   /** полоса «посчитать по карте»: она про расстояние, поэтому стоит над таблицей */
-  mapStrip: ReactNode
+  mapStrip?: ReactNode
+  /** что читается вслух вместо названия таблицы */
+  label: string
+  /**
+   * Ключ памяти свёрнутых групп ВНУТРИ подраздела (`foldpref.ts`).
+   *
+   * ⛔ У каждого подраздела он свой, и общим его делать нельзя: `useFold`
+   * читает хранилище один раз при монтировании и пишет карту целиком, поэтому
+   * два подраздела на одном ключе затирали бы раскрытое друг у друга.
+   */
+  scope: string
 }
 
 export function RoadCalc({
-  S, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent,
-  fresh, onFreshEnd, mapStrip,
+  S, parts, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent,
+  rentList, rentEmpty, addRentLabel, fresh, onFreshEnd, mapStrip, label, scope,
 }: Props) {
   const desktop = useIsDesktop()
   /** у какой позиции раскрыта панель настройки (только в матрице) */
@@ -136,22 +173,14 @@ export function RoadCalc({
 
   const c = calcAll(S)
   const km = routeKm(S)
-  /* Общий пробег в подписи раздела стоит ровно до тех пор, пока по нему
-     кто-то едет. Когда у всей техники свой — это лишнее число, и заказчик
-     08.08.2026 назвал его дублем. Пробег каждой единицы стоит в её строке. */
-  const showKm = commonKmUsed(S)
+
+  /* Заголовков групп внутри подраздела не рисуем, когда часть всего одна:
+     полоса «АРЕНДА» под заголовком «Аренда» — то же слово дважды подряд,
+     а сворачивать её нечем — подраздел и так складывается целиком. */
+  const solo = parts.length === 1
 
   return (
-    /* `overflow-clip`, а не `hidden`: `hidden` делает блок прокручиваемым,
-       и липкая шапка таблицы внутри перестаёт прилипать (см. `DataTable`). */
-    <section className="overflow-clip rounded-xl border border-line bg-surface shadow-sm">
-      <div className="border-b border-line px-4 py-3">
-        <h3 className="text-head font-[650] text-ink">Расчёт дороги</h3>
-        <p className="tnum mt-0.5 text-note text-muted">
-          {`${showKm ? `Пробег ${kmLabel(km)} · ` : ''}${litresLabel(litresTotal(S))} топлива · ${money(c.transport, S.doc)}`}
-        </p>
-      </div>
-
+    <div>
       {mapStrip}
 
       {/* ⛔ Рисуется ровно ОДИН вид, а не два спрятанных: строк расчёта немного,
@@ -162,6 +191,12 @@ export function RoadCalc({
             S={S}
             c={c}
             km={km}
+            parts={parts}
+            solo={solo}
+            label={label}
+            scope={scope}
+            rentList={rentList}
+            rentEmpty={rentEmpty}
             canEdit={canEdit}
             canDel={canDel}
             onDelTransport={onDelTransport}
@@ -171,16 +206,25 @@ export function RoadCalc({
             setupAt={setupAt}
             onSetup={(id) => setSetupAt(setupAt === id ? '' : id)}
           />
-          {canEdit && (
+          {canEdit && (onAddTransport || onAddRent) && (
             <div className="border-t border-line">
-              <AddRow label="Добавить технику" onClick={onAddTransport} />
-              <AddRow label="Добавить аренду" onClick={onAddRent} />
+              {parts.includes('fuel') && onAddTransport && (
+                <AddRow label="Добавить технику" onClick={onAddTransport} />
+              )}
+              {parts.includes('rent') && onAddRent && (
+                <AddRow label={addRentLabel ?? 'Добавить аренду'} onClick={onAddRent} />
+              )}
             </div>
           )}
         </>
       ) : (
         <RoadStrip
           S={S}
+          parts={parts}
+          solo={solo}
+          rentList={rentList}
+          rentEmpty={rentEmpty}
+          addRentLabel={addRentLabel}
           canEdit={canEdit}
           canDel={canDel}
           onAddTransport={onAddTransport}
@@ -191,7 +235,7 @@ export function RoadCalc({
           onFreshEnd={onFreshEnd}
         />
       )}
-    </section>
+    </div>
   )
 }
 
@@ -206,20 +250,28 @@ export function RoadCalc({
    группу заявкой `requestUnfold` — в пустоту не приходят. */
 
 function Matrix({
-  S, c, km, canEdit, canDel, onDelTransport, onDelRent, fresh, onFreshEnd, setupAt, onSetup,
+  S, c, km, parts, solo, label, scope, rentList, rentEmpty,
+  canEdit, canDel, onDelTransport, onDelRent, fresh, onFreshEnd, setupAt, onSetup,
 }: {
   S: State
   c: ReturnType<typeof calcAll>
   km: number
+  parts: CalcPart[]
+  solo: boolean
+  label: string
+  scope: string
+  rentList?: Rent[]
+  rentEmpty?: { title: string; text: string }
   canEdit: boolean
   canDel: (item: { by?: string }) => boolean
-  onDelTransport: (t: Transport) => void
-  onDelRent: (r: Rent) => void
+  onDelTransport?: (t: Transport) => void
+  onDelRent?: (r: Rent) => void
   fresh: string | null
   onFreshEnd: () => void
   setupAt: string
   onSetup: (id: string) => void
 }) {
+  const want = (p: CalcPart) => parts.includes(p)
   const dist = S.trip.dist
   const dnt = dist.nt ?? {}
   const baseKm = dist.src === 'auto' ? dist.auto : dist.manual
@@ -237,16 +289,28 @@ function Matrix({
    * (`foldpref.ts`), а каждый заголовок держит итог группы — свёрнутая строка
    * главное число не прячет (постулат 5).
    */
-  const fold = useFold('road-calc')
+  const fold = useFold(scope)
   const isShut = (key: string) => !fold.isOpen(key)
 
   /* Прыжок из поиска или с плитки сумм — в свёрнутую группу: сначала её
      раскрывает заявка (foldpref.ts), иначе `data-hit` не отрисован вовсе. */
-  const uf = useUnfoldRequest('road')
-  const ufRef = useRef(uf.n)
+  const uf = useUnfoldRequest('buy')
+  /**
+   * ⛔ Ноль, а НЕ `uf.n`. Тело подраздела монтируется только при первом
+   * раскрытии (`Group` бережёт разметку), и при прыжке из поиска порядок такой:
+   * заявка → `SpendRoad` раскрывает подраздел → таблица монтируется впервые.
+   * Со стартовым `uf.n` первый же прогон считал бы заявку уже обработанной,
+   * группа внутри осталась бы свёрнутой, строка — неотрисованной, и прыжок
+   * пришёл бы в пустоту (постулат 5). Замер 09.08.2026 ровно это и показал:
+   * находка «Автомобиль Honda Accord» открывала «Логистику», но до строки
+   * не доводила.
+   */
+  const ufRef = useRef(0)
   useEffect(() => {
     if (uf.n === ufRef.current) return
     ufRef.current = uf.n
+    /* Единственную группу подраздела складывать нечем — раскрывать нечего. */
+    if (solo) return
     /* Префикс — раньше поиска по документу: свежезаведённая строка могла ещё
        не доехать до этого рендера, а раскрыть её группу нужно уже сейчас. */
     const k = uf.item.startsWith('sum-')
@@ -279,7 +343,7 @@ function Matrix({
      заказчик 08.08.2026 назвал их дублями. Из документа `trip.dist`
      не девается: заведут технику без своего пробега — группа вернётся. */
   const pushKm = (l: Line) => {
-    if (commonKmUsed(S)) lines.push(l)
+    if (want('km') && commonKmUsed(S)) lines.push(l)
   }
 
   /* У каждого заголовка — итог его группы (`sum`): свёрнутая группа обязана
@@ -410,18 +474,19 @@ function Matrix({
 
   /* ── Топливо и техника ── */
 
-  lines.push({
-    key: 'h-fuel',
-    head: true,
-    title: 'Топливо и техника',
-    sum: money(c.fuel, S.doc),
-    cells: ['Километры / часы', 'Расход', 'Литры', 'Цена', 'Итого'],
-  })
+  if (want('fuel'))
+    lines.push({
+      key: 'h-fuel',
+      head: true,
+      title: 'Топливо и техника',
+      sum: money(c.fuel, S.doc),
+      cells: ['Километры / часы', 'Расход', 'Литры', 'Цена', 'Итого'],
+    })
 
   const fuels = [...S.fuelPrices].sort((a, b) => a.ord - b.ord)
-  const shownFuels = fuels.filter(
-    (f) => f.price > 0 || S.transport.some((t) => t.fuel === f.i),
-  )
+  const shownFuels = want('fuel')
+    ? fuels.filter((f) => f.price > 0 || S.transport.some((t) => t.fuel === f.i))
+    : []
   /* Топливо без цены и без техники не рисуем: строка «Дизель — 0 ₽» ничего
      не сообщает. Из документа оно при этом никуда не девается. */
 
@@ -643,7 +708,7 @@ function Matrix({
               label={`${t.n || 'без названия'}: вид, топливо, чья, как считаем расход`}
               onClick={() => onSetup(t.i)}
             />
-            {canDel(t) ? (
+            {canDel(t) && onDelTransport ? (
               /* Техника удаляется СО СПРОСОМ (заказчик 08.08.2026: «вы уверены,
                  что вы хотите удалить» — за строкой топливо и расчёт). */
               <ConfirmAction
@@ -684,19 +749,32 @@ function Matrix({
      Парковка и была внутри — категорией `S.rentCats`; из названия блока
      она уходит, чтобы не читаться как вторая сущность. */
 
-  lines.push({
-    key: 'h-rent',
-    head: true,
-    title: 'Аренда',
-    sum: money(c.rent, S.doc),
-    cells: ['Сколько', 'Штук', 'Цена', 'Факт', 'Итого'],
-  })
+  /* Какие строки аренды показывает ЭТОТ подраздел, решает проекция
+     (`lib/spend.ts`): «Аренда» — всё, кроме ночёвок, «Проживание» — только
+     ночёвки. Коллекция `S.rent` при этом одна и та же (постулат 4). */
+  const rent = want('rent') ? (rentList ?? [...S.rent].sort((a, b) => a.ord - b.ord)) : []
 
-  const rent = [...S.rent].sort((a, b) => a.ord - b.ord)
-  if (rent.length === 0) {
+  if (want('rent'))
+    lines.push({
+      key: 'h-rent',
+      head: true,
+      title: 'Аренда',
+      sum: money(
+        rent.reduce((s, r) => s + rentSum(r), 0),
+        S.doc,
+      ),
+      cells: ['Сколько', 'Штук', 'Цена', 'Факт', 'Итого'],
+    })
+
+  if (want('rent') && rent.length === 0) {
     lines.push({
       key: 'r-none',
-      title: <Static title="Ничего не арендуем" text="Ни лодки, ни парковки, ни домика" />,
+      title: (
+        <Static
+          title={rentEmpty?.title ?? 'Ничего не арендуем'}
+          text={rentEmpty?.text ?? 'Ни лодки, ни парковки, ни домика'}
+        />
+      ),
       cells: ['', '', '', '', ''],
     })
   }
@@ -841,7 +919,7 @@ function Matrix({
             label={`${r.n || 'без названия'}: категория и что входит в стоимость`}
             onClick={() => onSetup(r.i)}
           />
-          {canDel(r) ? (
+          {canDel(r) && onDelRent ? (
             <RowAction
               key="d"
               icon={Trash2}
@@ -878,22 +956,25 @@ function Matrix({
 
   /* ── Канистры ── */
 
-  lines.push({
-    key: 'h-can',
-    head: true,
-    title: 'Канистры',
-    sum: `${c.cans.reduce((n, x) => n + x.cans, 0)} шт.`,
-    cells: ['', 'В канистре', 'Литров', '', 'Канистр'],
-  })
+  if (want('can'))
+    lines.push({
+      key: 'h-can',
+      head: true,
+      title: 'Канистры',
+      sum: `${c.cans.reduce((n, x) => n + x.cans, 0)} шт.`,
+      cells: ['', 'В канистре', 'Литров', '', 'Канистр'],
+    })
 
   /* Строки блока — из документа (canRows), плюс топливо, которое везут с собой,
      а строки для него в документе ещё нет. */
-  const canFuels = [
-    ...new Set([
-      ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
-      ...c.cans.map((x) => x.fuel),
-    ]),
-  ]
+  const canFuels = want('can')
+    ? [
+        ...new Set([
+          ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
+          ...c.cans.map((x) => x.fuel),
+        ]),
+      ]
+    : []
 
   for (const fuelId of canFuels) {
     const row = S.canRows.find((r) => r.fuel === fuelId)
@@ -972,13 +1053,14 @@ function Matrix({
 
   /* ── Итоги ── */
 
-  lines.push({
-    key: 'h-sum',
-    head: true,
-    title: 'Итоги поездки',
-    sum: money(c.total, S.doc),
-    cells: ['', '', '', '', 'Итого'],
-  })
+  if (want('sum'))
+    lines.push({
+      key: 'h-sum',
+      head: true,
+      title: 'Итоги поездки',
+      sum: money(c.total, S.doc),
+      cells: ['', '', '', '', 'Итого'],
+    })
 
   const perHead = people > 0 ? c.transport / people : 0
   const heads = plural(people, 'человека', 'человек', 'человек')
@@ -1005,7 +1087,7 @@ function Matrix({
     },
   ]
 
-  for (const t of totals) {
+  for (const t of want('sum') ? totals : []) {
     lines.push({
       key: 'sum-' + t.slot,
       /* Сюда приходит тап по плитке с обложки: там та же сумма без объяснения,
@@ -1034,7 +1116,7 @@ function Matrix({
     })
   }
 
-  if (c.personal > 0) {
+  if (want('sum') && c.personal > 0) {
     lines.push({
       key: 'sum-personal',
       title: <Static title="Личное" text="Свои покупки, в общий делёж не входят" />,
@@ -1055,7 +1137,9 @@ function Matrix({
   /* Только что заведённая строка раскрывает свою группу сама: её заводили,
      чтобы в неё вписать, и появиться в свёрнутом блоке — молчаливый отказ. */
   const freshGrp = fresh ? lines.find((l) => l.hit === fresh)?.grp : undefined
-  const hidden = (l: Line) => !!l.grp && l.grp !== freshGrp && isShut(l.grp)
+  /* Единственную группу подраздела складывать нечем и незачем: подраздел
+     сворачивается целиком своим заголовком (`Group`). */
+  const hidden = (l: Line) => !solo && !!l.grp && l.grp !== freshGrp && isShut(l.grp)
 
   let z = 0
   const rows = lines.filter((l) => !hidden(l)).map((l) => {
@@ -1073,7 +1157,12 @@ function Matrix({
                 обоим — там перенос не случается. */}
             <span className="flex w-full flex-wrap items-start gap-1">
               <span className="min-w-0 flex-1 basis-40">
-                {l.head ? (
+                {l.head && solo ? (
+                  /* Единственная группа подраздела: остаются только имена
+                     столбцов справа — своё имя блок уже говорит заголовком
+                     подраздела, и второй раз его писать нечем и незачем. */
+                  null
+                ) : l.head ? (
                   /* Заголовок группы — кнопка: он и называет блок, и складывает
                      его. Своего ряда орган не занимает (постулат 7), приём тот же,
                      что у шеврона ветки в `map/RouteBranches`. */
@@ -1107,7 +1196,7 @@ function Matrix({
           {l.cells.map((cell, i) => {
             /* Свёрнутая группа показывает не имена своих столбцов, а свой итог:
                имена без строк ничего не значат, а число — значит. */
-            const shutHead = l.head && isShut(l.key)
+            const shutHead = l.head && !solo && isShut(l.key)
             const last = i === l.cells.length - 1
             return (
               <DataCell key={i} align="right" head={l.head}>
@@ -1148,11 +1237,7 @@ function Matrix({
   })
 
   return (
-    <DataTable
-      cols={COLS}
-      minW={COLS_MIN}
-      label="Расчёт дороги: пробег, топливо, аренда, канистры и итоги"
-    >
+    <DataTable cols={COLS} minW={COLS_MIN} label={label}>
       {/* Полоса строк шириной со свои колонки, а не с экран: иначе зебра
           и липкая граница обрываются там, где кончается видимая часть,
           и таблица при прокрутке вбок выглядит порванной. ⛔ Ширина берётся

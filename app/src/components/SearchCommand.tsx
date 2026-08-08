@@ -12,6 +12,7 @@ import type { MenuDay } from '@/lib/types'
 import { fmtNum, MDASH, NBSP } from '@/format'
 import { planSumOf, sumOf, unitOf } from '@/lib/buyx'
 import { money } from '@/lib/calc'
+import { STAY_CAT } from '@/lib/spend'
 import { BuyBox } from '@/components/flops'
 import { update, useTrip } from '@/store'
 
@@ -35,10 +36,10 @@ const GROUPS: { section: string; title: string }[] = [
      находка есть в индексе, но на экран не попадает вовсе — замер поймал это
      сразу после переезда. */
   { section: 'trip', title: 'Поездка' },
-  { section: 'gear', title: 'Сборы' },
-  { section: 'buy', title: 'Закупка' },
-  { section: 'road', title: 'Дорога' },
+  { section: 'gear', title: 'Взять с собой' },
+  { section: 'buy', title: 'Расходы' },
   { section: 'menu', title: 'Меню' },
+  { section: 'ideas', title: 'Вопросы' },
   { section: 'crew', title: 'Команда' },
 ]
 
@@ -159,7 +160,8 @@ export function buildHits(S: State): Hit[] {
 
   for (const g of S.gear)
     out.push({
-      key: 'gear:' + g.i, section: 'gear', sectionTitle: 'Сборы · ' + (gsec.get(g.sec) ?? ''),
+      key: 'gear:' + g.i, section: 'gear',
+      sectionTitle: 'Взять с собой · ' + (gsec.get(g.sec) ?? ''),
       title: g.n, note: g.c, itemId: g.i,
     })
   for (const p of S.buy) {
@@ -168,7 +170,7 @@ export function buildHits(S: State): Hit[] {
        позиции на экране быть не должно. */
     const cost = p.prf > 0 ? sumOf(p) : planSumOf(p)
     out.push({
-      key: 'buy:' + p.i, section: 'buy', sectionTitle: 'Закупка · ' + (bsec.get(p.sec) ?? ''),
+      key: 'buy:' + p.i, section: 'buy', sectionTitle: 'Расходы · ' + (bsec.get(p.sec) ?? ''),
       title: p.n, note: p.c, itemId: p.i,
       qty: `${fmtNum(p.q)}${NBSP}${unitOf(p, S)}`,
       cost: money(cost, S.doc),
@@ -186,17 +188,18 @@ export function buildHits(S: State): Hit[] {
     })
   for (const t of S.transport)
     out.push({
-      key: 'tr:' + t.i, section: 'road', sectionTitle: 'Дорога · техника',
+      key: 'tr:' + t.i, section: 'buy', sectionTitle: 'Расходы · Логистика',
       title: t.n, note: t.calcT, itemId: t.i,
     })
   for (const r of S.rent)
     out.push({
-      key: 'rent:' + r.i, section: 'road', sectionTitle: 'Дорога · аренда',
+      key: 'rent:' + r.i, section: 'buy',
+      sectionTitle: r.cat === STAY_CAT ? 'Расходы · Проживание' : 'Расходы · Аренда',
       title: r.n, note: r.calcT, itemId: r.i,
     })
   for (const q of S.ideas ?? [])
     out.push({
-      key: 'idea:' + q.i, section: 'road', sectionTitle: 'Дорога · что уточнить',
+      key: 'idea:' + q.i, section: 'ideas', sectionTitle: 'Вопросы · что уточнить',
       title: q.n, note: q.why, itemId: q.i,
     })
   for (const d of (S.menu ?? []) as MenuDay[])
