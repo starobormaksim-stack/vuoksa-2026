@@ -54,6 +54,7 @@ export function SectionHead({
   secId,
   legend,
   action,
+  noAdd,
   children,
 }: {
   title: string
@@ -63,13 +64,21 @@ export function SectionHead({
   /** условные обозначения раздела; нет значков — нет и полосы обозначений */
   legend?: LegendItem[]
   action?: { label: string; onClick: () => void }
+  /**
+   * Убрать общий «плюс» с рядом видов позиции (вещь · покупка · топливо ·
+   * аренда). Заказчик 08.08.2026 про «Команду»: «убрать плюсик напротив
+   * команды, потому что здесь вещь, покупка, топлива не добавляет — здесь
+   * добавляется только команда». Раздел, куда нельзя завести чужую строку,
+   * не должен предлагать её заводить (постулат 6 — не положено, кнопки нет).
+   */
+  noAdd?: boolean
   children?: ReactNode
 }) {
   const { S, perms } = useTrip()
   const [openLegend, setOpenLegend] = useState(false)
   /* открыт ли ряд «что добавить» — четыре вида позиции общего «плюса» */
   const [openAdd, setOpenAdd] = useState(false)
-  const kinds = allowedKinds(perms)
+  const kinds = noAdd ? [] : allowedKinds(perms)
   const canEdit = !!secId && perms.isEditor()
   const шапка = secId ? titleOf(S, secId, title) : title
 
