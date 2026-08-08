@@ -121,9 +121,25 @@ export function fuelPriceOf(S: State, fuelId: string): number {
   return f ? f.price : 0
 }
 
+/**
+ * Цена литра для этой единицы техники, ₽.
+ *
+ * Заказчик 09.08.2026: «каждая машина может заправиться на разной заправке,
+ * а соответственно цена может быть разная. По умолчанию сейчас можно указать
+ * одинаковую». Своя цена перебивает цену вида; пусто или ноль — цена вида,
+ * то есть ровно сегодняшнее поведение (контрольные суммы не двигаются).
+ *
+ * ⛔ Отдельной строки в `S.fuelPrices` на каждую технику заводить нельзя:
+ * `S.canRows` привязаны к `fuel`, а `cans()` группирует по `f.i` — контрольная
+ * цифра «2 канистры» разъехалась бы.
+ */
+export function fuelPriceFor(t: Transport, S: State): number {
+  return t.fuelPr && t.fuelPr > 0 ? t.fuelPr : fuelPriceOf(S, t.fuel)
+}
+
 /** Стоимость топлива одной единицы техники, ₽. */
 export function fuelCost(t: Transport, S: State): number {
-  return litres(t, S) * fuelPriceOf(S, t.fuel)
+  return litres(t, S) * fuelPriceFor(t, S)
 }
 
 /** Топливо всего, ₽. На сиде 6 385,35. */

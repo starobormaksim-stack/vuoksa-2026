@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react'
 import { Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Rent, State, Transport } from '@/lib/types'
-import { calcAll, commonKmUsed, fuelCost, kmOf, litres, money, rentSum, routeKm } from '@/lib/calc'
+import {
+  calcAll, commonKmUsed, fuelCost, fuelPriceFor, kmOf, litres, money, rentSum, routeKm,
+} from '@/lib/calc'
 import {
   AddRow, ConfirmAction, InlineNum, InlineText, numText, RowAction, RowActions,
   StripField, StripRow,
@@ -398,19 +400,21 @@ export function RoadStrip({
               )}
             </StripField>
 
-            {/* Цена общая для всего топлива этой группы: правка здесь меняет её
-                и в строке цены, и у соседней техники на том же бензине. */}
+            {/* Своя цена литра у этой техники (заказчик 09.08.2026: «каждая машина
+                может заправиться на разной заправке, цена может быть разная»).
+                Пока своей нет — стоит общая цена вида, и правка её же и заводит.
+                Общая цена правится в своей полоске «Цена АИ-95» над техникой. */}
             <StripField label="Цена топлива">
               <InlineNum
-                value={f.price}
-                digits={dg(f.price)}
+                value={fuelPriceFor(t, S)}
+                digits={dg(fuelPriceFor(t, S))}
                 kind="plain"
                 unit={priceUnit}
-                label={`${priceTitle} — общая для всей техники на этом топливе`}
+                label={`${priceTitle} на своей заправке: ${t.n}. Ноль — берётся общая цена ${f.n}`}
                 can={canEdit}
                 onSave={(v) =>
-                  patchFuel(f.i, (x) => {
-                    x.price = v
+                  patchTransport(t.i, (x) => {
+                    x.fuelPr = v
                   })
                 }
                 className="text-body font-semibold text-ink"

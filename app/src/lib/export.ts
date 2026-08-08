@@ -19,7 +19,7 @@
 
 import type { Gear, Notes, State } from './types.ts'
 import { buildXlsx, firstHeadRow, type Cell, type Row, type Sheet } from './xlsx.ts'
-import { calcAll, fuelPriceOf, litres, rentSum } from './calc.ts'
+import { calcAll, fuelPriceFor, litres, rentSum } from './calc.ts'
 import { cantOf, isReady, qtyAskOf, statusOf } from './gearx.ts'
 import { statusName, unitOf } from './buyx.ts'
 import { permName } from './perm.ts'
@@ -249,7 +249,9 @@ function sheetRoad(S: State): Sheet {
 
   for (const t of byOrd(S.transport)) {
     const l = litres(t, S)
-    const price = fuelPriceOf(S, t.fuel)
+    /* Цена своей заправки этой техники, а не только цена вида: иначе сумма
+       в выгрузке разошлась бы с той, что человек видит на экране. */
+    const price = fuelPriceFor(t, S)
     const base =
       t.rateU === 'lh' ? qty(t.hours) : t.rateU === 'fix' ? ('—' as const) : qty(c.km)
     rows.push([

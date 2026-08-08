@@ -70,8 +70,11 @@ const PLAIN: Record<string, string[]> = {
   /* ⚠️ `kBack` — свой множитель «туда и обратно» у ветки на карте. Тоже деньги:
      галочку ставят на карте, а расход считается у всех. `tone` — свой цвет
      нитки, `o` — экипаж (см. объекты ниже: `o` сравнивается целиком). */
+  /* ⚠️ `fuelPr` — своя цена литра у этой техники. Это ДЕНЬГИ: без переноса
+     правка цены у Кости не доехала бы до Макса, а итог строки разошёлся бы
+     на двух телефонах. Поле необязательное, пусто = цена вида (calc.fuelPriceFor). */
   transport: [
-    'n', 'kind', 'kindT', 'fuel', 'rate', 'rateU', 'hours', 'litres',
+    'n', 'kind', 'kindT', 'fuel', 'fuelPr', 'rate', 'rateU', 'hours', 'litres',
     'carry', 'owner', 'payer', 'leg', 'kmAuto', 'km', 'kmSrc', 'kmLocal',
     'kBack', 'tone', 'color', 'calcT', 'c', 'ord', 'by', 'as',
   ],
