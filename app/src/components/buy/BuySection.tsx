@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronsDownUp, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BuySection as BuySec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
@@ -9,8 +9,8 @@ import { askedHere, useAddRequest } from '@/lib/addnew'
 import { useFold, useUnfoldRequest } from '@/foldpref'
 import { jumpToItem } from '@/lib/jump'
 import {
-  Btn, ConfirmButton, Group, ResponsiveSheet, SectionHead, TextSheet, newTableScroll,
-  useIsDesktop,
+  Btn, ConfirmButton, Group, InsertHere, ResponsiveSheet, SectionHead, TextSheet,
+  newTableScroll, useIsDesktop,
 } from '@/components/flops'
 import { SpendRoad, SpendTotals } from '@/components/road/SpendRoad'
 import { BUY_LEGEND } from './legend'
@@ -193,18 +193,35 @@ export function BuySection() {
       }
     })
 
-  /* Завести статью. Заказчик 08.08.2026: «я должен иметь возможность… создать
-     раздел, подраздел, строку» — создать статью было нечем (только
-     переименовать и удалить). Название сразу на правке тем же TextSheet,
-     что и «Переименовать» (постулат 3). */
-  const addSec = () => {
+  /**
+   * Завести подраздел. Заказчик 08.08.2026: «я должен иметь возможность… создать
+   * раздел, подраздел, строку» — создать статью было нечем (только
+   * переименовать и удалить). Название сразу на правке тем же TextSheet,
+   * что и «Переименовать» (постулат 3).
+   *
+   * `afterId` не передан — в конец (кнопка справа от слова «Расходы»);
+   * id статьи — сразу под ней (плюс в промежутке, `InsertHere`).
+   */
+  const addSec = (afterId?: string) => {
     const id = 'bs' + Date.now().toString(36)
     update((s) => {
+      const secs = [...s.buySections].sort((a, b) => a.ord - b.ord)
+      let ord = Math.max(0, ...secs.map((x) => x.ord)) + 10
+      if (afterId !== undefined) {
+        /* Порядок у статей из сида идёт с шагом, который не обязан быть ровным:
+           перед вставкой в середину пересчитываем его целиком, иначе новая
+           статья уедет в конец (тем же приёмом, что `addItem`). */
+        secs.forEach((x, k) => {
+          x.ord = (k + 1) * 10
+          x.ua = Date.now()
+        })
+        ord = (secs.findIndex((x) => x.i === afterId) + 1) * 10 + 5
+      }
       s.buySections.push({
         i: id,
         t: 'Новый подраздел',
         personal: false,
-        ord: Math.max(0, ...s.buySections.map((x) => x.ord)) + 10,
+        ord,
         by: perms.me || '',
         ua: Date.now(),
       })
@@ -263,17 +280,16 @@ export function BuySection() {
         secId="buy"
         hint="Галочка слева — куплено. Без галочки «Берём» позиция в сумму не идёт"
         legend={BUY_LEGEND}
-        /* Липкий «плюс» (06.08.2026). Позиция ложится в тот блок, который человек
-           сейчас читает, а не всегда в первый. */
+        /* ⛔ Кнопка справа от названия заводит ПОДРАЗДЕЛ, а не строку. Заказчик
+           09.08.2026: «когда я добавляю вещь, я добавляю внутри подраздела…
+           а с правой стороны от слова „Расходы“ я добавляю подразделы, и они
+           пустые возникают, которые нужно заполнить»; «я понял, что ты
+           добавляешь именно строки, а я этого не просил». Покупка заводится
+           там, где живёт, — внутри своей статьи («Добавить позицию» и плюс
+           у строки в `BuyTable`) либо видом «Покупка» у общего плюса. */
         action={
-          perms.isEditor() || perms.me
-            ? {
-                label: 'Добавить покупку',
-                onClick: () => {
-                  const sid = visibleBlockId(list.current, sorted[0]?.i ?? '')
-                  if (sid) addItem(sid)
-                },
-              }
+          perms.isEditor()
+            ? { label: 'Добавить подраздел', onClick: () => addSec() }
             : undefined
         }
       />
@@ -283,11 +299,11 @@ export function BuySection() {
           это делать в конце: сначала список, потом в конце уже разблюдовка». */}
 
       {sorted
-        .map((sec) => {
+        .map((sec, k) => {
           const rows = bySec[sec.i] ?? []
           return (
+            <Fragment key={sec.i}>
             <Group
-              key={sec.i}
               data-block={sec.i}
               title={sec.t}
               done={rows.filter((p) => p.b).length}
@@ -326,21 +342,19 @@ export function BuySection() {
                 onFreshEnd={endFresh}
               />
             </Group>
+            {/* Плюс в промежутке — вставить статью ИМЕННО СЮДА. Стоит только
+                МЕЖДУ статьями: за последней его нет, там прежняя пунктирная
+                строка и попадала «между существующими списками» — закупкой
+                и «Арендой» (09.08.2026). В конец заводит кнопка у названия. */}
+            {perms.isEditor() && k < sorted.length - 1 && (
+              <InsertHere
+                label={`Вставить подраздел после «${sec.t}»`}
+                onClick={() => addSec(sec.i)}
+              />
+            )}
+            </Fragment>
           )
         })}
-
-      {/* Пунктирная строка — как «+ Транспорт» у веток карты (постулат 6:
-          без права раздела кнопки нет). */}
-      {perms.isEditor() && (
-        <button
-          type="button"
-          onClick={addSec}
-          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-strong px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra"
-        >
-          <Plus size={16} strokeWidth={1.75} aria-hidden />
-          Добавить подраздел
-        </button>
-      )}
 
       {/* «Аренда» · «Логистика» · «Проживание» — той же формой, что статьи
           закупки. Строки лежат в своих коллекциях, экран их только показывает

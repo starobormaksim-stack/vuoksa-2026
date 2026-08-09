@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Backpack, ChevronsDownUp, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Backpack, ChevronsDownUp, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Gear, GearSection as GearSec } from '@/lib/types'
 import { useTrip, touch } from '@/store'
@@ -10,8 +10,8 @@ import { askedHere, useAddRequest } from '@/lib/addnew'
 import { useFold, useUnfoldRequest } from '@/foldpref'
 import { jumpToItem } from '@/lib/jump'
 import {
-  AddRow, Btn, ConfirmButton, EmptyState, Group, ResponsiveSheet, SectionHead, TextSheet,
-  newTableScroll, useIsDesktop, type TableScroll,
+  AddRow, Btn, ConfirmButton, EmptyState, Group, InsertHere, ResponsiveSheet, SectionHead,
+  TextSheet, newTableScroll, useIsDesktop, type TableScroll,
 } from '@/components/flops'
 import { plural } from '@/format'
 import { GEAR_LEGEND } from './legend'
@@ -189,13 +189,25 @@ export function GearSection() {
      можно было только переименовать и удалить, а создать было нечем.
      Название сразу открывается на правку тем же TextSheet, что
      и «Переименовать»: своего органа не выдумано (постулат 3). */
-  const addSec = () => {
+  const addSec = (afterId?: string) => {
     const id = 'gs' + Date.now().toString(36)
     update((s) => {
+      const secs = [...s.gearSections].sort((a, b) => a.ord - b.ord)
+      let ord = Math.max(0, ...secs.map((x) => x.ord)) + 10
+      if (afterId !== undefined) {
+        /* Перед вставкой в середину порядок пересчитывается по всему списку:
+           у подразделов из сида шаг не обязан быть ровным, и новый уехал бы
+           в конец (тем же приёмом, что `addAt` у вещей). */
+        secs.forEach((x, k) => {
+          x.ord = (k + 1) * 10
+          x.ua = Date.now()
+        })
+        ord = (secs.findIndex((x) => x.i === afterId) + 1) * 10 + 5
+      }
       s.gearSections.push({
         i: id,
         t: 'Новый подраздел',
-        ord: Math.max(0, ...s.gearSections.map((x) => x.ord)) + 10,
+        ord,
         by: perms.me || '',
         ua: Date.now(),
       })
@@ -256,20 +268,15 @@ export function GearSection() {
         secId="gear"
         hint="Цифра — сколько штук везёт человек. «Всего» считается само"
         legend={GEAR_LEGEND}
-        /* Липкий «плюс» — просьба заказчика 06.08.2026: «есть всегда при прокрутке…
-           с правой стороны плюсик, оно как бы прилипает». Полоса раздела липкая
-           сама по себе, поэтому кнопке довольно стоять в ней. Вещь ложится
-           в тот подраздел, который человек сейчас читает (`visibleBlockId`),
-           а не всегда в первый. */
+        /* ⛔ Кнопка справа от названия заводит ПОДРАЗДЕЛ, а не вещь — тем же
+           правилом, что и в «Расходах» (заказчик 09.08.2026: «когда я добавляю
+           вещь, я добавляю внутри подраздела… а с правой стороны от слова
+           „Расходы“ я добавляю подразделы»; «это касается вообще везде»).
+           Вещь заводится там, где живёт: «Добавить вещь» в конце подраздела,
+           плюс у строки и вид «Вещь» у общего плюса. */
         action={
-          perms.isEditor() || perms.me
-            ? {
-                label: 'Добавить вещь',
-                onClick: () => {
-                  const sid = visibleBlockId(list.current, sections[0]?.i ?? '')
-                  if (sid) addAt(sid, (bySec[sid] ?? []).length)
-                },
-              }
+          perms.isEditor()
+            ? { label: 'Добавить подраздел', onClick: () => addSec() }
             : undefined
         }
       >
@@ -284,12 +291,12 @@ export function GearSection() {
         )}
       </SectionHead>
 
-      {sections.map((sec) => {
+      {sections.map((sec, k) => {
         const rows = bySec[sec.i] ?? []
         const r = readyOfGroup(S, sec.i, null)
         return (
+          <Fragment key={sec.i}>
           <Group
-            key={sec.i}
             data-block={sec.i}
             title={sec.t}
             /* Итог как в таблице заказчика: «собрано: 0 из 14».
@@ -361,22 +368,17 @@ export function GearSection() {
               </>
             )}
           </Group>
+          {/* Плюс в промежутке — вставить подраздел ИМЕННО СЮДА. Только между
+              подразделами: в конец заводит кнопка у названия раздела. */}
+          {perms.isEditor() && k < sections.length - 1 && (
+            <InsertHere
+              label={`Вставить подраздел после «${sec.t}»`}
+              onClick={() => addSec(sec.i)}
+            />
+          )}
+          </Fragment>
         )
       })}
-
-      {/* Пунктирная строка — как «+ Транспорт» у веток карты: заведение нового
-          стоит там, где кончается существующее. Без права раздела кнопки нет
-          (постулат 6). */}
-      {perms.isEditor() && (
-        <button
-          type="button"
-          onClick={addSec}
-          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-strong px-3 text-note font-semibold text-ink transition-colors hover:bg-zebra"
-        >
-          <Plus size={16} strokeWidth={1.75} aria-hidden />
-          Добавить подраздел
-        </button>
-      )}
 
       {menuSec && (
         <ResponsiveSheet
