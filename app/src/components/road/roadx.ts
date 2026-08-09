@@ -7,8 +7,10 @@
  * через разделитель, без единого знака операции.
  */
 
-import type { CanRow, Kind, LegMode, Rent, RouteLabel, RoutePoint, State, Transport } from '@/lib/types'
-import { kmOf, litres } from '@/lib/calc'
+import type {
+  CanRow, FuelPrice, Kind, LegMode, Rent, RouteLabel, RoutePoint, State, Transport,
+} from '@/lib/types'
+import { kmOf, litres, type CanInfo } from '@/lib/calc'
 import { fmtNum, NBSP, plural, startOfDay } from '@/format'
 
 const MDASH = '—'
@@ -92,10 +94,16 @@ export function fuelName(S: State, id: string): string {
  * строку. У техники с готовым объёмом топлива (пила) километров нет вовсе.
  */
 export function transportSub(t: Transport, S: State): string {
-  const parts = [kindName(t, S)]
+  /* ⚠️ У пустой строки, только что заведённой «плюсом», ни вида, ни топлива
+     нет — и врать «Своя техника · топливо» нельзя: заказчик 09.08.2026 просил
+     строку ПУСТУЮ и жаловался ровно на подставленное за него. Пока не выбрано,
+     подзаголовок так и говорит. */
+  const parts: string[] = []
+  const kind = kindOf(t, S) ? kindName(t, S) : t.kindT
+  parts.push(kind || 'вид не выбран')
   const owner = personName(S, t.owner)
   if (owner) parts.push(owner)
-  parts.push(fuelName(S, t.fuel))
+  parts.push(S.fuelPrices.some((f) => f.i === t.fuel) ? fuelName(S, t.fuel) : 'топливо не выбрано')
   if (t.rateU !== 'fix') parts.push(kmLabel(kmOf(t, S)))
   return parts.join(' · ')
 }
@@ -173,9 +181,62 @@ export function refuelLitres(S: State, fuelId: string): number {
     .reduce((sum, t) => sum + litres(t, S), 0)
 }
 
-/** Строка блока «Канистры» для этого топлива. */
+/** Строка блока «Топливо в канистрах» для этого топлива. */
 export function canRowOf(S: State, fuelId: string): CanRow | null {
   return S.canRows.find((r) => r.fuel === fuelId) ?? null
+}
+
+/**
+ * Виды топлива, у которых есть строка в блоке «Топливо в канистрах»: из
+ * документа (`S.canRows`) плюс те, под которые канистры только посчитаны.
+ * Один список на оба вида расчёта — иначе матрица и лента показали бы разные
+ * строки одного блока.
+ */
+export function canFuelIds(S: State, cans: CanInfo[], want: boolean): string[] {
+  if (!want) return []
+  return [
+    ...new Set([
+      ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
+      ...cans.map((x) => x.fuel),
+    ]),
+  ]
+}
+
+/**
+ * Техника, у которой вида топлива ещё нет.
+ *
+ * Заказчик 09.08.2026 попросил заводить технику ПУСТОЙ строкой, то есть без
+ * подставленного за него топлива. А обе плотности расчёта раскладывают технику
+ * по видам топлива (`t.fuel === f.i`) — значит строка без вида не попала бы ни
+ * в одну группу и не появилась бы на экране вовсе. Она лежит в документе,
+ * и показать её обязаны (постулаты 4 и 5).
+ */
+export function orphanTransport(S: State): Transport[] {
+  return S.transport
+    .filter((t) => !S.fuelPrices.some((f) => f.i === t.fuel))
+    .sort((a, b) => a.ord - b.ord)
+}
+
+/**
+ * Вид топлива-заглушка для техники без выбранного топлива: у неё нет ни цены,
+ * ни своей группы, а рисуется она тем же кодом, что и вся остальная техника.
+ */
+const NO_FUEL_ROW: FuelPrice = {
+  i: '', n: 'топлива', price: 0, u: '₽/л', c: '', nt: {}, ord: 0, ua: 0,
+}
+
+/**
+ * Группы «Топлива и техники»: по одной на вид топлива плюс, если есть техника
+ * без вида, ещё одна — её. `own: false` означает как раз эту последнюю.
+ */
+export function fuelBuckets(
+  S: State,
+  shownFuels: FuelPrice[],
+  want: boolean,
+): { f: FuelPrice; own: boolean }[] {
+  const out = shownFuels.map((f) => ({ f, own: true }))
+  if (want && orphanTransport(S).length > 0) out.push({ f: NO_FUEL_ROW, own: false })
+  return out
 }
 
 /* ─────────── аренда ─────────── */

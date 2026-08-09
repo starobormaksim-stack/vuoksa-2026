@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { MapPinned, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Rent, Transport } from '@/lib/types'
+import type { CanRow, Rent, Transport } from '@/lib/types'
 import { update as updateDoc, useTrip } from '@/store'
 import { useAddRequest } from '@/lib/addnew'
 import { requestUnfold, useUnfoldRequest, type Fold } from '@/foldpref'
@@ -14,6 +14,7 @@ import { MDASH } from '@/format'
 import { cn } from '@/lib/utils'
 import { RoadCalc } from './RoadCalc'
 import { calcLegsByMap, legsWords } from './legs'
+import { patchCanRow } from './roadedit'
 import { kmLabel } from './roadx'
 
 /**
@@ -138,14 +139,30 @@ export function SpendRoad({ fold }: { fold: Fold }) {
 
   /* ─────────── добавление ─────────── */
 
+  /**
+   * Завести строку техники — ПУСТУЮ.
+   *
+   * Заказчик 09.08.2026: «„Топливо“ — возникает для заполнения пустая строка,
+   * которую нужно будет… вписать название транспорта, расход и так далее,
+   * то есть всё заполнить».
+   *
+   * ⛔ Прежде здесь подставлялись вид техники («Автомобиль») и первая цена
+   * топлива («АИ-95»): человек нажимал «плюс» и получал уже заполненную за него
+   * строку. Теперь пусто всё, кроме способа считать расход (`rateU`) — без него
+   * `litres()` не знает, чем считать вовсе, а сменить его можно тут же,
+   * в настройке строки.
+   *
+   * ⚠️ Строка без вида топлива обязана быть ВИДНА: она лежит в документе,
+   * и не показать её — молчаливый отказ (постулаты 4 и 5). Показывают её
+   * `Matrix` и `RoadStrip` отдельной группой «Техника без топлива».
+   */
   const addTransport = (): string => {
     const id = 'tr' + Date.now().toString(36)
     update((s) => {
-      const kind = s.kinds.find((k) => k.i === 'car') ?? s.kinds[0]
       s.transport.push({
-        i: id, n: '', kind: kind?.i ?? '', kindT: '', fuel: s.fuelPrices[0]?.i ?? '',
-        rate: 0, rateU: kind?.rateU ?? 'l100km', hours: 0, litres: 0, carry: false,
-        owner: perms.me || '', leg: 'road', calcT: '', c: '', nt: {},
+        i: id, n: '', kind: '', kindT: '', fuel: '',
+        rate: 0, rateU: 'l100km', hours: 0, litres: 0, carry: false,
+        owner: '', leg: 'road', calcT: '', c: '', nt: {},
         ord: (s.transport.length + 1) * 10, by: perms.me || '', as: '', ua: Date.now(),
       })
     })
@@ -169,6 +186,52 @@ export function SpendRoad({ fold }: { fold: Fold }) {
     })
     setFresh(id)
     return id
+  }
+
+  /**
+   * Завести строку «Топлива в канистрах».
+   *
+   * Заказчик 09.08.2026: «Добавляется вид топлива». Строка привязана к виду
+   * топлива, поэтому берётся первый вид, у которого своей строки ещё нет;
+   * поменять вид можно в самой строке. Все виды заняты — говорим об этом
+   * словами, а не молчим (постулат 5).
+   */
+  const addCan = (): void => {
+    const busy = new Set(S.canRows.map((r) => r.fuel))
+    const free = [...S.fuelPrices].sort((a, b) => a.ord - b.ord).find((f) => !busy.has(f.i))
+    if (!free) {
+      toast('У каждого вида топлива строка канистр уже есть', {
+        description: 'Впишите число канистр в нужную строку или добавьте новый вид топлива',
+      })
+      return
+    }
+    patchCanRow(free.i, (r) => {
+      r.cans = 0
+    })
+    fold.show('spend:log')
+    jumpToItem('buy', 'can-' + free.i)
+  }
+
+  /**
+   * Убрать строку канистр — с возвратом, как всё остальное.
+   *
+   * ⛔ Через `remove`, а не вырезанием из массива: снятие обязано оставить метку
+   * удаления (`del['canRows:…']`), иначе ближайшее слияние с чужого телефона
+   * вернуло бы строку обратно. Общий `drop()` здесь не годится: он собирает
+   * сообщение по полю `n`, которого у строки канистр нет — у неё название `t`.
+   */
+  const dropCan = (row: CanRow) => {
+    remove('canRows', row.i)
+    toast(`«${row.t || 'Топливо в канистрах'}» убрано`, {
+      action: {
+        label: 'Вернуть',
+        onClick: () =>
+          update((s) => {
+            if (s.del) delete s.del['canRows:' + row.i]
+            if (!s.canRows.some((x) => x.i === row.i)) s.canRows.push({ ...row, ua: Date.now() })
+          }),
+      },
+    })
   }
 
   /** Категория новой строки «Аренды»: любая, кроме той, что означает ночёвку. */
@@ -370,7 +433,9 @@ export function SpendRoad({ fold }: { fold: Fold }) {
           canEdit={canEdit}
           canDel={perms.canDel}
           onAddTransport={() => jumpToItem('buy', addTransport())}
+          onAddCan={addCan}
           onDelTransport={(t: Transport) => drop('transport', t, 'убрана')}
+          onDelCan={dropCan}
           fresh={fresh}
           onFreshEnd={() => setFresh(null)}
           mapStrip={mapStrip}

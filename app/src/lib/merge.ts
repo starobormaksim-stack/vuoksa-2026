@@ -80,9 +80,12 @@ const PLAIN: Record<string, string[]> = {
   ],
   /* ⚠️ `priceF` — цена аренды по факту. Как и у покупки, это ДЕНЬГИ: правка
      на одном телефоне обязана доехать до остальных, иначе итоги разойдутся. */
+  /* ⚠️ `addr`, `book`, `url` — поля ночёвки: адрес места, кто бронирует
+     и ссылка на бронь. Не деньги, но данные, которые вписывает один, а нужны
+     всем четверым: без переноса ссылка на бронь у Кости не доехала бы до Макса. */
   rent: [
-    'n', 'cat', 'price', 'priceF', 'unit', 'qty', 'count', 'payer', 'calcT', 'c', 'warn',
-    'ord', 'by', 'as',
+    'n', 'cat', 'price', 'priceF', 'unit', 'qty', 'count', 'payer', 'addr', 'book', 'url',
+    'calcT', 'c', 'warn', 'ord', 'by', 'as',
   ],
   fuelPrices: ['n', 'price', 'u', 'c', 'ord'],
   gearSections: ['t', 'ord'],
@@ -90,7 +93,9 @@ const PLAIN: Record<string, string[]> = {
   units: ['t', 'full', 'ord'],
   kinds: ['t', 'rateU', 'icon', 'ord'],
   rentCats: ['t', 'ord'],
-  canRows: ['t', 'c', 'fuel', 'ord'],
+  /* ⚠️ `cans` и `price` — ДЕНЬГИ: сколько канистр берут сверх расчёта и по
+     какой цене. Без переноса итог «Логистики» разошёлся бы на двух телефонах. */
+  canRows: ['t', 'c', 'fuel', 'cans', 'price', 'payer', 'ord'],
 }
 
 /**
@@ -105,6 +110,8 @@ const PLAIN_JSON: Record<string, string[]> = {
   transport: ['nt', 'sp', 'o'],
   rent: ['blocks', 'nt', 'sp'],
   fuelPrices: ['nt'],
+  /* `sp` — круг делящих стоимость канистр. Массив, поэтому сюда же. */
+  canRows: ['sp'],
 }
 
 /** Поля карточки участника, которые слияние переносит. */

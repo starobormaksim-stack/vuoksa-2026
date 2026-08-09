@@ -1,4 +1,4 @@
-import type { FuelPrice, Notes, Rent, Transport } from '@/lib/types'
+import type { CanRow, FuelPrice, Notes, Rent, Transport } from '@/lib/types'
 import { touch, update } from '@/store'
 
 /**
@@ -33,6 +33,33 @@ export function patchRent(id: string, f: (r: Rent) => void): void {
       f(r)
       touch(r)
     }
+  })
+}
+
+/**
+ * Правка строки «Топлива в канистрах» по виду топлива.
+ *
+ * Строки блока привязаны к топливу, а не к своему id, и в документе их может
+ * ещё не быть вовсе: блок показывает и то топливо, под которое канистры только
+ * посчитаны. Поэтому строка при первой же правке заводится — ровно так, как это
+ * делала правка названия до появления своих полей.
+ */
+export function patchCanRow(fuelId: string, f: (r: CanRow) => void): void {
+  update((s) => {
+    let r = s.canRows.find((x) => x.fuel === fuelId)
+    if (!r) {
+      r = {
+        i: 'can_' + fuelId,
+        fuel: fuelId,
+        t: '',
+        c: '',
+        ord: (s.canRows.length + 1) * 10,
+        ua: Date.now(),
+      }
+      s.canRows.push(r)
+    }
+    f(r)
+    touch(r)
   })
 }
 

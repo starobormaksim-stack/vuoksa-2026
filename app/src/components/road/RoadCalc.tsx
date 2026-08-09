@@ -1,22 +1,24 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Rent, State, Transport } from '@/lib/types'
+import type { CanRow, Rent, State, Transport } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
-  calcAll, commonKmUsed, fuelCost, fuelPriceFor, kmOf, litres, money, rentSum, routeKm,
+  calcAll, canPriceOf, canRowSum, canTotal, canVolOf, commonKmUsed, fuelCost, fuelPriceFor,
+  fuelPriceOf, kmOf, litres, money, rentSum, routeKm,
 } from '@/lib/calc'
 import {
   AddRow, ConfirmAction, DataCell, DataRow, DataTable, InlineNum, RowAction, RowActions,
   useIsDesktop,
 } from '@/components/flops'
-import { touch, update } from '@/store'
+import { update } from '@/store'
 import { useFold, useUnfoldRequest } from '@/foldpref'
 import { plural } from '@/format'
 import {
-  DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, refuelLitres,
+  canFuelIds, canRowOf, DASH, dg, fuelBuckets, fuelName, kBackWord, kmLabel, litresLabel,
+  orphanTransport,
 } from './roadx'
-import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
+import { noteBag, patchCanRow, patchFuel, patchRent, patchTransport } from './roadedit'
 import { Calc, Result, Static, Title } from './cells'
 import { DocNotes } from './DocNotes'
 import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
@@ -134,8 +136,12 @@ interface Props {
   canDel: (item: { by?: string }) => boolean
   onAddTransport?: () => void
   onAddRent?: () => void
+  /** завести строку «Топлива в канистрах»: выбирается вид топлива */
+  onAddCan?: () => void
   onDelTransport?: (t: Transport) => void
   onDelRent?: (r: Rent) => void
+  /** убрать строку «Топлива в канистрах» */
+  onDelCan?: (r: CanRow) => void
   /**
    * Какие строки аренды показывать. «Аренда» отдаёт всё, кроме ночёвок,
    * «Проживание» — только ночёвки (`lib/spend.ts`). Коллекция при этом одна
@@ -164,8 +170,8 @@ interface Props {
 }
 
 export function RoadCalc({
-  S, parts, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent,
-  rentList, rentEmpty, addRentLabel, fresh, onFreshEnd, mapStrip, label, scope,
+  S, parts, canEdit, canDel, onAddTransport, onAddRent, onAddCan, onDelTransport, onDelRent,
+  onDelCan, rentList, rentEmpty, addRentLabel, fresh, onFreshEnd, mapStrip, label, scope,
 }: Props) {
   const desktop = useIsDesktop()
   /** у какой позиции раскрыта панель настройки (только в матрице) */
@@ -201,15 +207,19 @@ export function RoadCalc({
             canDel={canDel}
             onDelTransport={onDelTransport}
             onDelRent={onDelRent}
+            onDelCan={onDelCan}
             fresh={fresh}
             onFreshEnd={onFreshEnd}
             setupAt={setupAt}
             onSetup={(id) => setSetupAt(setupAt === id ? '' : id)}
           />
-          {canEdit && (onAddTransport || onAddRent) && (
+          {canEdit && (onAddTransport || onAddRent || onAddCan) && (
             <div className="border-t border-line">
               {parts.includes('fuel') && onAddTransport && (
                 <AddRow label="Добавить технику" onClick={onAddTransport} />
+              )}
+              {parts.includes('can') && onAddCan && (
+                <AddRow label="Добавить топливо в канистрах" onClick={onAddCan} />
               )}
               {parts.includes('rent') && onAddRent && (
                 <AddRow label={addRentLabel ?? 'Добавить аренду'} onClick={onAddRent} />
@@ -229,8 +239,10 @@ export function RoadCalc({
           canDel={canDel}
           onAddTransport={onAddTransport}
           onAddRent={onAddRent}
+          onAddCan={onAddCan}
           onDelTransport={onDelTransport}
           onDelRent={onDelRent}
+          onDelCan={onDelCan}
           fresh={fresh}
           onFreshEnd={onFreshEnd}
         />
@@ -251,7 +263,7 @@ export function RoadCalc({
 
 function Matrix({
   S, c, km, parts, solo, label, scope, rentList, rentEmpty,
-  canEdit, canDel, onDelTransport, onDelRent, fresh, onFreshEnd, setupAt, onSetup,
+  canEdit, canDel, onDelTransport, onDelRent, onDelCan, fresh, onFreshEnd, setupAt, onSetup,
 }: {
   S: State
   c: ReturnType<typeof calcAll>
@@ -266,6 +278,7 @@ function Matrix({
   canDel: (item: { by?: string }) => boolean
   onDelTransport?: (t: Transport) => void
   onDelRent?: (r: Rent) => void
+  onDelCan?: (r: CanRow) => void
   fresh: string | null
   onFreshEnd: () => void
   setupAt: string
@@ -276,7 +289,6 @@ function Matrix({
   const dnt = dist.nt ?? {}
   const baseKm = dist.src === 'auto' ? dist.auto : dist.manual
   const people = S.people.length
-  const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
 
   /**
    * Свёрнутые группы расчёта.
@@ -490,10 +502,27 @@ function Matrix({
   /* Топливо без цены и без техники не рисуем: строка «Дизель — 0 ₽» ничего
      не сообщает. Из документа оно при этом никуда не девается. */
 
-  for (const f of shownFuels) {
-    const mine = [...S.transport].filter((t) => t.fuel === f.i).sort((a, b) => a.ord - b.ord)
+  for (const { f, own } of fuelBuckets(S, shownFuels, want('fuel'))) {
+    const mine = own
+      ? [...S.transport].filter((t) => t.fuel === f.i).sort((a, b) => a.ord - b.ord)
+      : orphanTransport(S)
     const need = mine.reduce((sum, t) => sum + litres(t, S), 0)
 
+    /* Только что заведённая строка ещё без вида топлива, и показать её надо
+       (постулат 4). Заголовок объясняет, почему у неё нет цены. */
+    if (!own)
+      lines.push({
+        key: 'f-none',
+        title: (
+          <Static
+            title="Топливо не выбрано"
+            text="Вид топлива выбирается в настройке строки — кнопкой с шестерёнкой"
+          />
+        ),
+        cells: ['', '', need > 0 ? <Calc key="l">{litresLabel(need)}</Calc> : '', '', ''],
+      })
+
+    if (own)
     lines.push({
       key: 'f-' + f.i,
       title: (
@@ -954,99 +983,167 @@ function Matrix({
     })
   }
 
-  /* ── Канистры ── */
+  /* ── Топливо в канистрах ──
+     Заказчик 09.08.2026: «там будет фиксироваться стоимость… вбивается
+     информация, сколько они возьмут дополнительно бензина в канистрах: одну
+     канистру, две. Добавляется вид топлива». То есть у блока свои поля и своя
+     сумма, а не только посчитанное «сколько нужно канистр». */
+
+  const canMoney = canTotal(S)
+  const needCans = c.cans.reduce((n, x) => n + x.cans, 0)
 
   if (want('can'))
     lines.push({
       key: 'h-can',
       head: true,
-      title: 'Канистры',
-      sum: `${c.cans.reduce((n, x) => n + x.cans, 0)} шт.`,
-      cells: ['', 'В канистре', 'Литров', '', 'Канистр'],
+      title: 'Топливо в канистрах',
+      /* Главное число блока — стоимость; пока канистр не вписано, оно нулевое,
+         и вместо него свёрнутый заголовок говорит посчитанную потребность. */
+      sum: canMoney > 0 ? money(canMoney, S.doc) : needCans > 0 ? `${needCans} шт.` : '',
+      cells: ['Канистр', 'В канистре', 'Литров', 'Цена', 'Стоимость'],
     })
 
-  /* Строки блока — из документа (canRows), плюс топливо, которое везут с собой,
-     а строки для него в документе ещё нет. */
-  const canFuels = want('can')
-    ? [
-        ...new Set([
-          ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
-          ...c.cans.map((x) => x.fuel),
-        ]),
-      ]
-    : []
-
-  for (const fuelId of canFuels) {
-    const row = S.canRows.find((r) => r.fuel === fuelId)
-    const carried = c.cans.find((x) => x.fuel === fuelId)
-    const azs = refuelLitres(S, fuelId)
-    const saveRow = (f: (r: { t: string; c: string }) => void) =>
-      update((s) => {
-        let r = s.canRows.find((x) => x.fuel === fuelId)
-        if (!r) {
-          r = {
-            i: 'can_' + fuelId,
-            fuel: fuelId,
-            t: '',
-            c: '',
-            ord: (s.canRows.length + 1) * 10,
-            ua: Date.now(),
-          }
-          s.canRows.push(r)
-        }
-        f(r)
-        touch(r)
-      })
+  for (const fuelId of canFuelIds(S, c.cans, want('can'))) {
+    const row = canRowOf(S, fuelId)
+    const cansN = row?.cans && row.cans > 0 ? row.cans : 0
+    const price = row ? canPriceOf(row, S) : fuelPriceOf(S, fuelId)
+    const vol = cansN * canVolOf(S)
+    const sum = row ? canRowSum(row, S) : 0
 
     lines.push({
       key: 'c-' + fuelId,
+      hit: 'can-' + fuelId,
       title: (
         <Title
-          title={row?.t || `${fuelName(S, fuelId)} ${DASH} везём с собой`}
+          title={row?.t || `${fuelName(S, fuelId)} ${DASH} в канистрах`}
           onTitle={(v) =>
-            saveRow((r) => {
+            patchCanRow(fuelId, (r) => {
               r.t = v
             })
           }
           text={row?.c ?? ''}
           onText={(v) =>
-            saveRow((r) => {
+            patchCanRow(fuelId, (r) => {
               r.c = v
             })
           }
           can={canEdit}
         />
       ),
+      /* Кто выложил деньги за канистры и между кем они делятся — прямо
+         в строке, как у топлива и аренды (постулат 2). */
+      share:
+        sum > 0 ? (
+          <>
+            <SpendShareEdit
+              S={S}
+              can={canEdit}
+              payer={row?.payer}
+              sp={row?.sp}
+              what={row?.t || `${fuelName(S, fuelId)} в канистрах`}
+              onPayer={(id) =>
+                patchCanRow(fuelId, (r) => {
+                  r.payer = id
+                })
+              }
+              onSp={(ids) =>
+                patchCanRow(fuelId, (r) => {
+                  r.sp = ids
+                })
+              }
+            />
+            <SpendSplitLine
+              split={spendSplit(sum, row?.payer, row?.sp, S)}
+              S={S}
+              className="mt-1 max-w-[19rem]"
+            />
+          </>
+        ) : undefined,
       cells: [
+        <InlineNum
+          key="n"
+          value={cansN}
+          digits={0}
+          min={0}
+          unit="шт."
+          label={`Сколько канистр берём сверх расчёта: ${fuelName(S, fuelId)}`}
+          can={canEdit}
+          onSave={(v) =>
+            patchCanRow(fuelId, (r) => {
+              r.cans = v
+            })
+          }
+        />,
+        <InlineNum
+          key="v"
+          value={canVolOf(S)}
+          digits={0}
+          kind="plain"
+          unit="л"
+          min={1}
+          label="Сколько литров в одной канистре — общий объём на весь лист"
+          can={canEdit}
+          onSave={(v) =>
+            update((s) => {
+              s.doc.canVol = v
+            })
+          }
+        />,
+        <Calc key="l">{vol > 0 ? litresLabel(vol) : DASH}</Calc>,
+        <InlineNum
+          key="p"
+          value={price}
+          digits={dg(price)}
+          kind="plain"
+          unit="₽/л"
+          label={`Цена литра: ${fuelName(S, fuelId)}. Ноль — берётся общая цена вида`}
+          can={canEdit}
+          onSave={(v) =>
+            patchCanRow(fuelId, (r) => {
+              r.price = v
+            })
+          }
+        />,
+        sum > 0 ? <Result key="s">{money(sum, S.doc)}</Result> : <Calc key="s">{DASH}</Calc>,
+      ],
+      /* Автора у строки канистр нет — она заводится от вида топлива, а не от
+         человека. Поэтому право на снятие здесь общее, редакторское. */
+      actions:
+        canEdit && row && onDelCan ? (
+          <RowActions>
+            <RowAction
+              key="d"
+              icon={Trash2}
+              tone="danger"
+              label={`Убрать «${row.t || fuelName(S, fuelId)}»`}
+              onClick={() => onDelCan(row)}
+            />
+          </RowActions>
+        ) : undefined,
+    })
+  }
+
+  /* Посчитанная потребность: сколько канистр нужно, чтобы увезти топливо
+     техники с отметкой «везём с собой». Это НЕ деньги — то топливо уже
+     посчитано в строке своей техники, и второй раз оно не стоит ничего.
+     Контрольная цифра «2 канистры» живёт ровно здесь. */
+  for (const x of want('can') ? c.cans : []) {
+    lines.push({
+      key: 'c-need-' + x.fuel,
+      title: (
+        <Static
+          title={`Под топливо техники ${DASH} ${x.name}`}
+          text="Это топливо уже посчитано в строке своей техники, второй раз оно не стоит ничего"
+        />
+      ),
+      cells: [
+        <Calc key="n">
+          {`${x.cans} ${plural(x.cans, 'канистра', 'канистры', 'канистр')}`}
+        </Calc>,
         '',
-        carried ? (
-          <InlineNum
-            key="v"
-            value={canVol}
-            digits={0}
-            kind="plain"
-            unit="л"
-            min={1}
-            label="Сколько литров в одной канистре"
-            can={canEdit}
-            onSave={(v) =>
-              update((s) => {
-                s.doc.canVol = v
-              })
-            }
-          />
-        ) : (
-          ''
-        ),
-        <Calc key="l">{carried ? litresLabel(carried.litres) : azs > 0 ? litresLabel(azs) : DASH}</Calc>,
+        <Calc key="l">{litresLabel(x.litres)}</Calc>,
         '',
-        carried ? (
-          <Result key="n">
-            {`${carried.cans} ${plural(carried.cans, 'канистра', 'канистры', 'канистр')}`}
-          </Result>
-        ) : (
-          <Calc key="n">{DASH}</Calc>
-        ),
+        <Calc key="s">{DASH}</Calc>,
       ],
     })
   }

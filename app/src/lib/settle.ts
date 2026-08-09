@@ -45,8 +45,8 @@
  * не платил», иначе первая же сумма без хозяина сломала бы первый инвариант.
  */
 
-import type { Buy, Rent, State, Transport } from './types.ts'
-import { buyItemSum, fuelCost, personalSecIds, rentSum } from './calc.ts'
+import type { Buy, CanRow, Rent, State, Transport } from './types.ts'
+import { buyItemSum, canRowSum, fuelCost, personalSecIds, rentSum } from './calc.ts'
 
 /** Строка зачёта по одному человеку. */
 export interface Balance {
@@ -197,6 +197,22 @@ function spends(S: State): Spend[] {
       sum,
       payers,
       sharers: sharersOf(t.sp, all),
+      cover: Object.keys(payers).length > 0 ? 1 : 0,
+    })
+  }
+
+  /* Топливо в канистрах: то, что берут сверх расчёта, — тоже деньги, и они
+     обязаны разложиться по людям. Иначе первый инвариант (Σ уплачено = итого)
+     разошёлся бы на первой же вписанной канистре. Плательщик пуст — «скинулись
+     поровну», ровно как у аренды. */
+  for (const r of S.canRows as CanRow[]) {
+    const sum = canRowSum(r, S)
+    if (sum === 0) continue
+    const payers = payerWeight(r.payer, all)
+    out.push({
+      sum,
+      payers,
+      sharers: sharersOf(r.sp, all),
       cover: Object.keys(payers).length > 0 ? 1 : 0,
     })
   }

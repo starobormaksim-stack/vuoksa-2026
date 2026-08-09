@@ -1,21 +1,22 @@
 import { useState, type ReactNode } from 'react'
 import { Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Rent, State, Transport } from '@/lib/types'
+import type { CanRow, Rent, State, Transport } from '@/lib/types'
 import {
-  calcAll, commonKmUsed, fuelCost, fuelPriceFor, kmOf, litres, money, rentPrice, rentSum, routeKm,
+  calcAll, canPriceOf, canRowSum, canVolOf, commonKmUsed, fuelCost, fuelPriceFor, fuelPriceOf,
+  kmOf, litres, money, rentPrice, rentSum, routeKm,
 } from '@/lib/calc'
 import {
-  AddRow, ConfirmAction, InlineNum, InlineText, numText, RowAction, RowActions,
+  AddRow, ConfirmAction, InlineNum, InlinePick, InlineText, numText, RowAction, RowActions,
   StripField, StripRow,
 } from '@/components/flops'
-import { touch, update } from '@/store'
+import { update } from '@/store'
 import { NBSP, plural } from '@/format'
 import {
-  DASH, dg, fuelName, kBackWord, kmLabel, litresLabel, refuelLitres, rentCatName, rentPer,
-  rentQtyLabel, transportSub,
+  canFuelIds, canRowOf, DASH, dg, fuelBuckets, fuelName, kBackWord, kmLabel, litresLabel,
+  orphanTransport, rentCatName, rentPer, rentQtyLabel, transportSub,
 } from './roadx'
-import { noteBag, patchFuel, patchRent, patchTransport } from './roadedit'
+import { noteBag, patchCanRow, patchFuel, patchRent, patchTransport } from './roadedit'
 import { Calc, Result, Title } from './cells'
 import { DocNotes } from './DocNotes'
 import { RentSetup, RentUnitField, SetupGroup, TransportKm, TransportSetup } from './RoadSetup'
@@ -56,8 +57,12 @@ interface Props {
   canDel: (item: { by?: string }) => boolean
   onAddTransport?: () => void
   onAddRent?: () => void
+  /** завести строку «Топлива в канистрах» */
+  onAddCan?: () => void
   onDelTransport?: (t: Transport) => void
   onDelRent?: (r: Rent) => void
+  /** убрать строку «Топлива в канистрах» */
+  onDelCan?: (r: CanRow) => void
   /** какие строки аренды показывает этот подраздел (`lib/spend.ts`) */
   rentList?: Rent[]
   rentEmpty?: { title: string; text: string }
@@ -68,8 +73,8 @@ interface Props {
 }
 
 export function RoadStrip({
-  S, parts, solo, canEdit, canDel, onAddTransport, onAddRent, onDelTransport, onDelRent,
-  rentList, rentEmpty, addRentLabel, fresh, onFreshEnd,
+  S, parts, solo, canEdit, canDel, onAddTransport, onAddRent, onAddCan, onDelTransport, onDelRent,
+  onDelCan, rentList, rentEmpty, addRentLabel, fresh, onFreshEnd,
 }: Props) {
   const want = (p: CalcPart) => parts.includes(p)
   /** раскрытая позиция; открыта всегда одна — лента остаётся лентой */
@@ -81,7 +86,6 @@ export function RoadStrip({
   const dnt = dist.nt ?? {}
   const baseKm = dist.src === 'auto' ? dist.auto : dist.manual
   const people = S.people.length
-  const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
 
   /** Полоска чередования: считаем только по строкам данных, разделители не в счёт. */
   let z = 0
@@ -221,12 +225,33 @@ export function RoadStrip({
 
   const fuelRows: ReactNode[] = []
 
-  for (const f of shownFuels) {
-    const mine = [...S.transport].filter((t) => t.fuel === f.i).sort((a, b) => a.ord - b.ord)
+  for (const { f, own } of fuelBuckets(S, shownFuels, want('fuel'))) {
+    const mine = own
+      ? [...S.transport].filter((t) => t.fuel === f.i).sort((a, b) => a.ord - b.ord)
+      : orphanTransport(S)
     const need = mine.reduce((sum, t) => sum + litres(t, S), 0)
     const priceUnit = f.nt?.price?.u || f.u || '₽/л'
     const priceTitle = f.nt?.price?.t || `Цена ${f.n}`
 
+    /* Строка техники без выбранного топлива лежит в документе, и показать её
+       обязаны (постулаты 4 и 5). Полоска объясняет, почему у неё нет цены. */
+    if (!own)
+      fuelRows.push(
+        <StripRow
+          key="f-none"
+          zebra={stripe()}
+          disclose={false}
+          open={false}
+          onToggle={() => {}}
+          title="Топливо не выбрано"
+          sub="Вид топлива выбирается в раскрытии строки, в группе «Что за техника»"
+          right={need > 0 ? litresLabel(need) : DASH}
+        >
+          {null}
+        </StripRow>,
+      )
+
+    if (own)
     fuelRows.push(
       <StripRow
         key={'f-' + f.i}
@@ -729,72 +754,43 @@ export function RoadStrip({
     )
   }
 
-  /* ─────────── канистры ─────────── */
+  /* ─────────── топливо в канистрах ─────────── */
 
-  /* Строки блока — из документа (canRows), плюс топливо, которое везут с собой,
-     а строки для него в документе ещё нет. */
-  const canFuels = want('can')
-    ? [
-        ...new Set([
-          ...[...S.canRows].sort((a, b) => a.ord - b.ord).map((r) => r.fuel),
-          ...c.cans.map((x) => x.fuel),
-        ]),
-      ]
-    : []
-
-  const canRows = canFuels.map((fuelId) => {
-    const row = S.canRows.find((r) => r.fuel === fuelId)
-    const carried = c.cans.find((x) => x.fuel === fuelId)
-    const azs = refuelLitres(S, fuelId)
-    const saveRow = (f: (r: { t: string; c: string }) => void) =>
-      update((s) => {
-        let r = s.canRows.find((x) => x.fuel === fuelId)
-        if (!r) {
-          r = {
-            i: 'can_' + fuelId,
-            fuel: fuelId,
-            t: '',
-            c: '',
-            ord: (s.canRows.length + 1) * 10,
-            ua: Date.now(),
-          }
-          s.canRows.push(r)
-        }
-        f(r)
-        touch(r)
-      })
-
-    const litresWord = carried
-      ? `${litresLabel(carried.litres)} везём с собой`
-      : azs > 0
-        ? `${litresLabel(azs)} заливаем на АЗС`
-        : 'Ни канистр, ни заправки'
+  const canRows = canFuelIds(S, c.cans, want('can')).map((fuelId) => {
+    const row = canRowOf(S, fuelId)
+    const cansN = row?.cans && row.cans > 0 ? row.cans : 0
+    const price = row ? canPriceOf(row, S) : fuelPriceOf(S, fuelId)
+    const vol = cansN * canVolOf(S)
+    const sum = row ? canRowSum(row, S) : 0
+    const name = row?.t || `${fuelName(S, fuelId)} ${DASH} в канистрах`
 
     return (
       <StripRow
         key={'c-' + fuelId}
+        dataHit={'can-' + fuelId}
         zebra={stripe()}
         open={isOpen('can-' + fuelId)}
         onToggle={() => toggle('can-' + fuelId)}
-        title={row?.t || `${fuelName(S, fuelId)} ${DASH} везём с собой`}
-        sub={litresWord}
-        right={
-          carried
-            ? `${numText(carried.cans)}${NBSP}${plural(carried.cans, 'канистра', 'канистры', 'канистр')}`
-            : DASH
+        title={name}
+        sub={
+          cansN > 0
+            ? `${numText(cansN)}${NBSP}${plural(cansN, 'канистра', 'канистры', 'канистр')} по ${litresLabel(canVolOf(S))} ${DASH} ${litresLabel(vol)}`
+            : 'Сколько канистр берём сверх расчёта — впишите число'
         }
+        right={sum > 0 ? money(sum, S.doc) : DASH}
+        rightHint={sum > 0 ? `${numText(price, dg(price))}${NBSP}₽/л` : undefined}
       >
         <StripField label="Название" wide>
           <Title
-            title={row?.t || `${fuelName(S, fuelId)} ${DASH} везём с собой`}
+            title={name}
             onTitle={(v) =>
-              saveRow((r) => {
+              patchCanRow(fuelId, (r) => {
                 r.t = v
               })
             }
             text={row?.c ?? ''}
             onText={(v) =>
-              saveRow((r) => {
+              patchCanRow(fuelId, (r) => {
                 r.c = v
               })
             }
@@ -802,15 +798,54 @@ export function RoadStrip({
           />
         </StripField>
 
-        {carried ? (
+        <SetupGroup title="Сколько и почём">
+          <StripField label="Вид топлива" wide>
+            <InlinePick
+              value={fuelId}
+              can={canEdit}
+              label={`${name}: вид топлива`}
+              placeholder="не выбрано"
+              className="text-body text-ink"
+              options={[...S.fuelPrices]
+                .sort((a, b) => a.ord - b.ord)
+                .map((f) => ({
+                  id: f.i,
+                  title: f.n,
+                  note: f.price > 0 ? `${numText(f.price, dg(f.price))}${NBSP}₽ за литр` : 'цена не вписана',
+                }))}
+              onPick={(id) =>
+                patchCanRow(fuelId, (r) => {
+                  r.fuel = id
+                })
+              }
+            />
+          </StripField>
+
+          <StripField label="Канистр">
+            <InlineNum
+              value={cansN}
+              digits={0}
+              min={0}
+              unit="шт."
+              label={`Сколько канистр берём сверх расчёта: ${fuelName(S, fuelId)}`}
+              can={canEdit}
+              onSave={(v) =>
+                patchCanRow(fuelId, (r) => {
+                  r.cans = v
+                })
+              }
+              className="text-body font-semibold text-ink"
+            />
+          </StripField>
+
           <StripField label="Объём канистры — общий">
             <InlineNum
-              value={canVol}
+              value={canVolOf(S)}
               digits={0}
               kind="plain"
               unit="л"
               min={1}
-              label="Сколько литров в одной канистре"
+              label="Сколько литров в одной канистре — общий объём на весь лист"
               can={canEdit}
               onSave={(v) =>
                 update((s) => {
@@ -820,24 +855,89 @@ export function RoadStrip({
               className="text-body font-semibold text-ink"
             />
           </StripField>
+
+          <StripField label="Литров">
+            <Calc>{vol > 0 ? litresLabel(vol) : DASH}</Calc>
+          </StripField>
+
+          <StripField label="Цена литра">
+            <InlineNum
+              value={price}
+              digits={dg(price)}
+              kind="plain"
+              unit="₽/л"
+              label={`Цена литра: ${fuelName(S, fuelId)}. Ноль — берётся общая цена вида`}
+              can={canEdit}
+              onSave={(v) =>
+                patchCanRow(fuelId, (r) => {
+                  r.price = v
+                })
+              }
+              className="text-body font-semibold text-ink"
+            />
+          </StripField>
+
+          <StripField label="Стоимость">
+            {sum > 0 ? <Result>{money(sum, S.doc)}</Result> : <Calc>{DASH}</Calc>}
+          </StripField>
+        </SetupGroup>
+
+        {sum > 0 ? (
+          <SetupGroup title="Кто платит">
+            <SpendShareEdit
+              S={S}
+              can={canEdit}
+              payer={row?.payer}
+              sp={row?.sp}
+              what={name}
+              onPayer={(id) =>
+                patchCanRow(fuelId, (r) => {
+                  r.payer = id
+                })
+              }
+              onSp={(ids) =>
+                patchCanRow(fuelId, (r) => {
+                  r.sp = ids
+                })
+              }
+            />
+            <SpendSplitLine split={spendSplit(sum, row?.payer, row?.sp, S)} S={S} className="mt-1" />
+          </SetupGroup>
         ) : null}
 
-        <StripField label="Литров">
-          <Calc>{carried ? litresLabel(carried.litres) : azs > 0 ? litresLabel(azs) : DASH}</Calc>
-        </StripField>
-
-        <StripField label="Канистр">
-          {carried ? (
-            <Result>
-              {`${numText(carried.cans)}${NBSP}${plural(carried.cans, 'канистра', 'канистры', 'канистр')}`}
-            </Result>
-          ) : (
-            <Calc>{DASH}</Calc>
-          )}
-        </StripField>
+        {canEdit && row && onDelCan ? (
+          <div className="mt-2 flex justify-end border-t border-line/50 pt-2">
+            <RowActions>
+              <RowAction
+                icon={Trash2}
+                tone="danger"
+                label={`Убрать «${row.t || fuelName(S, fuelId)}»`}
+                onClick={() => onDelCan(row)}
+              />
+            </RowActions>
+          </div>
+        ) : null}
       </StripRow>
     )
   })
+
+  /* Посчитанная потребность: сколько канистр нужно под топливо техники
+     с отметкой «везём с собой». Деньгами не становится — это топливо уже
+     посчитано в строке своей техники. Контрольная цифра «2 канистры» — здесь. */
+  const canNeedRows = (want('can') ? c.cans : []).map((x) => (
+    <StripRow
+      key={'c-need-' + x.fuel}
+      zebra={stripe()}
+      disclose={false}
+      open={false}
+      onToggle={() => {}}
+      title={`Под топливо техники ${DASH} ${x.name}`}
+      sub={`${litresLabel(x.litres)} везём с собой; это топливо уже посчитано в строке своей техники`}
+      right={`${numText(x.cans)}${NBSP}${plural(x.cans, 'канистра', 'канистры', 'канистр')}`}
+    >
+      {null}
+    </StripRow>
+  ))
 
   /* ─────────── итоги ─────────── */
 
@@ -969,12 +1069,18 @@ export function RoadStrip({
         </>
       )}
 
-      {canRows.length > 0 && (
+      {want('can') && (canRows.length > 0 || canNeedRows.length > 0 || onAddCan) && (
         <>
-          {cap('Канистры')}
-          <div role="list" aria-label="Канистры">
+          {cap('Топливо в канистрах')}
+          <div role="list" aria-label="Топливо в канистрах">
             {canRows}
+            {canNeedRows}
           </div>
+          {canEdit && onAddCan && (
+            <div className="border-t border-line">
+              <AddRow label="Добавить топливо в канистрах" onClick={onAddCan} />
+            </div>
+          )}
         </>
       )}
 

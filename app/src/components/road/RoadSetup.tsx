@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import { ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
+import { siteName } from '@/lib/producturl'
 import type { LegMode, RateUnitId, Rent, State, Transport } from '@/lib/types'
 import { kBackOf, kmOf, litres, routeKm } from '@/lib/calc'
 import { Btn, InlineNum, InlinePick, InlineText, StripField } from '@/components/flops'
@@ -459,11 +461,103 @@ export function TransportKm({
  */
 export function RentSetup({ item, S, canEdit }: { item: Rent; S: State; canEdit: boolean }) {
   return (
-    <SetupGroup title="Что за аренда">
-      <RentCatField item={item} S={S} canEdit={canEdit} />
-      <RentBlocks item={item} canEdit={canEdit} />
-      <RentWarnField item={item} canEdit={canEdit} />
-      <RentOwnNote item={item} canEdit={canEdit} />
+    <>
+      <SetupGroup title="Что за аренда">
+        <RentCatField item={item} S={S} canEdit={canEdit} />
+        <RentBlocks item={item} canEdit={canEdit} />
+        <RentWarnField item={item} canEdit={canEdit} />
+        <RentOwnNote item={item} canEdit={canEdit} />
+      </SetupGroup>
+      <RentPlace item={item} S={S} canEdit={canEdit} />
+    </>
+  )
+}
+
+/**
+ * Место и бронь: адрес, кто бронирует, ссылка на бронь.
+ *
+ * ─── Откуда (заказчик 09.08.2026) ───
+ * «У „Проживания“ нужны все поля, и пустыми: адрес места, кто бронирует,
+ * кто оплачивает, ссылка на бронь». «Кто оплачивает» здесь не повторяется:
+ * он уже стоит группой «Кто платит» ниже, и второго органа на одно значение
+ * не бывает (У-58).
+ *
+ * ⚠️ Полки показываются у ЛЮБОЙ аренды, а не только у ночёвки: категория
+ * строки меняется на месте, и поле, спрятанное по категории, унесло бы
+ * с экрана уже вписанные данные (постулат 4). Лодке адрес причала и ссылка
+ * на бронь нужны ровно так же.
+ *
+ * ⛔ Ничего нового не написано: полка — `flops/StripField`, текст — `InlineText`,
+ * выбор человека — `InlinePick`, имя сайта у ссылки — `lib/producturl.siteName`,
+ * то же, что под позициями закупки.
+ */
+function RentPlace({ item, S, canEdit }: { item: Rent; S: State; canEdit: boolean }) {
+  const url = item.url ?? ''
+  const site = siteName(url)
+  return (
+    <SetupGroup title="Место и бронь">
+      <StripField label="Адрес места" wide>
+        <InlineText
+          value={item.addr ?? ''}
+          onSave={(v) =>
+            patchRent(item.i, (r) => {
+              r.addr = v
+            })
+          }
+          can={canEdit}
+          multiline
+          label="Адрес места"
+          placeholder="Улица, дом, ориентир"
+          className="text-body leading-snug text-ink"
+        />
+      </StripField>
+
+      <StripField label="Кто бронирует" wide>
+        <InlinePick
+          value={item.book ?? ''}
+          can={canEdit}
+          label={`${item.n || 'Аренда'}: кто бронирует`}
+          placeholder="Никто ещё"
+          className="text-body text-ink"
+          options={[
+            { id: '', title: 'Никто ещё', note: 'бронь ни за кем не закреплена' },
+            ...S.people.map((p) => ({ id: p.id, title: p.name, note: p.role })),
+          ]}
+          onPick={(id) =>
+            patchRent(item.i, (r) => {
+              r.book = id
+            })
+          }
+        />
+      </StripField>
+
+      <StripField label="Ссылка на бронь" wide>
+        <InlineText
+          value={url}
+          onSave={(v) =>
+            patchRent(item.i, (r) => {
+              r.url = v
+            })
+          }
+          can={canEdit}
+          label="Ссылка на бронь"
+          placeholder="Адрес страницы брони"
+          className="text-body text-ink"
+        />
+        {/* ⚠️ `noopener noreferrer` обязателен: страница чужая, и открывающей
+            вкладке она доступна быть не должна (как у ссылок на товар). */}
+        {site ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 inline-flex min-h-11 items-center gap-1.5 text-note font-semibold text-accent-text underline underline-offset-2"
+          >
+            <ExternalLink size={16} strokeWidth={1.75} aria-hidden />
+            Открыть бронь на {site}
+          </a>
+        ) : null}
+      </StripField>
     </SetupGroup>
   )
 }

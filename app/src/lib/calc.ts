@@ -7,7 +7,7 @@
  *   закупка 26 005 · итого 47 390,35 · с каждого 11 847,59 · АИ-92 → 2 канистры
  */
 
-import type { Buy, Doc, Rent, State, Transport } from './types.ts'
+import type { Buy, CanRow, Doc, Rent, State, Transport } from './types.ts'
 
 /** Строка сводки по канистрам для одного вида топлива. */
 export interface CanInfo {
@@ -142,9 +142,49 @@ export function fuelCost(t: Transport, S: State): number {
   return litres(t, S) * fuelPriceFor(t, S)
 }
 
-/** Топливо всего, ₽. На сиде 6 385,35. */
+/** Литров в одной канистре: своё число документа, иначе двадцатка. */
+export function canVolOf(S: State): number {
+  return S.doc?.canVol > 0 ? S.doc.canVol : 20
+}
+
+/** Литров топлива в канистрах этой строки: канистр × объём канистры. */
+export function canLitres(r: CanRow, S: State): number {
+  return (r.cans && r.cans > 0 ? r.cans : 0) * canVolOf(S)
+}
+
+/**
+ * Цена литра у строки канистр: своя, иначе цена вида топлива.
+ * Та же развязка, что у техники (`fuelPriceFor`): пусто — общая цена вида.
+ */
+export function canPriceOf(r: CanRow, S: State): number {
+  return r.price && r.price > 0 ? r.price : fuelPriceOf(S, r.fuel)
+}
+
+/**
+ * Стоимость топлива в канистрах одной строки, ₽.
+ *
+ * ⛔ Это топливо СВЕРХ расчётного расхода техники. То, что техника с отметкой
+ * «везём с собой» жжёт по расчёту, уже посчитано в её строке (`fuelCost`),
+ * и второй раз в деньги не идёт — иначе один и тот же бензин стоил бы дважды.
+ */
+export function canRowSum(r: CanRow, S: State): number {
+  return canLitres(r, S) * canPriceOf(r, S)
+}
+
+/** Топливо в канистрах всего, ₽. На сиде 0: канистр никто не вписал. */
+export function canTotal(S: State): number {
+  return S.canRows.reduce((sum, r) => sum + canRowSum(r, S), 0)
+}
+
+/**
+ * Топливо всего, ₽. На сиде 6 385,35.
+ *
+ * Считается топливо техники плюс то, что берут в канистрах сверх расчёта
+ * (`canTotal`). На сиде и в любом документе, где канистры не вписаны,
+ * второе слагаемое равно нулю — контрольные цифры не двигаются.
+ */
 export function fuelTotal(S: State): number {
-  return S.transport.reduce((sum, t) => sum + fuelCost(t, S), 0)
+  return S.transport.reduce((sum, t) => sum + fuelCost(t, S), 0) + canTotal(S)
 }
 
 /** Цена единицы аренды: по факту, если он вписан, иначе прикидка (как у покупки). */
@@ -223,14 +263,14 @@ export function perPerson(S: State): number {
  * На сиде: АИ-92 — 30 л → 2 канистры.
  */
 export function cans(S: State): CanInfo[] {
-  const canVol = S.doc?.canVol > 0 ? S.doc.canVol : 20
+  const vol = canVolOf(S)
   const out: CanInfo[] = []
   for (const f of [...S.fuelPrices].sort((a, b) => a.ord - b.ord)) {
     const carryL = S.transport
       .filter((t) => t.fuel === f.i && t.carry)
       .reduce((sum, t) => sum + litres(t, S), 0)
     if (carryL > 0) {
-      out.push({ fuel: f.i, name: f.n, litres: carryL, cans: Math.ceil(carryL / canVol) })
+      out.push({ fuel: f.i, name: f.n, litres: carryL, cans: Math.ceil(carryL / vol) })
     }
   }
   return out
