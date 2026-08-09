@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { RoutePoint, Transport } from '@/lib/types'
 import { GOOGLE_MAP_ID, googleFailCode, loadGoogleMaps } from '@/lib/gmaps'
 import { cn } from '@/lib/utils'
@@ -128,6 +128,74 @@ export interface Spot {
 
 /** Насколько ниже середины сажаем метку, когда подводим к ней вид: доля высоты. */
 export const PAN_DOWN = 0.18
+
+/** Отступ карточки от самой метки, чтобы кружок точки остался виден. */
+const CARD_GAP = 22
+/** Сколько оставить между карточкой и краем карты. */
+const CARD_EDGE = 8
+
+/**
+ * Слой карточки метки над полотном карты — общий для Google и OpenStreetMap.
+ *
+ * ⛔ Сторону выбирает ЖИВАЯ высота карточки, а не одна лишь середина карты.
+ * Карточка растёт: внутри неё раскрывается поиск адреса. Пока сторона решалась
+ * только по `at.under`, выросшая карточка уезжала за верхний край и накрывала
+ * строку поиска карты — замер 09.08.2026 на 1280: верх карточки 50 при верхе
+ * карты 159, то есть на 109 px выше края (урок У-175).
+ *
+ * Высоту приходится мерить наблюдателем: поиск раскрывается состоянием ВНУТРИ
+ * карточки, и этот слой от такой правки сам по себе не перерисовывается.
+ */
+function CardLayer({ at, children }: { at: Spot; children: ReactNode }) {
+  const el = useRef<HTMLDivElement | null>(null)
+  const [size, setSize] = useState({ h: 0, box: 0 })
+
+  useLayoutEffect(() => {
+    const node = el.current
+    const parent = node?.parentElement
+    if (!node || !parent) return
+    const read = () => setSize({ h: node.offsetHeight, box: parent.clientHeight })
+    read()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(read)
+    ro.observe(node)
+    ro.observe(parent)
+    return () => ro.disconnect()
+  }, [])
+
+  const { h, box } = size
+  /* Пока не измерились — держимся прежнего поведения: иначе первый кадр
+     показал бы карточку не с той стороны и она бы прыгнула. */
+  const measured = h > 0 && box > 0
+
+  let top = at.y + (at.under ? CARD_GAP : -CARD_GAP)
+  if (measured) {
+    const fitsAbove = at.y - CARD_GAP - h >= CARD_EDGE
+    const fitsBelow = at.y + CARD_GAP + h <= box - CARD_EDGE
+    /* Подсказку карты («метка в верхней половине») уважаем, но последнее слово
+       за тем, где карточка действительно помещается. */
+    const under = at.under ? fitsBelow || !fitsAbove : !fitsAbove && fitsBelow
+    top = under ? at.y + CARD_GAP : at.y - CARD_GAP - h
+    /* Карточка выше самой карты — прижимаем к верху: заголовок и поля важнее
+       низа, низ дочитывается прокруткой. */
+    top = Math.min(Math.max(top, CARD_EDGE), Math.max(CARD_EDGE, box - h - CARD_EDGE))
+  }
+
+  return (
+    <div
+      ref={el}
+      className={cn(
+        'absolute z-10 -translate-x-1/2',
+        !measured && !at.under && '-translate-y-full',
+      )}
+      style={{ left: at.x, top }}
+    >
+      {children}
+    </div>
+  )
+}
+
+export { CardLayer }
 
 /** Метка на карте: сам маркер и его узел — узел нужен, чтобы качнуть метку. */
 interface Mark {
@@ -473,14 +541,7 @@ export function GoogleRouteMap({
       {/* `card.node` может быть пустым: на телефоне карточку держит не карта,
           а полоса под ней (см. TripMap.tsx, У-112). Метка при этом карте всё
           равно названа — вид к ней подводится. */}
-      {card?.node && at && (
-        <div
-          className={cn('absolute z-10 -translate-x-1/2', !at.under && '-translate-y-full')}
-          style={{ left: at.x, top: at.y + (at.under ? 22 : -22) }}
-        >
-          {card.node}
-        </div>
-      )}
+      {card?.node && at && <CardLayer at={at}>{card.node}</CardLayer>}
     </div>
   )
 }

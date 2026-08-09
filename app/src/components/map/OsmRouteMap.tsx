@@ -7,7 +7,7 @@ import {
   DEST_H, DEST_W, LINE_CASING, LINE_CASING_W, LINE_W, POINT_SIZE,
   destPinHtml, leafletDash, markStyles, pointPinHtml, threads, type MapTone,
 } from './marks'
-import { PAN_DOWN, type MapCard, type MapDest, type Spot } from './GoogleRouteMap'
+import { CardLayer, PAN_DOWN, type MapCard, type MapDest, type Spot } from './GoogleRouteMap'
 import { threadKey, type RoadShapes } from './shapes'
 
 /**
@@ -336,14 +336,7 @@ export function OsmRouteMap({
       <div ref={box} className="absolute inset-0 z-0 bg-zebra" />
       {/* `card.node` может быть пустым: на телефоне карточку держит не карта,
           а полоса под ней (см. TripMap.tsx, У-112). */}
-      {card?.node && at && (
-        <div
-          className={cn('absolute z-10 -translate-x-1/2', !at.under && '-translate-y-full')}
-          style={{ left: at.x, top: at.y + (at.under ? 22 : -22) }}
-        >
-          {card.node}
-        </div>
-      )}
+      {card?.node && at && <CardLayer at={at}>{card.node}</CardLayer>}
     </div>
   )
 }

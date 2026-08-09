@@ -1,0 +1,9 @@
+{
+  "name": "pine-to-pine-server",
+  "private": true,
+  "type": "module",
+  "description": "Сервер данных листа Pine-to-Pine: те же точки входа, что у Supabase",
+  "dependencies": {
+    "@vercel/blob": "^0.27.0"
+  }
+}

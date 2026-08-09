@@ -12,3 +12,7 @@ _offline-test.html
 # репозиторий такое не выкладывают. Папка нужна локально и только для восстановления.
 restore/
 backups/
+# Сервер данных: зависимости ставит сам Vercel, привязка проекта — личная.
+server/node_modules/
+server/.vercel/
+node_modules/
