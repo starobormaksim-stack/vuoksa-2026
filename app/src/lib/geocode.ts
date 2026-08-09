@@ -24,7 +24,8 @@
  */
 
 import {
-  forwardGeocode, forwardGeocodeAll, googleUsable, reverseGeocode, type GeoHit,
+  forwardGeocode, forwardGeocodeAll, googleUsable, reverseGeocode, reverseGeocodeAll,
+  type GeoHit,
 } from './gmaps.ts'
 
 /* ─────────── обратное: координаты → адрес ─────────── */
@@ -47,6 +48,26 @@ export async function reversePlace(lat: number, lon: number): Promise<PlaceGuess
     }
   }
   return nominatim(lat, lon)
+}
+
+/**
+ * Координаты → ВСЕ адреса, какие знает геокодер, от самого мелкого к общему.
+ * Пустой список — спросить не вышло или там ничего не названо.
+ *
+ * Бесплатный путь (Nominatim) отвечает одной строкой, и это не поломка: тогда
+ * перелистывать просто нечего, и человек видит один адрес вместо нескольких.
+ */
+export async function reversePlaces(lat: number, lon: number): Promise<PlaceGuess[]> {
+  if (googleUsable()) {
+    try {
+      const all = await reverseGeocodeAll(lat, lon)
+      if (all.length) return all
+    } catch {
+      /* ключ отозвали, лимит, нет сети — пробуем бесплатный путь */
+    }
+  }
+  const one = await nominatim(lat, lon)
+  return one ? [one] : []
 }
 
 /* ─────────── прямое: название → координаты ─────────── */

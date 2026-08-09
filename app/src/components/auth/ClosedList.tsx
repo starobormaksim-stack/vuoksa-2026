@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { CloudOff, Lock, Luggage, Tent } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { CloudOff, FolderOpen, Lock, Luggage, Tent } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Btn } from '@/components/flops'
 import { Logo } from '@/components/Logo'
 import { OwnerLogin } from '@/components/auth/OwnerLogin'
-import { openTripsList } from '@/lib/trips'
+import { docFromOfflineHtml } from '@/lib/offline'
+import { docKey, openTripsList } from '@/lib/trips'
 
 /**
  * Экран закрытого листа: человек не назвался, и поездки ему не видно.
@@ -52,6 +53,54 @@ export function ClosedList({
 }) {
   const [link, setLink] = useState('')
   const [why, setWhy] = useState('')
+  /** что сказать про выбранный файл копии — удачу или причину отказа */
+  const [fileWhy, setFileWhy] = useState('')
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  /**
+   * Открыть лист из скачанной офлайн-копии, пока сервер молчит.
+   *
+   * ⛔ Документ из файла СТАВИТСЯ местной копией, а не сливается. Это ровно то,
+   * на чём сорвалась первая попытка (У-174): `mergeInto` вливал файл в пустой
+   * заводской документ, и лист после выбора файла не открывался — экран
+   * оставался тем же, разделов ноль. Слияние решает по меткам правок, а сливать
+   * здесь не с чем: листа нет вовсе.
+   *
+   * ⛔ Поэтому и место у кнопки ровно одно — этот экран. Чужую работу подмена
+   * не затрёт: сюда попадают, только когда документа нет ни на сервере,
+   * ни в браузере. Внутри живого листа файл по-прежнему СЛИВАЕТСЯ — пункт
+   * «Загрузить копию» в меню «⋯» не тронут (постулат 4).
+   *
+   * Молчаливых отказов не бывает: и удача, и каждая неудача сказаны словами
+   * прямо здесь — полоски сообщений на этом экране нет, она живёт в листе.
+   */
+  const openFromCopy = (file: File) => {
+    setFileWhy('Читаю файл…')
+    const fr = new FileReader()
+    fr.onload = () => {
+      let doc: unknown
+      try {
+        doc = docFromOfflineHtml(String(fr.result))
+      } catch (e) {
+        setFileWhy(
+          'Файл не подошёл: ' +
+            (e instanceof Error ? e.message : 'не читается') +
+            '. Нужен тот самый файл копии, который скачивался из листа.',
+        )
+        return
+      }
+      try {
+        localStorage.setItem(docKey(), JSON.stringify(doc))
+      } catch {
+        setFileWhy('В браузере не осталось места, чтобы положить лист. Освободите память и повторите.')
+        return
+      }
+      setFileWhy('Лист из копии на месте, открываю…')
+      location.reload()
+    }
+    fr.onerror = () => setFileWhy('Файл не прочитался. Попробуйте выбрать его ещё раз')
+    fr.readAsText(file)
+  }
 
   const open = () => {
     const raw = link.trim()
@@ -146,16 +195,39 @@ export function ClosedList({
       )}
 
       {/* Пока сервер молчит, работать можно в своей офлайн-копии: файл
-          самодостаточен, в нём весь лист, и открывается он двойным щелчком без
-          интернета. ⛔ Загрузку такого файла ПРЯМО ЗДЕСЬ не предлагаем: слияние
-          в пустой заводской документ живьём листа не открыло (проба 09.08.2026),
-          а непроверенная кнопка — это молчаливый отказ, который хуже её
-          отсутствия (постулат 5, урок У-174). */}
+          самодостаточен, в нём весь лист. Открыть его можно двойным щелчком —
+          а можно занести сюда, и тогда лист откроется прямо на сайте, со всеми
+          привычными разделами. */}
       {quota && (
-        <p className="-mt-3 text-center text-note leading-relaxed text-balance text-muted">
-          Скачанная раньше офлайн-копия работает и сейчас: откройте файл двойным
-          щелчком — весь лист внутри него. Правки в копии остаются в этом файле.
-        </p>
+        <div className="-mt-3 flex flex-col items-center gap-3">
+          <p className="text-center text-note leading-relaxed text-balance text-muted">
+            Скачанная раньше офлайн-копия работает и сейчас: откройте файл двойным
+            щелчком — весь лист внутри него. Или занесите его сюда, и лист откроется
+            здесь же.
+          </p>
+          {/* Своего вида у поля выбора файла нет: его зовёт кнопка. Значение
+              обнуляем сразу — иначе повторный выбор того же файла не сработает. */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".html,text/html"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) openFromCopy(f)
+            }}
+          />
+          <Btn tone="ghost" onClick={() => fileRef.current?.click()}>
+            <FolderOpen size={18} strokeWidth={1.75} aria-hidden />
+            Открыть лист из офлайн-копии
+          </Btn>
+          {fileWhy && (
+            <p role="status" className="text-center text-note leading-relaxed text-balance text-ink">
+              {fileWhy}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="flex flex-col gap-5 rounded-xl border border-line bg-surface p-4">

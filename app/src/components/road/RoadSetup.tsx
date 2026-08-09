@@ -1,13 +1,16 @@
-import type { ReactNode } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, ExternalLink, MapPinned } from 'lucide-react'
 import { toast } from 'sonner'
 import { siteName } from '@/lib/producturl'
+import { humanAddr, reversePlaces, type PlaceGuess } from '@/lib/geocode'
 import type { LegMode, RateUnitId, Rent, State, Transport } from '@/lib/types'
 import { kBackOf, kmOf, litres, routeKm } from '@/lib/calc'
 import { Btn, InlineNum, InlinePick, InlineText, StripField } from '@/components/flops'
 import { Switch } from '@/components/ui/switch'
 import { fmtNum, MDASH, NBSP } from '@/format'
-import { fuelName, kBackWord, litresLabel, NO_FUEL, RATE_HINTS, RATE_TITLES } from './roadx'
+import {
+  fuelName, kBackWord, litresLabel, mapCenter, NO_FUEL, RATE_HINTS, RATE_TITLES,
+} from './roadx'
 import { patchRent, patchTransport } from './roadedit'
 
 /**
@@ -491,6 +494,133 @@ export function RentSetup({ item, S, canEdit }: { item: Rent; S: State; canEdit:
  * выбор человека — `InlinePick`, имя сайта у ссылки — `lib/producturl.siteName`,
  * то же, что под позициями закупки.
  */
+/**
+ * Адрес проживания — с карты, по месту поездки.
+ *
+ * ─── Откуда (заказчик 09.08.2026) ───
+ * Просил, чтобы адрес «подтягивался с карты Google по выбранной точке,
+ * с перелистыванием стрелками, если мест несколько». Точка — та, куда смотрит
+ * карта поездки (`S.trip.lat/lon`): своих координат у строки аренды нет,
+ * и заводить их ради этого не стали.
+ *
+ * ⛔ Молча ничего не подставляется. Геокодер на одну точку отвечает лестницей —
+ * дом, улица, посёлок, район, область, — и какая строка верная, знает только
+ * человек: у базы отдыха в лесу дома нет вовсе. Поэтому находки показываются
+ * по одной, листаются стрелками, и в поле уходит только та, которую выбрали
+ * нажатием «Поставить».
+ *
+ * ⛔ Ничего нового не сверстано: кнопка — `flops/Btn`, стрелки — те же, что
+ * у календаря (`trip/DateRangePicker`), значки — lucide. Постулат 6: у того,
+ * кто не правит, кнопки нет вовсе.
+ *
+ * ⛔ Молчаливых отказов не бывает: «спрашиваю карту», «карта не назвала адреса»
+ * и «места поездки на карте ещё нет» сказаны словами прямо здесь.
+ */
+function AddrFromMap({ item, S, canEdit }: { item: Rent; S: State; canEdit: boolean }) {
+  const [list, setList] = useState<PlaceGuess[] | null>(null)
+  const [at, setAt] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [why, setWhy] = useState('')
+
+  if (!canEdit) return null
+
+  /* Куда смотрит карта — тем же способом, что и сама карта (`mapCenter`).
+     ⚠️ Проставлено ли место, `mapCenter` не говорит: без места он отдаёт Вуоксу
+     по умолчанию. Спрашивать по ней адрес нельзя — это была бы выдумка вместо
+     ответа, поэтому наличие места проверяем отдельно. */
+  const place = S.trip.places?.find((p) => p.main) ?? S.trip.places?.[0]
+  const поставлено = typeof place?.lat === 'number' && typeof place?.lon === 'number'
+
+  const ask = async () => {
+    if (!поставлено) {
+      setWhy('Места поездки на карте ещё нет — поставьте его в разделе «Дорога»')
+      return
+    }
+    const { lat, lon } = mapCenter(S)
+    setBusy(true)
+    setWhy('')
+    const found = await reversePlaces(lat, lon)
+    setBusy(false)
+    if (!found.length) {
+      setList(null)
+      setWhy('Карта не назвала здесь ни одного адреса')
+      return
+    }
+    setList(found)
+    setAt(0)
+  }
+
+  const put = () => {
+    const hit = list?.[at]
+    if (!hit) return
+    patchRent(item.i, (r) => {
+      r.addr = humanAddr(hit.addr)
+    })
+    setList(null)
+    setWhy('Адрес взят с карты')
+  }
+
+  const shift = (d: number) => {
+    if (!list) return
+    setAt((n) => (n + d + list.length) % list.length)
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {!list && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Btn tone="ghost" scale="sm" onClick={() => void ask()} disabled={busy}>
+            <MapPinned size={16} strokeWidth={1.75} aria-hidden />
+            {busy ? 'Спрашиваю карту…' : 'Взять с карты'}
+          </Btn>
+          {why && <span className="text-note leading-snug text-muted">{why}</span>}
+        </div>
+      )}
+
+      {list && (
+        <div className="flex flex-col gap-2 rounded-lg border border-line bg-zebra/40 p-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => shift(-1)}
+              aria-label="Предыдущий адрес"
+              disabled={list.length < 2}
+              className="grid size-11 shrink-0 place-items-center rounded-lg text-muted hover:bg-zebra hover:text-ink disabled:opacity-40"
+            >
+              <ChevronLeft size={20} strokeWidth={1.75} aria-hidden />
+            </button>
+            <p className="min-w-0 flex-1 text-center text-note leading-snug text-ink" aria-live="polite">
+              {list[at]?.addr}
+            </p>
+            <button
+              type="button"
+              onClick={() => shift(1)}
+              aria-label="Следующий адрес"
+              disabled={list.length < 2}
+              className="grid size-11 shrink-0 place-items-center rounded-lg text-muted hover:bg-zebra hover:text-ink disabled:opacity-40"
+            >
+              <ChevronRight size={20} strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="tnum text-micro text-muted">
+              {at + 1} из {list.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Btn tone="ghost" scale="sm" onClick={() => setList(null)}>
+                Не надо
+              </Btn>
+              <Btn scale="sm" onClick={put}>
+                Поставить
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RentPlace({ item, S, canEdit }: { item: Rent; S: State; canEdit: boolean }) {
   const url = item.url ?? ''
   const site = siteName(url)
@@ -510,6 +640,7 @@ function RentPlace({ item, S, canEdit }: { item: Rent; S: State; canEdit: boolea
           placeholder="Улица, дом, ориентир"
           className="text-body leading-snug text-ink"
         />
+        <AddrFromMap item={item} S={S} canEdit={canEdit} />
       </StripField>
 
       <StripField label="Кто бронирует" wide>

@@ -280,6 +280,32 @@ export async function reverseGeocode(lat: number, lon: number): Promise<PlaceGue
   return { addr, name }
 }
 
+/**
+ * То же обратное геокодирование, но ВСЕ находки, а не только первая.
+ *
+ * Google на одну точку отвечает лестницей: дом, улица, посёлок, район, область.
+ * Первая строка — самая мелкая, и обычно она и нужна; но у базы отдыха в лесу
+ * дома нет, и верной оказывается вторая или третья. Заказчик 09.08.2026 просил
+ * «с перелистыванием стрелками, если мест несколько» — вот они, эти несколько.
+ *
+ * Повторы по адресу выбрасываем: лестница часто даёт одну и ту же строку дважды.
+ */
+export async function reverseGeocodeAll(lat: number, lon: number): Promise<PlaceGuess[]> {
+  const maps = await loadGoogleMaps()
+  const geo = new maps.Geocoder()
+  const res = await geo.geocode({ location: { lat, lng: lon } })
+  const list = res.results || []
+  const out: PlaceGuess[] = []
+  const было = new Set<string>()
+  for (const one of list) {
+    const addr = one.formatted_address || ''
+    if (!addr || было.has(addr)) continue
+    было.add(addr)
+    out.push({ addr, name: shortName([one]) || addr })
+  }
+  return out
+}
+
 /** Найденное место: координаты, адрес и признак «попали точно, а не в область». */
 export interface GeoHit {
   lat: number
