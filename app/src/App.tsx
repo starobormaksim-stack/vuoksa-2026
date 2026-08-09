@@ -8,6 +8,7 @@ import { useTheme } from './theme'
 import { useBottomNav } from './navpref'
 import { currentSession, onAuthChange, type Session } from './lib/auth'
 import { isOfflineCopy } from './lib/offline'
+import { QUOTA_MSG } from './lib/sync'
 import { personalizeManifest } from './lib/homescreen'
 import { jumpToItem, setSectionNav } from './lib/jump'
 import { requestUnfold } from './foldpref'
@@ -49,7 +50,7 @@ import { Toaster } from './components/ui/sonner'
  * раздел, попавший в эту полосу.
  */
 function App() {
-  const { S, perms, denied, opened, signIn, entering } = useTrip()
+  const { S, perms, denied, opened, signIn, entering, net } = useTrip()
   const { dark, toggle } = useTheme()
   const nav = useBottomNav()
   const [search, setSearch] = useState(false)
@@ -151,7 +152,16 @@ function App() {
      (У-102). Ждём здесь же, тем же экраном, а не показываем «лист закрыт». */
   if (!офлайн && (entering || (!opened && !denied && !perms.authed))) return <OpeningList />
   if (!офлайн && (denied || !perms.authed))
-    return <ClosedList denied={denied || perms.stale} signedInAs={signIn.email} />
+    return (
+      <ClosedList
+        denied={denied || perms.stale}
+        /* Лист не открылся не потому, что человека не признали, а потому, что
+           хранилище приостановлено (402). Об этом надо сказать словами, иначе
+           «Заведите свою поездку» читается как «ваша поездка пропала». */
+        quota={!denied && net.msg === QUOTA_MSG}
+        signedInAs={signIn.email}
+      />
+    )
 
   return (
     <div className="min-h-svh">
