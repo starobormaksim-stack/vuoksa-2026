@@ -199,7 +199,11 @@ export function sbFetch(path: string, opts: FetchOpts = {}): Promise<Response> {
 /** То же, но сразу разбирает JSON и роняет промис на не-200. */
 export async function sbJson<T>(path: string, opts: FetchOpts = {}): Promise<T> {
   const r = await sbFetch(path, opts)
-  if (!r.ok) throw new Error('HTTP ' + r.status)
+  if (!r.ok) {
+    const quota = quotaOrNull(r.status)
+    if (quota) throw quota
+    throw new Error('HTTP ' + r.status)
+  }
   return (await r.json()) as T
 }
 
@@ -252,6 +256,23 @@ export class KeyRejected extends Error {}
  * записью — она в этот момент ещё разрешена, потому что RLS тоже не включён.
  */
 export class RpcMissing extends Error {}
+
+/**
+ * Проект Supabase приостановлен: исчерпан бесплатный лимит исходящего трафика
+ * либо упёрлись в потолок расходов. Сервер отвечает 402 на ЛЮБОЙ запрос — и на
+ * чтение, и на запись, и на список поездок.
+ *
+ * Отдельный класс нужен, потому что человеку об этом надо сказать иначе, чем
+ * про обрыв связи: связь как раз есть, кнопка «повторить» не поможет, а правки
+ * при этом целы и лежат в браузере. 09.08.2026 заказчик увидел «нет связи
+ * с сервером» и прочитал это как поломку листа (урок У-171).
+ */
+export class QuotaExceeded extends Error {}
+
+/** Ответ 402 значит одно и то же на всех путях — узнаём его в одном месте. */
+function quotaOrNull(status: number): QuotaExceeded | null {
+  return status === 402 ? new QuotaExceeded('лимит проекта исчерпан') : null
+}
 
 /**
  * Запись через функцию базы `trip_write` — единственный путь, когда включён RLS
@@ -346,6 +367,8 @@ async function rpcRows<T>(name: string, body: unknown): Promise<T[]> {
   const r = await sbFetch('rpc/' + name, { method: 'POST', body })
   /* PostgREST отвечает 404 с кодом PGRST202, когда такой функции в схеме нет */
   if (r.status === 404) throw new RpcMissing('функции ' + name + ' в базе нет')
+  const quota = quotaOrNull(r.status)
+  if (quota) throw quota
   if (!r.ok) {
     let text = ''
     try {
@@ -422,6 +445,43 @@ export function patchTrip(
     'trips?id=eq.' + trip + '&updated_at=eq.' + encodeURIComponent(seenAt),
     { method: 'PATCH', rep: true, body: { data, updated_at: stamp, author } },
   )
+}
+
+/**
+ * Метка последней правки из таблицы-сигнала — БЕЗ документа.
+ *
+ * ⛔ Ради чего заведено. Документ поездки весит около мегабайта, и почти весь этот
+ * вес — картинки: обложка 602 КБ и лица команды 429 КБ (замер по снимку
+ * `backups/prod-2026-08-09-p31-start.json`). Опрос сервера тянул документ ЦЕЛИКОМ
+ * каждую минуту при живом сокете и каждые 8 секунд без него — то есть 65 МБ в час
+ * с одной открытой вкладки, 486 МБ в час без сокета. Бесплатные 5 ГБ исходящего
+ * трафика Supabase выбираются за несколько суток, после чего проект отвечает 402
+ * на всё подряд и лист не открывается ни у кого (урок У-171).
+ *
+ * Здесь читается одна строка с одной колонкой — десятки байт вместо мегабайта.
+ * Документ забирается, только если метка изменилась.
+ *
+ * Три исхода, и путать их нельзя:
+ * · метка — спросили, правки были;
+ * · `''` — спросили, а сигнала по этой поездке ещё нет (никто не писал);
+ * · `null` — спросить НЕ вышло: таблицы нет, доступ закрыт или сеть молчит.
+ *   Тогда зовущий обязан вести себя как раньше — сходить за документом, —
+ *   иначе чужая правка не приедет никогда.
+ */
+export async function loadStamp(trip: string = TRIP_ID): Promise<string | null> {
+  const r = await sbFetch(
+    'trip_pings?trip_id=eq.' + encodeURIComponent(trip) + '&select=updated_at&limit=1',
+  )
+  const quota = quotaOrNull(r.status)
+  if (quota) throw quota
+  if (!r.ok) return null
+  try {
+    const rows = (await r.json()) as { updated_at?: string }[]
+    if (!Array.isArray(rows)) return null
+    return rows.length ? rows[0].updated_at || '' : ''
+  } catch {
+    return null
+  }
 }
 
 /**

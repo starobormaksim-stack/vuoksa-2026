@@ -670,6 +670,24 @@ export function TripMap({ S, perms, className }: Props) {
         toast(`«${shown.n}» убрана из маршрута`)
       }}
       onClose={closeCard}
+      near={center}
+      /* Найденный адрес переставляет ЭТУ точку и наводит на неё карту. Адрес
+         записываем целиком: человек выбрал его сам, значит он и есть верный —
+         в отличие от подстановки геокодера, которая своё право уступает
+         написанному вручную. */
+      onLocate={
+        canEdit
+          ? (hit) => {
+              patch(shown.i, (p) => {
+                p.lat = hit.lat
+                p.lon = hit.lon
+                p.addr = humanAddr(hit.addr)
+              })
+              setLookAt({ lat: hit.lat, lon: hit.lon, at: Date.now() })
+              toast(`«${shown.n}» ${MDASH} по адресу`)
+            }
+          : undefined
+      }
     />
   ) : null
 

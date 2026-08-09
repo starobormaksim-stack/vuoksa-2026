@@ -18,9 +18,11 @@ import {
   SB,
   insertTrip,
   KeyRejected,
+  loadStamp,
   loadTrip,
   patchTrip,
   pingTrip,
+  QuotaExceeded,
   realtimeUrl,
   RpcMissing,
   rpcTripWrite,
@@ -89,10 +91,46 @@ const MAX_ATTEMPTS = 5
 const HEARTBEAT = 25000
 const TICK = 4000
 
+/**
+ * Как часто документ забирается ЦЕЛИКОМ, даже когда метка-сигнал молчит.
+ *
+ * ⛔ Не уменьшать без счёта. Документ весит около мегабайта (обложка и лица —
+ * 1 МБ из 1,08), и каждый такой заход — мегабайт исходящего трафика Supabase.
+ * Прежний код тянул его по метке `updated_at` самой строки, то есть на КАЖДОМ
+ * опросе: 65 МБ в час с одной вкладки при живом сокете и 486 МБ в час без него.
+ * Бесплатных 5 ГБ хватало на несколько суток, дальше проект отвечал 402 на всё,
+ * и лист не открывался ни у кого (урок У-171).
+ *
+ * Час — это страховка на случай, когда сигнал `trip_pings` не сработал: чужая
+ * правка приедет с опозданием, но приедет. Обычный путь — не этот, а метка
+ * и событие Realtime, оба доставляют изменение за секунды.
+ *
+ * ⚠️ Замер 09.08.2026 показал, что и сама страховка стоит денег: при десяти
+ * минутах вкладка, открытая сутками, качала документ шесть раз в час — 4,7 ГБ
+ * в месяц, почти вся бесплатная квота, и это когда никто ничего не правил.
+ * При часе выходит 780 МБ в месяц на вкладку.
+ */
+const FULL_EVERY = 3600000
+
+/**
+ * Что человек читает, когда сервер отвечает 402.
+ *
+ * Постулат 5: молчаливых отказов не бывает. «Нет связи с сервером» здесь —
+ * неправда и вдобавок пугает: связь есть, лист цел, правки лежат в браузере
+ * и уедут сами. Беда ровно одна и чинится не кнопкой, а в кабинете Supabase.
+ */
+const QUOTA_MSG = 'Сервер листа приостановлен — исчерпан лимит. Правки сохраняются в браузере'
+
 /** Движок синхронизации. Один на приложение: создаётся в store.ts. */
 export class Sync {
   private h: SyncHooks
   private lastPull = ''
+  /** Метка из `trip_pings`, которую мы уже отработали. `null` — ещё не спрашивали. */
+  private lastStamp: string | null = null
+  /** Когда документ забирался целиком в последний раз (мс). */
+  private lastFull = 0
+  /** Спросить метку не вышло (таблицы нет или доступ закрыт) — больше не пробуем. */
+  private stampGone = false
   private pulling = false
   private pushing = false
   private pushAgain = false
@@ -129,10 +167,12 @@ export class Sync {
     this.tickT = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return
       tick++
-      /* сокет живой — опрашиваем раз в минуту, иначе каждые 8 секунд */
+      /* сокет живой — опрашиваем раз в минуту, иначе каждые 8 секунд.
+         Опрос теперь стоит десятки байт, а не мегабайт: за документом ходит
+         только `poll`, и только когда метка-сигнал сдвинулась (У-171). */
       if (this.live && this.joined) {
-        if (tick % 15 === 0) void this.pull(false)
-      } else if (tick % 2 === 0) void this.pull(false)
+        if (tick % 15 === 0) void this.poll()
+      } else if (tick % 2 === 0) void this.poll()
     }, TICK)
     window.addEventListener('online', this.onOnline)
     window.addEventListener('offline', this.onOffline)
@@ -156,7 +196,9 @@ export class Sync {
   private onOnline = () => {
     this.h.onNet('work')
     this.connect()
-    void this.pull(false)
+    /* Спрашиваем метку, а не документ: связь вернулась — это ещё не значит,
+       что за это время кто-то правил лист (У-171). */
+    void this.poll()
   }
 
   private onOffline = () => {
@@ -166,10 +208,63 @@ export class Sync {
   private onVisible = () => {
     if (document.hidden) return
     if (!this.sock || this.sock.readyState > 1) this.connect()
-    void this.pull(false)
+    /* Возврат к вкладке случается по десять раз на дню. Свежесть даёт метка:
+       изменилось — скачаем, не изменилось — не платим за это мегабайтом. */
+    void this.poll()
   }
 
   /* ─────────── чтение ─────────── */
+
+  /**
+   * Обычный опрос: сначала метка, документ — только если он вправду менялся.
+   *
+   * ⛔ Здесь и живёт вся экономия трафика (У-171). Раньше на этом месте стоял
+   * `pull`, то есть мегабайт по сети каждую минуту с каждой открытой вкладки,
+   * даже когда за сутки никто ничего не тронул.
+   */
+  private async poll(): Promise<void> {
+    if (this.pulling) return
+    const давно = Date.now() - this.lastFull >= FULL_EVERY
+
+    /* Спросить метку нечем — работаем по-старому, но редко. */
+    if (this.stampGone) {
+      if (давно) await this.pull(false)
+      else this.h.onNet('ok')
+      return
+    }
+
+    let stamp: string | null
+    try {
+      stamp = await loadStamp()
+    } catch (e) {
+      if (e instanceof QuotaExceeded) {
+        this.h.onNet('err', QUOTA_MSG)
+        return
+      }
+      /* Обрыв связи на лёгком запросе. Молчать нельзя: за документом мы не пошли,
+         и без этой строки индикатор остался бы на прежнем «всё хорошо». */
+      this.h.onNet('err', 'нет связи с сервером')
+      return
+    }
+
+    if (stamp === null) {
+      this.stampGone = true
+      if (давно) await this.pull(false)
+      else this.h.onNet('ok')
+      return
+    }
+
+    if (stamp !== this.lastStamp) {
+      this.lastStamp = stamp
+      await this.pull(false)
+      return
+    }
+    if (давно) {
+      await this.pull(false)
+      return
+    }
+    this.h.onNet('ok')
+  }
 
   /** Забрать документ с сервера. `force` — вливать даже без изменения метки. */
   async pull(force: boolean): Promise<void> {
@@ -178,6 +273,8 @@ export class Sync {
     try {
       const rows = await loadTrip(this.h.getReadKey())
       this.pulling = false
+      /* Документ пришёл целиком — отсчёт страховочного полного чтения с нуля. */
+      this.lastFull = Date.now()
       this.h.onDenied(false)
       if (!rows.length) {
         /* ⛔ Пустая местная копия строку НЕ создаёт. Заводской сид людей и списков
@@ -214,7 +311,8 @@ export class Sync {
       if (e instanceof KeyRejected) {
         this.h.onDenied(true)
         this.h.onNet('err', 'лист закрыт — откройте свою личную ссылку')
-      } else this.h.onNet('err', 'нет связи с сервером')
+      } else if (e instanceof QuotaExceeded) this.h.onNet('err', QUOTA_MSG)
+      else this.h.onNet('err', 'нет связи с сервером')
     } finally {
       /* Чем бы ни кончилось — теперь о правах судить есть по чему. */
       this.h.onFirstRead()
@@ -248,6 +346,7 @@ export class Sync {
          без своей ссылки, и база честно отказалась принимать правки. */
       if (e instanceof KeyRejected)
         this.h.onNet('err', 'правки не сохраняются — откройте свою личную ссылку')
+      else if (e instanceof QuotaExceeded) this.h.onNet('err', QUOTA_MSG)
       else this.h.onNet('err', 'правки не ушли на сервер')
     }
     this.pushing = false
@@ -260,10 +359,28 @@ export class Sync {
   private async pushTry(attempt: number): Promise<void> {
     const author = this.h.getAuthor()
     const key = this.h.getKey()
-    const rows = await loadTrip(this.h.getReadKey())
-    const row = rows.length ? rows[0] : null
-    /* вобрали чужие правки — иначе условная запись затрёт их нашей копией */
-    if (row && row.updated_at !== this.lastPull) this.h.applyRemote(row.data)
+
+    /*
+     * Первую попытку делаем БЕЗ похода за документом, если метку строки мы уже
+     * знаем: запись и так условная (`updated_at = p_seen` в trip_write), и если
+     * кто-то успел раньше, сервер вернёт ноль строк — тогда повтор пойдёт полным
+     * путём, со слиянием. Прежний код тянул мегабайт перед КАЖДОЙ правкой, то есть
+     * платил им за каждое нажатие на счётчик (У-171).
+     *
+     * ⛔ Непустой `lastPull` — это ещё и доказательство, что строка на сервере
+     * есть. Без него нельзя: пустая метка значит «не читали», и запись пошла бы
+     * заводить строку заново поверх чужого листа (родня У-07).
+     */
+    const быстро = attempt === 0 && this.lastPull !== ''
+    let row: { data: unknown; updated_at: string } | null = null
+    if (!быстро) {
+      const rows = await loadTrip(this.h.getReadKey())
+      row = rows.length ? rows[0] : null
+      /* вобрали чужие правки — иначе условная запись затрёт их нашей копией */
+      if (row && row.updated_at !== this.lastPull) this.h.applyRemote(row.data)
+    }
+    /* Метка, под которой пишем: своя известная в быстром пути, серверная — в полном. */
+    const seen = быстро ? this.lastPull : row ? row.updated_at : null
     const stamp = new Date().toISOString()
     const body = this.h.stampDoc(stamp, author)
 
@@ -271,12 +388,12 @@ export class Sync {
     if (this.rpcGone) {
       /* Переходный период: функции в базе ещё нет, значит и RLS не включён —
          пишем прямо, как писали всегда. */
-      out = row
-        ? await patchTrip(row.updated_at, body, stamp, author)
+      out = seen
+        ? await patchTrip(seen, body, stamp, author)
         : await insertTrip(body, stamp, author)
     } else {
       try {
-        out = await rpcTripWrite(row ? row.updated_at : null, body, stamp, author, key)
+        out = await rpcTripWrite(seen, body, stamp, author, key)
       } catch (e) {
         if (!(e instanceof RpcMissing)) throw e
         this.rpcGone = true
@@ -299,6 +416,9 @@ export class Sync {
   private async ping(author: string): Promise<void> {
     try {
       this.myPing = await pingTrip(author)
+      /* Свой же сигнал отмечаем прочитанным: иначе ближайший опрос увидит новую
+         метку и пойдёт качать документ, который сам только что и отправил. */
+      this.lastStamp = this.myPing
     } catch {
       /* таблицы-сигнала может не быть — тогда работает опрос */
     }

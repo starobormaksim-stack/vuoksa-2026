@@ -1,12 +1,13 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
-  Car, Check, ChevronDown, Footprints, Plus, Sailboat, Trash2, X, type LucideIcon,
+  Car, Check, ChevronDown, Footprints, Plus, Sailboat, Search, Trash2, X, type LucideIcon,
 } from 'lucide-react'
 import type { LegMode, Person, RoutePoint, Transport } from '@/lib/types'
 import type { Perms } from '@/lib/perm'
 import { InlineText, PersonHead } from '@/components/flops'
 import { requestAdd } from '@/lib/addnew'
-import { humanAddr } from '@/lib/geocode'
+import { humanAddr, type PlaceFound } from '@/lib/geocode'
+import { MapSearch } from './MapSearch'
 import { coordLabel, travels } from '@/components/road/roadx'
 import { Dot, RoutePointCoords, RoutePointSetup } from '@/components/road/RoutePointSetup'
 import { cn } from '@/lib/utils'
@@ -75,6 +76,15 @@ interface Props {
    */
   flat?: boolean
   onPatch: (f: (p: RoutePoint) => void) => void
+  /**
+   * Человек нашёл точный адрес для ЭТОЙ точки — её надо переставить туда
+   * и навести карту (заказчик 09.08.2026: «я точку поставил, допустим, новую,
+   * я хочу точно отфиксировать адрес… он его находит и центрируется куда надо»).
+   * Без обработчика поиска в карточке нет вовсе — постулат 6.
+   */
+  onLocate?: (hit: PlaceFound) => void
+  /** куда смотрит поездка: около этого места ищем, пока у точки нет координат */
+  near?: { lat: number; lon: number }
   /** точка перестала быть новой: название сохранили, Esc её больше не убирает */
   onKeep: () => void
   onDelete: () => void
@@ -96,10 +106,12 @@ const LEG_ICONS: Record<LegMode, LucideIcon> = {
 
 export function MapPointCard({
   point, index, canEdit, transports, people, perms, busy, fresh, flat,
-  onPatch, onKeep, onDelete, onClose,
+  onPatch, onKeep, onDelete, onClose, onLocate, near,
 }: Props) {
   /** раскрыты ли подробности точки: метка этапа, дорога, расстояние, координаты */
   const [more, setMore] = useState(false)
+  /** открыт ли поиск точного адреса для этой точки */
+  const [locating, setLocating] = useState(false)
 
   /**
    * Esc — общий выход. У только что поставленной точки он ещё и убирает метку:
@@ -188,24 +200,57 @@ export function MapPointCard({
         {busy ? (
           <p className="text-micro leading-snug text-muted">Адрес ищем…</p>
         ) : (
-          <InlineText
-            /* Показываем адрес человеку, а не геокодеру: без Plus Code
-               («23JV+M5 Приозерск…»), без «Россия» и почтового индекса.
-               Заказчик 06.08.2026 вечером прямо про них: «непонятные значения…
-               я не совсем понимаю, зачем эта информация». Правка сохраняет
-               ровно то, что видно, — иначе человек правил бы одно, а в листе
-               лежало бы другое. */
-            value={humanAddr(point.addr)}
-            can={canEdit}
-            label="Адрес точки"
-            placeholder={coordLabel(point) || 'Адрес не нашёлся — метку можно подвинуть'}
-            className="text-micro leading-snug text-muted"
-            onSave={(v) =>
-              onPatch((p) => {
-                p.addr = v
-              })
-            }
-          />
+          <div className="flex items-start gap-1">
+            <div className="min-w-0 flex-1">
+              <InlineText
+                /* Показываем адрес человеку, а не геокодеру: без Plus Code
+                   («23JV+M5 Приозерск…»), без «Россия» и почтового индекса.
+                   Заказчик 06.08.2026 вечером прямо про них: «непонятные значения…
+                   я не совсем понимаю, зачем эта информация». Правка сохраняет
+                   ровно то, что видно, — иначе человек правил бы одно, а в листе
+                   лежало бы другое. */
+                value={humanAddr(point.addr)}
+                can={canEdit}
+                label="Адрес точки"
+                placeholder={coordLabel(point) || 'Адрес не нашёлся — метку можно подвинуть'}
+                className="text-micro leading-snug text-muted"
+                onSave={(v) =>
+                  onPatch((p) => {
+                    p.addr = v
+                  })
+                }
+              />
+            </div>
+            {/* Не «правка адреса», а поиск по нему: адрес рядом правится словами
+                и точку не двигает, а этот орган ставит точку ТУДА, где место
+                вправду находится. Права нет — органа нет (постулат 6). */}
+            {canEdit && onLocate && (
+              <CardBtn
+                icon={Search}
+                label={locating ? 'Убрать поиск адреса' : 'Найти точку по адресу'}
+                onClick={() => setLocating((v) => !v)}
+              />
+            )}
+          </div>
+        )}
+        {locating && canEdit && onLocate && (
+          <div className="mt-2">
+            <MapSearch
+              /* Ищем около самой точки, а если координат у неё ещё нет —
+                 около места поездки: находки «поблизости» иначе сортируются
+                 от нулевой широты, то есть из Атлантики. */
+              near={
+                point.lat != null && point.lon != null
+                  ? { lat: point.lat, lon: point.lon }
+                  : (near ?? { lat: 0, lon: 0 })
+              }
+              onPick={(hit) => {
+                setLocating(false)
+                onLocate(hit)
+              }}
+              hint="Точка встанет по выбранному адресу"
+            />
+          </div>
         )}
       </div>
 

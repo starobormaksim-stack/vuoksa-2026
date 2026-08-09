@@ -185,6 +185,20 @@ export function GoogleRouteMap({
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false,
+            /*
+             * Плюс и минус масштаба — свои, гугловские (заказчик 09.08.2026:
+             * «плюсик и минусик… я бы всё-таки добавил на неё, на гугловскую
+             * карту… не только с помощью Ctrl»). У соседней карты OSM такие
+             * кнопки были всегда (`zoomControl: true` в OsmRouteMap), а здесь
+             * их не было вовсе, и масштаб менялся только колесом с Ctrl или
+             * щипком — на десктопе без мыши это тупик.
+             *
+             * ⛔ Своей вёрсткой не заменять: постулат 3. Готовый орган умеет
+             * то, чего у самодельной пары кнопок не будет даром, — предел
+             * масштаба, удержание нажатия, клавиатуру и подписи.
+             */
+            zoomControl: true,
+            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
             /* Прокрутка колесом без Ctrl пролистывала бы страницу мимо карты. */
             gestureHandling: 'cooperative',
           })
