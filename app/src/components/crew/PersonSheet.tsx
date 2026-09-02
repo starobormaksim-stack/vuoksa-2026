@@ -20,6 +20,7 @@ import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { photoValue } from '@/lib/img'
 import { initialOf, newKey } from './ids'
 
 /**
@@ -387,7 +388,9 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
         </div>
       </ResponsiveSheet>
 
-      {/* Кадрирование: что видно в рамке — то и ложится в person.photo */}
+      {/* Кадрирование: что видно в рамке — то и ложится в person.photo.
+          Снимок уезжает файлом в хранилище, в документ ложится ссылка
+          (lib/img.ts): base64-лица весили 429 КБ на троих (У-171). */}
       {src && (
         <PhotoCropSheet
           src={src}
@@ -396,11 +399,12 @@ export function PersonSheet({ person, perms, tone, ready, fresh, onPatch, onDele
           title={`Фотография · ${person.name}`}
           subtitle="Квадрат — как в карточке команды"
           okLabel="Поставить"
-          onDone={(url) =>
+          onDone={async (dataUrl) => {
+            const v = await photoValue(dataUrl)
             onPatch((p) => {
-              p.photo = url
+              p.photo = v
             })
-          }
+          }}
           onClose={() => setSrc(null)}
         />
       )}

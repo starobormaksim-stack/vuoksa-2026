@@ -344,6 +344,51 @@ export function withoutOthersKeys(S: State, meId: string): State {
 }
 
 /**
+ * ⛔ Вшить картинки ВНУТРЬ копии документа: файл обязан жить без сети.
+ *
+ * В живом листе обложка и лица — https-ссылки на файловое хранилище
+ * (lib/img.ts), а офлайн-копия сеть закрывает наглухо (`pine-boot`) и
+ * открывается в лесу, где сети нет и так. Оставить ссылки — значит отдать
+ * человеку копию с пустой обложкой и пустыми лицами. Поэтому при сохранении
+ * копии картинки скачиваются (обычно из кеша браузера — они уже на экране)
+ * и кладутся в КОПИЮ документа строками, как жили до выноса в хранилище.
+ * Сам живой лист при этом не трогается.
+ *
+ * Не скачалось — в копии остаётся ссылка, и об этом сказано словами
+ * (постулат 5): молча отдать копию без обложки нельзя.
+ */
+async function inlineImages(S: State): Promise<{ doc: State; missed: number }> {
+  let missed = 0
+  const grab = async (v: string): Promise<string> => {
+    if (!v || !/^https?:/.test(v)) return v
+    try {
+      const r = await fetch(v)
+      if (!r.ok) throw new Error(String(r.status))
+      const blob = await r.blob()
+      return await new Promise<string>((ok, no) => {
+        const fr = new FileReader()
+        fr.onload = () => ok(String(fr.result))
+        fr.onerror = () => no(new Error('не прочиталось'))
+        fr.readAsDataURL(blob)
+      })
+    } catch {
+      missed += 1
+      return v
+    }
+  }
+  /* hero в типе необязателен — пустоту не трогаем, чтобы не выдумать поле */
+  const hero = S.trip.hero ? await grab(S.trip.hero) : S.trip.hero
+  const people = await Promise.all(
+    (S.people || []).map(async (p) => {
+      const photo = await grab(p.photo)
+      return photo === p.photo ? p : { ...p, photo }
+    }),
+  )
+  const doc: State = { ...S, trip: { ...S.trip, hero }, people }
+  return { doc, missed }
+}
+
+/**
  * Прочитать документ из скачанной офлайн-копии.
  *
  * Заказчик 06.08.2026: «и подгрузить, кстати, обратно версию надо иметь
@@ -385,7 +430,11 @@ export async function saveOfflineCopy(S: State, meId = ''): Promise<boolean> {
   const inside = isOfflineCopy()
   try {
     const now = new Date()
-    const doc = meId ? withoutOthersKeys(S, meId) : S
+    const trimmed = meId ? withoutOthersKeys(S, meId) : S
+    /* Картинки — внутрь файла: копия живёт без сети (см. inlineImages). */
+    const { doc, missed } = await inlineImages(trimmed)
+    if (missed > 0)
+      toast('Не все картинки удалось вложить в копию — сохраните её заново при связи')
     const html = offlineHtml(await template(), doc, fmtDate(now))
     await deliver(html, fileName(S, now), 'text/html;charset=utf-8')
     toast(

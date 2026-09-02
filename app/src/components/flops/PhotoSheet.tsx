@@ -293,6 +293,12 @@ export function PhotoCropSheet({
           alt=""
           aria-hidden
           draggable={false}
+          /* Снимок из хранилища приходит по https-ссылке (lib/img.ts). Без
+             crossOrigin холст в done() считался бы «испачканным», и toDataURL
+             падал бы SecurityError — перекадрировать существующую фотографию
+             стало бы нельзя. Хранилище отдаёт `access-control-allow-origin: *`.
+             Для data:-снимков атрибут не нужен и не ставится. */
+          crossOrigin={/^https?:/.test(src) ? 'anonymous' : undefined}
           className="absolute max-w-none"
           onLoad={(e) => {
             const t = e.currentTarget

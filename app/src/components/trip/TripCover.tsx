@@ -10,6 +10,7 @@ import { humanAddr, searchPlaces, shortPlaceName, type PlaceFound } from '@/lib/
 import { mapCenter } from '@/components/road/roadx'
 import type { InlineHit } from '@/components/flops'
 import { InlineText, PhotoCropSheet, usePhotoPick } from '@/components/flops'
+import { photoValue } from '@/lib/img'
 import { MoneyTiles } from './MoneyTiles'
 import { useLiveWeather, WeatherDetail, WeatherRow } from './WeatherStrip'
 
@@ -474,9 +475,13 @@ export function TripCover({ S, perms, onEditDates }: Props) {
           subtitle="Подвиньте фотографию, чтобы главное встало в кадр"
           frameHint="Так обложка и будет выглядеть. Меньше рамки — по краям остаются поля."
           okLabel="Поставить"
-          onDone={(url) => {
+          /* Снимок уезжает файлом в хранилище, в документ ложится ссылка
+             (lib/img.ts): base64-обложка весила 602 КБ и ездила по сети
+             с каждой правкой листа (У-171). */
+          onDone={async (dataUrl) => {
+            const v = await photoValue(dataUrl)
             update((s) => {
-              s.trip.hero = url
+              s.trip.hero = v
             })
             toast('Обложка обновлена')
           }}

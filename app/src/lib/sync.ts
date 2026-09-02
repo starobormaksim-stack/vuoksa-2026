@@ -9,16 +9,18 @@
  * `trip_pings`: пришло событие Realtime — забираем документ обычным запросом. Пока событий
  * не было, работает частый опрос; после первого — редкий, как страховка.
  *
- * Присутствие («кто сейчас здесь») — presence того же канала. В phx_join обязательно
- * `presence: { key: …, enabled: true }`, иначе сервер не присылает presence_state и человек
- * видит только себя.
+ * Присутствие («кто сейчас здесь») — при живом сокете presence того же канала
+ * (в phx_join обязательно `presence: { key: …, enabled: true }`, иначе сервер
+ * не присылает presence_state и человек видит только себя). Без сокета — у своего
+ * сервера его нет — присутствие приезжает в ответе опроса метки (`loadPing`):
+ * тот же запрос, ноль лишних вызовов (У-176).
  */
 
 import {
   SB,
   insertTrip,
   KeyRejected,
-  loadStamp,
+  loadPing,
   loadTrip,
   patchTrip,
   pingTrip,
@@ -258,7 +260,18 @@ export class Sync {
 
     let stamp: string | null
     try {
-      stamp = await loadStamp()
+      const me = this.h.getMe()
+      const ping = await loadPing(me ? me.id : '')
+      stamp = ping.stamp
+      /* Присутствие приезжает тем же ответом (у своего сервера сокета нет).
+         Красим только без сокета: при живом Realtime список ведёт канал. */
+      if (!SB.realtime) {
+        this.who = {}
+        ping.viewers.forEach((id) => {
+          this.who[id] = ''
+        })
+        this.paintWho()
+      }
     } catch (e) {
       if (e instanceof QuotaExceeded) {
         this.h.onNet('err', QUOTA_MSG)

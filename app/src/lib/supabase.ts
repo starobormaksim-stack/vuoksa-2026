@@ -38,9 +38,10 @@ export const SB = {
    * Есть ли у сервера сокет живых событий.
    *
    * ⛔ У своего сервера его нет: Vercel — это отдельные вызовы функции, держать
-   * открытое соединение там нечем. Приложение это переживает — свежесть ловится
-   * меткой `trip_pings`, — но полоска «кто сейчас в листе» (`PresenceStack`)
-   * при этом пуста: показывать некому. Названо вслух, а не спрятано (постулат 5).
+   * открытое соединение там нечем. Приложение это переживает: свежесть ловится
+   * меткой `trip_pings`, а присутствие («кто сейчас в листе») приезжает
+   * В ТОМ ЖЕ ответе опроса — `loadPing` называет себя, сервер отдаёт `viewers`
+   * (см. `pings` в server/api/rest.js). Лишних запросов это не добавляет.
    */
   realtime: false,
 }
@@ -487,26 +488,45 @@ export function patchTrip(
  * Здесь читается одна строка с одной колонкой — десятки байт вместо мегабайта.
  * Документ забирается, только если метка изменилась.
  *
- * Три исхода, и путать их нельзя:
+ * Три исхода у метки, и путать их нельзя:
  * · метка — спросили, правки были;
  * · `''` — спросили, а сигнала по этой поездке ещё нет (никто не писал);
  * · `null` — спросить НЕ вышло: таблицы нет, доступ закрыт или сеть молчит.
  *   Тогда зовущий обязан вести себя как раньше — сходить за документом, —
  *   иначе чужая правка не приедет никогда.
+ *
+ * Заодно — присутствие. `viewer` называет серверу спросившего, а в ответе
+ * приезжает `viewers` — id тех, кого видели за последние полминуты. Полоска
+ * «кто сейчас в листе» едет на этом же опросе, НЕ добавляя ни запросов
+ * (У-176: у Vercel мера — вызовы функции), ни операций хранилища. Имена по id
+ * подставляет из документа PresenceStack.
  */
-export async function loadStamp(trip: string = TRIP_ID): Promise<string | null> {
+export interface PingInfo {
+  stamp: string | null
+  viewers: string[]
+}
+
+export async function loadPing(viewer: string, trip: string = TRIP_ID): Promise<PingInfo> {
   const r = await sbFetch(
-    'trip_pings?trip_id=eq.' + encodeURIComponent(trip) + '&select=updated_at&limit=1',
+    'trip_pings?trip_id=eq.' +
+      encodeURIComponent(trip) +
+      '&select=updated_at&limit=1' +
+      (viewer ? '&viewer=' + encodeURIComponent(viewer) : ''),
   )
   const quota = quotaOrNull(r.status)
   if (quota) throw quota
-  if (!r.ok) return null
+  if (!r.ok) return { stamp: null, viewers: [] }
   try {
-    const rows = (await r.json()) as { updated_at?: string }[]
-    if (!Array.isArray(rows)) return null
-    return rows.length ? rows[0].updated_at || '' : ''
+    const rows = (await r.json()) as { updated_at?: string; viewers?: unknown }[]
+    if (!Array.isArray(rows)) return { stamp: null, viewers: [] }
+    if (!rows.length) return { stamp: '', viewers: [] }
+    const v = rows[0].viewers
+    return {
+      stamp: rows[0].updated_at || '',
+      viewers: Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [],
+    }
   } catch {
-    return null
+    return { stamp: null, viewers: [] }
   }
 }
 
